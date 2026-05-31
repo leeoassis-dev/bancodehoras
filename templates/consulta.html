@@ -46,7 +46,9 @@
       <thead class="table-dark">
         <tr>
           <th>Matrícula</th><th>Nome</th><th>Secretaria</th><th>Departamento</th><th>Cargo</th>
-          <th class="text-center">Saldo</th><th class="text-center">Histórico</th>
+          <th class="text-center">Saldo Horas</th>
+          <th class="text-center" title="Dias de Eleição disponíveis"><i class="bi bi-calendar2-check" style="color:#b45309"></i> Eleição</th>
+          <th class="text-center">Histórico</th>
         </tr>
       </thead>
       <tbody>
@@ -62,6 +64,16 @@
           <td class="small text-muted">{{ s.cargo or '–' }}</td>
           <td class="text-center">
             <span class="{{ 'saldo-positivo' if s.saldo_minutos >= 0 else 'saldo-negativo' }}">{{ fmt(s.saldo_minutos) }}</span>
+          </td>
+          <td class="text-center">
+            {% set se = s.saldo_eleicao|int %}
+            {% if se > 0 %}
+              <span class="fw-semibold" style="color:#b45309">{{ se }} dia{{ 's' if se != 1 }}</span>
+            {% elif se == 0 %}
+              <span class="text-muted small">–</span>
+            {% else %}
+              <span class="fw-semibold text-danger">{{ se }}</span>
+            {% endif %}
           </td>
           <td class="text-center">
             <button class="btn btn-sm btn-outline-info"
@@ -131,6 +143,32 @@ function verHistorico(matricula, nome) {
       });
       html+='</tbody></table></div>';
     } else html+='<p class="text-muted small">Nenhum pagamento.</p>';
+
+    // Dias de Eleição
+    html+='<hr><h6 class="fw-bold mb-2" style="color:#b45309"><i class="bi bi-calendar2-check me-1"></i>Dias de Eleição';
+    if(data.saldo_eleicao!==undefined){
+      const se=data.saldo_eleicao;
+      const cor=se>0?'#b45309':se<0?'#dc3545':'#6c757d';
+      html+=` <span class="badge ms-1" style="background:${cor};color:#fff">${se} saldo</span>`;
+    }
+    html+='</h6>';
+    if(data.eleicao_creditos && data.eleicao_creditos.length){
+      html+='<p class="small fw-semibold text-muted mb-1">Créditos:</p>';
+      html+='<div class="table-responsive mb-2"><table class="table table-sm align-middle small"><thead class="table-light"><tr><th>Eleição</th><th class="text-center">Dias</th><th>Observação</th></tr></thead><tbody>';
+      data.eleicao_creditos.forEach(c=>{
+        html+=`<tr><td class="fw-semibold">${c.referencia_eleicao}</td><td class="text-center"><span class="badge" style="background:#d97706;color:#fff">${c.quantidade_dias}</span></td><td class="text-muted">${c.observacao||'–'}</td></tr>`;
+      });
+      html+='</tbody></table></div>';
+    } else html+='<p class="text-muted small">Nenhum crédito de eleição.</p>';
+    if(data.eleicao_baixas && data.eleicao_baixas.length){
+      html+='<p class="small fw-semibold text-muted mb-1">Folgas tiradas:</p>';
+      html+='<div class="table-responsive"><table class="table table-sm align-middle small"><thead class="table-light"><tr><th>Data</th><th>Observação</th></tr></thead><tbody>';
+      data.eleicao_baixas.forEach(b=>{
+        html+=`<tr><td class="fw-semibold">${b.data}</td><td class="text-muted">${b.observacao||'–'}</td></tr>`;
+      });
+      html+='</tbody></table></div>';
+    }
+
     document.getElementById('modalBody').innerHTML=html;
   });
 }

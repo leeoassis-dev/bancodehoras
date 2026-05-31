@@ -273,6 +273,23 @@ _SCHEMA_SQLITE = """
         criado_em TEXT DEFAULT (datetime('now','localtime')),
         UNIQUE(tipo,nome)
     );
+    CREATE TABLE IF NOT EXISTS eleicao_creditos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        matricula TEXT NOT NULL REFERENCES servidores(matricula),
+        referencia_eleicao TEXT NOT NULL,
+        quantidade_dias INTEGER NOT NULL,
+        observacao TEXT,
+        criado_por TEXT,
+        criado_em TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE TABLE IF NOT EXISTS eleicao_baixas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        matricula TEXT NOT NULL REFERENCES servidores(matricula),
+        data TEXT NOT NULL,
+        observacao TEXT,
+        criado_por TEXT,
+        criado_em TEXT DEFAULT (datetime('now','localtime'))
+    );
 """
 
 _SCHEMA_POSTGRES = """
@@ -357,6 +374,23 @@ _SCHEMA_POSTGRES = """
         criado_em TEXT DEFAULT TO_CHAR(NOW(),'YYYY-MM-DD HH24:MI:SS'),
         UNIQUE(tipo,nome)
     );
+    CREATE TABLE IF NOT EXISTS eleicao_creditos (
+        id SERIAL PRIMARY KEY,
+        matricula TEXT NOT NULL REFERENCES servidores(matricula),
+        referencia_eleicao TEXT NOT NULL,
+        quantidade_dias INTEGER NOT NULL,
+        observacao TEXT,
+        criado_por TEXT,
+        criado_em TEXT DEFAULT TO_CHAR(NOW(),'YYYY-MM-DD HH24:MI:SS')
+    );
+    CREATE TABLE IF NOT EXISTS eleicao_baixas (
+        id SERIAL PRIMARY KEY,
+        matricula TEXT NOT NULL REFERENCES servidores(matricula),
+        data TEXT NOT NULL,
+        observacao TEXT,
+        criado_por TEXT,
+        criado_em TEXT DEFAULT TO_CHAR(NOW(),'YYYY-MM-DD HH24:MI:SS')
+    );
 """
 
 # ─── init_db ─────────────────────────────────────────────────────────────────
@@ -411,6 +445,8 @@ def _criar_indices(db):
         CREATE INDEX IF NOT EXISTS idx_usuarios_matricula ON usuarios (matricula);
         CREATE INDEX IF NOT EXISTS idx_pre_autorizacoes_cpf ON pre_autorizacoes (cpf);
         CREATE INDEX IF NOT EXISTS idx_cadastros_aux_tipo_nome ON cadastros_auxiliares (tipo, ativo, nome);
+        CREATE INDEX IF NOT EXISTS idx_eleicao_creditos_matricula ON eleicao_creditos (matricula);
+        CREATE INDEX IF NOT EXISTS idx_eleicao_baixas_matricula ON eleicao_baixas (matricula, data);
     """)
     db.commit()
 

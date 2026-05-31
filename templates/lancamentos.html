@@ -6,7 +6,12 @@
     <h5 class="mb-0"><i class="bi bi-plus-circle-fill me-2 text-success"></i>Lançamento de Horas</h5>
     <span class="text-muted">{{ servidor.nome }} — Matrícula {{ servidor.matricula }}</span>
   </div>
-  <a href="/servidores" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('eleicao_servidor', matricula=servidor.matricula) }}" class="btn btn-sm" style="background:#d97706; color:#fff;" title="Gerenciar dias de eleição deste servidor">
+      <i class="bi bi-calendar2-check me-1"></i>Dias de Eleição
+    </a>
+    <a href="/servidores" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+  </div>
 </div>
 
 <div class="row g-4">

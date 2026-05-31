@@ -185,6 +185,15 @@ def minutos_para_horas(m):
 def minutos_num(m):
     return int(m or 0)
 
+def calcular_saldo_eleicao(db, matricula):
+    creditos = db.execute(
+        "SELECT COALESCE(SUM(quantidade_dias),0) FROM eleicao_creditos WHERE matricula=?",
+        (matricula,)).fetchone()[0]
+    baixas = db.execute(
+        "SELECT COUNT(*) FROM eleicao_baixas WHERE matricula=?",
+        (matricula,)).fetchone()[0]
+    return int(creditos or 0) - int(baixas or 0)
+
 def registrar_auditoria(db, acao, entidade, entidade_id=None, matricula=None, servidor_nome=None, detalhe=""):
     return db.insert("""
         INSERT INTO auditoria
@@ -252,6 +261,8 @@ def registrar_visualizacao():
         "admin_auditoria": "Auditoria",
         "consulta": "Consulta",
         "meu_banco": "Meu Banco",
+        "eleicao_index": "Dias de Eleição",
+        "eleicao_servidor": "Dias de Eleição – Servidor",
     }
     try:
         db = get_db()
@@ -785,10 +796,20 @@ def api_historico(matricula):
         FROM pagamentos p JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
         JOIN lancamentos l ON l.id=c.lancamento_id WHERE p.matricula=?
         GROUP BY p.id,p.data_pagamento,p.descricao ORDER BY p.data_pagamento DESC LIMIT 20""", (matricula,)).fetchall()
+    eleicao_creditos = db.execute(
+        "SELECT referencia_eleicao, quantidade_dias, observacao, criado_em FROM eleicao_creditos WHERE matricula=? ORDER BY criado_em DESC",
+        (matricula,)).fetchall()
+    eleicao_baixas = db.execute(
+        "SELECT data, observacao, criado_em FROM eleicao_baixas WHERE matricula=? ORDER BY data DESC",
+        (matricula,)).fetchall()
+    saldo_eleicao = calcular_saldo_eleicao(db, matricula)
     return jsonify({
         "lancamentos": [{**dict(r),"minutos_fmt":minutos_para_horas(r["minutos_creditados"]),"saldo_fmt":minutos_para_horas(r["minutos_creditados"]-r["consumido"])} for r in lancs],
         "compensacoes": [{**dict(r),"minutos_fmt":minutos_para_horas(r["minutos_compensados"])} for r in comps],
         "pagamentos":   [{**dict(r),"base_fmt":minutos_para_horas(int(r["base_paga"])),"banco_fmt":minutos_para_horas(r["minutos_pagos"])} for r in pags],
+        "eleicao_creditos": [dict(r) for r in eleicao_creditos],
+        "eleicao_baixas":   [dict(r) for r in eleicao_baixas],
+        "saldo_eleicao":    saldo_eleicao,
     })
 
 @app.route("/servidores/novo", methods=["GET","POST"])
@@ -2060,8 +2081,15 @@ def meu_banco():
         WHERE p.matricula=?
         GROUP BY p.id,p.matricula,p.data_pagamento,p.descricao,p.criado_em
         ORDER BY p.data_pagamento DESC""", (mat,)).fetchall()
+    el_creditos = db.execute(
+        "SELECT * FROM eleicao_creditos WHERE matricula=? ORDER BY criado_em DESC", (mat,)).fetchall()
+    el_baixas = db.execute(
+        "SELECT * FROM eleicao_baixas WHERE matricula=? ORDER BY data DESC", (mat,)).fetchall()
+    saldo_eleicao = calcular_saldo_eleicao(db, mat)
     return render_template('meu_banco.html', servidor=srv, saldo=saldo,
                            lancamentos=lancs, compensacoes=comps, pagamentos=pags,
+                           el_creditos=el_creditos, el_baixas=el_baixas,
+                           saldo_eleicao=saldo_eleicao,
                            fmt=minutos_para_horas)
 
 
@@ -2102,7 +2130,10 @@ def consulta():
         SELECT s.*,
             (SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=s.matricula)
             -(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=s.matricula)
-            AS saldo_minutos
+            AS saldo_minutos,
+            (SELECT COALESCE(SUM(quantidade_dias),0) FROM eleicao_creditos WHERE matricula=s.matricula)
+            -(SELECT COUNT(*) FROM eleicao_baixas WHERE matricula=s.matricula)
+            AS saldo_eleicao
         FROM servidores s {filtro} ORDER BY s.nome""", params).fetchall()
     filtro_base = "WHERE s.arquivado=0"
     params_base = []
@@ -2563,6 +2594,141 @@ def admin_revogar_acesso(uid):
         db.commit()
         flash(f"Acesso de '{u['nome']}' revogado.", "danger")
     return redirect(url_for('admin_acessos'))
+
+
+# ─── Banco de Dias de Eleição ─────────────────────────────────────────────────
+
+@app.route('/eleicao')
+@master_required
+def eleicao_index():
+    db = get_db()
+    servidores = db.execute("""
+        SELECT s.matricula, s.nome, s.secretaria, s.setor,
+               COALESCE((SELECT SUM(quantidade_dias) FROM eleicao_creditos WHERE matricula=s.matricula), 0) AS total_creditos,
+               (SELECT COUNT(*) FROM eleicao_baixas WHERE matricula=s.matricula) AS total_baixas
+        FROM servidores s
+        WHERE s.arquivado=0
+          AND (EXISTS (SELECT 1 FROM eleicao_creditos WHERE matricula=s.matricula)
+               OR EXISTS (SELECT 1 FROM eleicao_baixas WHERE matricula=s.matricula))
+        ORDER BY s.nome
+    """).fetchall()
+    return render_template('eleicao_index.html', servidores=servidores)
+
+
+@app.route('/eleicao/<matricula>', methods=['GET', 'POST'])
+@master_required
+def eleicao_servidor(matricula):
+    db = get_db()
+    srv = db.execute("SELECT * FROM servidores WHERE matricula=? AND arquivado=0", (matricula,)).fetchone()
+    if not srv:
+        flash("Servidor não encontrado.", "danger")
+        return redirect(url_for('eleicao_index'))
+
+    if request.method == 'POST':
+        acao = request.form.get('acao')
+
+        if acao == 'add_credito':
+            ref = request.form.get('referencia_eleicao', '').strip()
+            obs = request.form.get('observacao', '').strip()
+            try:
+                qtd = int(request.form.get('quantidade_dias', 0))
+            except (ValueError, TypeError):
+                qtd = 0
+            if not ref:
+                flash("Informe a referência da eleição.", "danger")
+            elif qtd <= 0:
+                flash("A quantidade de dias deve ser maior que zero.", "danger")
+            else:
+                db.insert("""
+                    INSERT INTO eleicao_creditos (matricula, referencia_eleicao, quantidade_dias, observacao, criado_por)
+                    VALUES (?,?,?,?,?)
+                """, (matricula, ref, qtd, obs or None, session.get('nome')))
+                db.commit()
+                registrar_auditoria(db, "ELEICAO_CREDITO_ADD", "eleicao_creditos",
+                                    matricula=matricula, servidor_nome=srv['nome'],
+                                    detalhe=f"{qtd} dia(s) – {ref}")
+                db.commit()
+                flash(f"{qtd} dia(s) de eleição creditado(s) com sucesso.", "success")
+
+        elif acao == 'add_baixa':
+            data_baixa = request.form.get('data', '').strip()
+            obs = request.form.get('observacao', '').strip()
+            if not data_baixa:
+                flash("Informe a data da folga.", "danger")
+            elif calcular_saldo_eleicao(db, matricula) <= 0:
+                flash("Saldo insuficiente de dias de eleição.", "danger")
+            else:
+                db.insert("""
+                    INSERT INTO eleicao_baixas (matricula, data, observacao, criado_por)
+                    VALUES (?,?,?,?)
+                """, (matricula, data_baixa, obs or None, session.get('nome')))
+                db.commit()
+                registrar_auditoria(db, "ELEICAO_BAIXA_ADD", "eleicao_baixas",
+                                    matricula=matricula, servidor_nome=srv['nome'],
+                                    detalhe=f"Folga em {data_baixa}")
+                db.commit()
+                flash("Dia de folga registrado com sucesso.", "success")
+
+        return redirect(url_for('eleicao_servidor', matricula=matricula))
+
+    creditos = db.execute(
+        "SELECT * FROM eleicao_creditos WHERE matricula=? ORDER BY criado_em DESC", (matricula,)).fetchall()
+    baixas = db.execute(
+        "SELECT * FROM eleicao_baixas WHERE matricula=? ORDER BY data DESC", (matricula,)).fetchall()
+    saldo = calcular_saldo_eleicao(db, matricula)
+    total_creditos = sum(int(c['quantidade_dias'] or 0) for c in creditos)
+    return render_template('eleicao_servidor.html', servidor=srv,
+                           creditos=creditos, baixas=baixas,
+                           saldo=saldo, total_creditos=total_creditos,
+                           total_baixas=len(baixas))
+
+
+@app.route('/eleicao/<matricula>/credito/<int:cid>/excluir', methods=['POST'])
+@master_required
+def eleicao_excluir_credito(matricula, cid):
+    db = get_db()
+    srv = db.execute("SELECT nome FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    credito = db.execute("SELECT * FROM eleicao_creditos WHERE id=? AND matricula=?", (cid, matricula)).fetchone()
+    if not credito:
+        flash("Crédito não encontrado.", "danger")
+        return redirect(url_for('eleicao_servidor', matricula=matricula))
+    total_dias = int(credito['quantidade_dias'])
+    saldo_atual = calcular_saldo_eleicao(db, matricula)
+    if saldo_atual - total_dias < 0:
+        baixas_count = db.execute("SELECT COUNT(*) FROM eleicao_baixas WHERE matricula=?", (matricula,)).fetchone()[0]
+        outros_creditos = db.execute(
+            "SELECT COALESCE(SUM(quantidade_dias),0) FROM eleicao_creditos WHERE matricula=? AND id!=?",
+            (matricula, cid)).fetchone()[0]
+        if int(outros_creditos or 0) < int(baixas_count or 0):
+            flash("Não é possível excluir: o saldo ficaria negativo. Exclua folgas primeiro.", "warning")
+            return redirect(url_for('eleicao_servidor', matricula=matricula))
+    db.execute("DELETE FROM eleicao_creditos WHERE id=? AND matricula=?", (cid, matricula))
+    db.commit()
+    registrar_auditoria(db, "ELEICAO_CREDITO_DEL", "eleicao_creditos",
+                        matricula=matricula, servidor_nome=srv['nome'] if srv else None,
+                        detalhe=f"{total_dias} dia(s) – {credito['referencia_eleicao']}")
+    db.commit()
+    flash("Crédito de eleição excluído.", "warning")
+    return redirect(url_for('eleicao_servidor', matricula=matricula))
+
+
+@app.route('/eleicao/<matricula>/baixa/<int:bid>/excluir', methods=['POST'])
+@master_required
+def eleicao_excluir_baixa(matricula, bid):
+    db = get_db()
+    srv = db.execute("SELECT nome FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    baixa = db.execute("SELECT * FROM eleicao_baixas WHERE id=? AND matricula=?", (bid, matricula)).fetchone()
+    if not baixa:
+        flash("Folga não encontrada.", "danger")
+        return redirect(url_for('eleicao_servidor', matricula=matricula))
+    db.execute("DELETE FROM eleicao_baixas WHERE id=? AND matricula=?", (bid, matricula))
+    db.commit()
+    registrar_auditoria(db, "ELEICAO_BAIXA_DEL", "eleicao_baixas",
+                        matricula=matricula, servidor_nome=srv['nome'] if srv else None,
+                        detalhe=f"Folga em {baixa['data']}")
+    db.commit()
+    flash("Folga de eleição estornada.", "warning")
+    return redirect(url_for('eleicao_servidor', matricula=matricula))
 
 
 # No Render/Gunicorn o bloco __main__ não executa, então inicializamos o schema

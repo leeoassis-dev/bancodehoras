@@ -8,13 +8,93 @@
     {% if servidor.secretaria %}<span class="ms-2 text-muted small">| {{ servidor.secretaria }}</span>{% endif %}
     {% if servidor.setor %}<span class="ms-2 text-muted small">| {{ servidor.setor }}</span>{% endif %}
   </div>
-  <div class="col-auto">
+  <div class="col-auto d-flex gap-3 align-items-stretch">
     <div class="card px-4 py-2 text-center border-start border-4 {{ 'border-success' if saldo >= 0 else 'border-danger' }}">
-      <div class="small text-muted">Saldo atual</div>
+      <div class="small text-muted">Saldo de horas</div>
       <div class="fs-3 fw-bold {{ 'text-success' if saldo >= 0 else 'text-danger' }}">{{ fmt(saldo) }}</div>
+    </div>
+    {% if saldo_eleicao is defined %}
+    <div class="card px-4 py-2 text-center border-start border-4" style="border-color:#d97706 !important; cursor:pointer;"
+         data-bs-toggle="collapse" data-bs-target="#cardEleicaoDetalhe" title="Ver detalhamento dos dias de eleição">
+      <div class="small text-muted"><i class="bi bi-calendar2-check me-1" style="color:#b45309"></i>Dias de eleição</div>
+      <div class="fs-3 fw-bold" style="color:{{ '#b45309' if saldo_eleicao > 0 else ('#6c757d' if saldo_eleicao == 0 else '#dc3545') }}">
+        {{ saldo_eleicao }}
+      </div>
+      <div class="small" style="color:#92400e">{{ 'dia disponível' if saldo_eleicao == 1 else 'dias disponíveis' }}</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Painel expansível: Banco de Dias de Eleição -->
+{% if saldo_eleicao is defined and (el_creditos or el_baixas) %}
+<div class="collapse mb-4" id="cardEleicaoDetalhe">
+  <div class="card" style="border-left:4px solid #d97706;">
+    <div class="card-header py-2 d-flex align-items-center gap-2" style="background:#fef3c7;">
+      <i class="bi bi-calendar2-check" style="color:#b45309; font-size:1.1rem"></i>
+      <span class="fw-semibold" style="color:#78350f">Banco de Dias de Eleição</span>
+      <span class="badge ms-1" style="background:#d97706; color:#fff;">{{ saldo_eleicao }} saldo</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="row g-0">
+        <!-- Créditos -->
+        <div class="col-md-6 border-end">
+          <div class="px-3 pt-3 pb-1 small fw-semibold" style="color:#b45309">
+            <i class="bi bi-plus-circle me-1"></i>Créditos concedidos
+          </div>
+          {% if el_creditos %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0 small">
+              <thead class="table-light">
+                <tr><th>Eleição</th><th class="text-center">Dias</th><th>Observação</th></tr>
+              </thead>
+              <tbody>
+                {% for c in el_creditos %}
+                <tr>
+                  <td class="fw-semibold">{{ c.referencia_eleicao }}</td>
+                  <td class="text-center"><span class="badge" style="background:#d97706; color:#fff;">{{ c.quantidade_dias }}</span></td>
+                  <td class="text-muted">{{ c.observacao or '–' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="text-muted small px-3 pb-3">Nenhum crédito registrado.</p>
+          {% endif %}
+        </div>
+        <!-- Folgas tiradas -->
+        <div class="col-md-6">
+          <div class="px-3 pt-3 pb-1 small fw-semibold text-secondary">
+            <i class="bi bi-calendar-minus me-1"></i>Folgas tiradas
+          </div>
+          {% if el_baixas %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0 small">
+              <thead class="table-light">
+                <tr><th>Data</th><th>Observação</th></tr>
+              </thead>
+              <tbody>
+                {% for b in el_baixas %}
+                <tr>
+                  <td class="fw-semibold">{{ b.data }}</td>
+                  <td class="text-muted">{{ b.observacao or '–' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="text-muted small px-3 pb-3">Nenhuma folga registrada.</p>
+          {% endif %}
+        </div>
+      </div>
     </div>
   </div>
 </div>
+{% elif saldo_eleicao is defined and saldo_eleicao == 0 and not el_creditos %}
+{# Sem dados de eleição: não exibe nada extra #}
+{% endif %}
 
 <!-- Abas -->
 <ul class="nav nav-tabs mb-3" id="tabsHistorico">

@@ -183,6 +183,10 @@
       <a class="sidebar-link {% if request.path.startswith('/servidores') %}active{% endif %}" href="/servidores" title="Servidores"><i class="bi bi-people"></i><span class="sidebar-link-text">Servidores</span></a>
       <a class="sidebar-link {% if request.path.startswith('/pagamentos') %}active{% endif %}" href="/pagamentos" title="Pagamentos"><i class="bi bi-cash-coin"></i><span class="sidebar-link-text">Pagamentos</span></a>
       <a class="sidebar-link {% if request.path.startswith('/relatorios') %}active{% endif %}" href="/relatorios" title="Relatórios"><i class="bi bi-file-earmark-text"></i><span class="sidebar-link-text">Relatórios</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/eleicao') %}active{% endif %}" href="/eleicao" title="Dias de Eleição">
+        <i class="bi bi-calendar2-check" style="color:#fde68a"></i>
+        <span class="sidebar-link-text" style="color:#fde68a">Dias de Eleição</span>
+      </a>
       <div class="sidebar-section-title">Administração</div>
       <a class="sidebar-link {% if request.path.startswith('/admin/cadastros') %}active{% endif %}" href="/admin/cadastros" title="Cadastros"><i class="bi bi-folder-check"></i><span class="sidebar-link-text">Cadastros</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/importacao') %}active{% endif %}" href="/admin/importacao" title="Importação"><i class="bi bi-upload"></i><span class="sidebar-link-text">Importação</span></a>
