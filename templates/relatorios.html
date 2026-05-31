@@ -52,32 +52,43 @@
       <div class="row g-2 align-items-end">
         <div class="col-md-3">
           <label class="form-label small fw-semibold mb-1">Servidor</label>
-          <select name="matricula" class="form-select form-select-sm">
-            <option value="">— Todos —</option>
+          <input name="servidor" class="form-control form-control-sm" list="listaServidoresRel"
+                 placeholder="Digite matrícula ou nome..." value="{{ filtros.servidor or filtros.matricula }}">
+          <datalist id="listaServidoresRel">
             {% for s in servidores_lista %}
-            <option value="{{ s.matricula }}" {{ 'selected' if s.matricula==filtros.matricula }}>
-              {{ s.nome }} ({{ s.matricula }})
-            </option>
+            <option value="{{ s.matricula }} - {{ s.nome }}"></option>
             {% endfor %}
-          </select>
+          </datalist>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
           <label class="form-label small fw-semibold mb-1">Secretaria</label>
-          <select name="secretaria" class="form-select form-select-sm">
-            <option value="">— Todas —</option>
+          <input name="secretaria" class="form-control form-control-sm" list="listaSecretariasRel"
+                 placeholder="Digite a secretaria..." value="{{ filtros.secretaria }}">
+          <datalist id="listaSecretariasRel">
             {% for s in secretarias %}
-            <option value="{{ s }}" {{ 'selected' if s==filtros.secretaria }}>{{ s }}</option>
+            <option value="{{ s }}"></option>
             {% endfor %}
-          </select>
+          </datalist>
         </div>
         <div class="col-md-2">
           <label class="form-label small fw-semibold mb-1">Departamento</label>
-          <select name="setor" class="form-select form-select-sm">
-            <option value="">— Todos —</option>
+          <input name="setor" class="form-control form-control-sm" list="listaSetoresRel"
+                 placeholder="Digite o departamento..." value="{{ filtros.setor }}">
+          <datalist id="listaSetoresRel">
             {% for s in setores %}
-            <option value="{{ s }}" {{ 'selected' if s==filtros.setor }}>{{ s }}</option>
+            <option value="{{ s }}"></option>
             {% endfor %}
-          </select>
+          </datalist>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold mb-1">Cargo</label>
+          <input name="cargo" class="form-control form-control-sm" list="listaCargosRel"
+                 placeholder="Digite o cargo..." value="{{ filtros.cargo }}">
+          <datalist id="listaCargosRel">
+            {% for c in cargos %}
+            <option value="{{ c }}"></option>
+            {% endfor %}
+          </datalist>
         </div>
         {% if aba == 'competencia' %}
         <div class="col-md-1">
@@ -112,6 +123,7 @@
             <option value="servidor"     {{ 'selected' if filtros.agrupar=='servidor' }}>Servidor</option>
             <option value="secretaria"   {{ 'selected' if filtros.agrupar=='secretaria' }}>Secretaria</option>
             <option value="departamento" {{ 'selected' if filtros.agrupar=='departamento' }}>Departamento</option>
+            <option value="cargo"        {{ 'selected' if filtros.agrupar=='cargo' }}>Cargo</option>
           </select>
         </div>
         <div class="col d-flex gap-1">
@@ -125,7 +137,7 @@
           <button type="submit" name="fmt" value="pdf" class="btn btn-outline-danger btn-sm">
             <i class="bi bi-file-earmark-pdf"></i> PDF
           </button>
-          {% if filtros.matricula or filtros.secretaria or filtros.setor or filtros.data_ini or filtros.data_fim %}
+          {% if filtros.matricula or filtros.servidor or filtros.secretaria or filtros.setor or filtros.cargo or filtros.data_ini or filtros.data_fim or filtros.mes %}
           <a href="/relatorios?aba={{ aba }}" class="btn btn-outline-secondary btn-sm">✕</a>
           {% endif %}
         </div>
@@ -419,7 +431,7 @@
     {% if data.mes and data.ano %}
       <p class="text-muted mb-3">
         {{ meses[data.mes|int - 1] }}/{{ data.ano }} —
-        agrupado por <strong>{{ {'servidor':'Servidor','secretaria':'Secretaria','departamento':'Departamento'}[data.agrupar] }}</strong>
+        agrupado por <strong>{{ {'servidor':'Servidor','secretaria':'Secretaria','departamento':'Departamento','cargo':'Cargo'}[data.agrupar] }}</strong>
       </p>
     {% else %}
       <p class="text-muted mb-3">Selecione o mês e ano para gerar o relatório.</p>
