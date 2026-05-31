@@ -152,8 +152,12 @@ def horas_para_minutos(s):
     except: return 0
 
 def minutos_para_horas(m):
-    s = "-" if m < 0 else ""; m = abs(int(m))
+    m = int(m or 0)
+    s = "-" if m < 0 else ""; m = abs(m)
     return f"{s}{m//60:02d}:{m%60:02d}"
+
+def minutos_num(m):
+    return int(m or 0)
 
 def calcular_saldo(db, matricula):
     c = db.execute("SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=?", (matricula,)).fetchone()[0]
@@ -276,18 +280,18 @@ def dashboard():
         v = db.execute("""SELECT COALESCE(SUM(l.minutos_base),0) FROM lancamentos l
                           JOIN servidores s ON s.matricula=l.matricula
                           WHERE substr(l.data,1,7)=? AND s.arquivado=0""", (m["ym"],)).fetchone()[0]
-        lanc_mes.append(round(v/60, 1))
+        lanc_mes.append(round(minutos_num(v)/60, 1))
         v2 = db.execute("""SELECT COALESCE(SUM(c2.minutos_compensados),0) FROM compensacoes c2
                            JOIN servidores s ON s.matricula=c2.matricula
                            WHERE substr(c2.data,1,7)=? AND s.arquivado=0""", (m["ym"],)).fetchone()[0]
-        comp_mes.append(round(v2/60, 1))
+        comp_mes.append(round(minutos_num(v2)/60, 1))
         v3 = db.execute("""SELECT COALESCE(SUM(ROUND(c.minutos*l.minutos_base*1.0/l.minutos_creditados)),0)
                            FROM pagamentos p
                            JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
                            JOIN lancamentos l ON l.id=c.lancamento_id
                            JOIN servidores s ON s.matricula=p.matricula
                            WHERE substr(p.data_pagamento,1,7)=? AND s.arquivado=0""", (m["ym"],)).fetchone()[0]
-        pag_mes.append(round(int(v3)/60, 1))
+        pag_mes.append(round(minutos_num(v3)/60, 1))
 
     # KPIs
     saldo_total = db.execute("""
@@ -337,7 +341,7 @@ def dashboard():
         ORDER BY saldo DESC
         LIMIT 5
     """).fetchall()
-    top5_deptos = [r for r in top5_deptos if r["saldo"] and r["saldo"] > 0]
+    top5_deptos = [r for r in top5_deptos if minutos_num(r["saldo"]) > 0]
 
     # Saldo por secretaria (pizza)
     saldo_sec = db.execute("""
@@ -348,7 +352,7 @@ def dashboard():
             ) AS tot
         FROM servidores s WHERE s.arquivado=0
         GROUP BY COALESCE(s.secretaria,'Sem Secretaria') ORDER BY tot DESC LIMIT 8""").fetchall()
-    saldo_sec = [r for r in saldo_sec if r["tot"] and r["tot"] > 0]
+    saldo_sec = [r for r in saldo_sec if minutos_num(r["tot"]) > 0]
 
     return render_template("dashboard.html",
         meses_labels=json.dumps([m["label"] for m in meses6]),
@@ -364,7 +368,7 @@ def dashboard():
         top5_deptos=top5_deptos,
         servidores_atalho=servidores_atalho,
         saldo_sec_labels=json.dumps([r["sec"] for r in saldo_sec]),
-        saldo_sec_data=json.dumps([r["tot"]//60 for r in saldo_sec]),
+        saldo_sec_data=json.dumps([minutos_num(r["tot"])//60 for r in saldo_sec]),
         fmt=minutos_para_horas)
 
 # â”€â”€â”€ Servidores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
