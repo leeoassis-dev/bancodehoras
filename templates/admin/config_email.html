@@ -12,7 +12,20 @@
         Configure o servidor SMTP para envio de senhas temporárias e recuperação de senha.
         Funciona com Gmail (smtp.gmail.com:587), Outlook, e outros.
       </div>
-      <form method="post">
+      {% if cfg.get('_configurado') %}
+      <div class="alert alert-success small">
+        <i class="bi bi-check-circle me-1"></i>
+        SMTP configurado. Origem atual: <strong>{{ cfg.get('_origem') }}</strong>.
+      </div>
+      {% else %}
+      <div class="alert alert-warning small">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        SMTP ainda não configurado. A recuperação de senha por e-mail só funcionará após preencher estes dados
+        ou configurar as variáveis <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>,
+        <code>SMTP_PASS</code> e <code>SMTP_FROM</code> no Render.
+      </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('admin_config_email') }}">
         <div class="row g-3">
           <div class="col-md-8">
             <label class="form-label fw-semibold">Servidor SMTP</label>
@@ -35,6 +48,13 @@
             <input type="password" name="smtp_pass" class="form-control"
                    placeholder="{{ '••••••••' if cfg.get('smtp_pass') else 'Informe a senha' }}">
             <small class="text-muted">Deixe em branco para manter a senha atual.</small>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Segurança TLS</label>
+            <select name="smtp_tls" class="form-select">
+              <option value="true" {{ 'selected' if cfg.get('smtp_tls','true') != 'false' }}>Ativar STARTTLS/TLS (recomendado)</option>
+              <option value="false" {{ 'selected' if cfg.get('smtp_tls') == 'false' }}>Desativar TLS</option>
+            </select>
           </div>
           <div class="col-12">
             <label class="form-label fw-semibold">Nome/E-mail do remetente (From)</label>

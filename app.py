@@ -42,21 +42,45 @@ def gerar_senha_temp(n=10):
     chars = string.ascii_letters + string.digits + "!@#$"
     return ''.join(secrets.choice(chars) for _ in range(n))
 
+def obter_config_smtp():
+    """Lê SMTP do banco e, se faltar, usa variáveis de ambiente do Render."""
+    db = get_db()
+    cfg_db = {r['chave']: r['valor'] for r in db.execute("SELECT * FROM config").fetchall()}
+    cfg = {
+        'smtp_host': cfg_db.get('smtp_host') or os.environ.get('SMTP_HOST', ''),
+        'smtp_port': cfg_db.get('smtp_port') or os.environ.get('SMTP_PORT', '587'),
+        'smtp_user': cfg_db.get('smtp_user') or os.environ.get('SMTP_USER', ''),
+        'smtp_pass': cfg_db.get('smtp_pass') or os.environ.get('SMTP_PASS', ''),
+        'smtp_from': cfg_db.get('smtp_from') or os.environ.get('SMTP_FROM', ''),
+        'smtp_tls': cfg_db.get('smtp_tls') or os.environ.get('SMTP_TLS', 'true'),
+    }
+    cfg['smtp_from'] = cfg['smtp_from'] or cfg['smtp_user']
+    cfg['_configurado'] = bool(cfg['smtp_host'] and cfg['smtp_user'] and cfg['smtp_pass'])
+    cfg['_origem'] = 'Render/env' if os.environ.get('SMTP_HOST') and not cfg_db.get('smtp_host') else 'Banco de dados'
+    return cfg
+
 def enviar_email_smtp(para, assunto, corpo_html):
     """Envia e-mail via SMTP configurado no banco. Retorna (ok, msg)."""
     try:
-        db = get_db()
-        cfg = {r['chave']: r['valor'] for r in db.execute("SELECT * FROM config").fetchall()}
-        host = cfg.get('smtp_host',''); porta = int(cfg.get('smtp_port','587'))
-        user = cfg.get('smtp_user',''); pwd  = cfg.get('smtp_pass','')
+        cfg = obter_config_smtp()
+        host = cfg.get('smtp_host','')
+        porta = int(cfg.get('smtp_port','587') or 587)
+        user = cfg.get('smtp_user','')
+        pwd  = cfg.get('smtp_pass','')
         de   = cfg.get('smtp_from', user)
-        if not host or not user:
+        tls  = str(cfg.get('smtp_tls','true')).lower() not in ('0','false','nao','não','no')
+        if not host or not user or not pwd:
             return False, "SMTP_NAO_CONFIGURADO"
         msg = MIMEMultipart('alternative')
         msg['Subject'] = assunto; msg['From'] = de; msg['To'] = para
         msg.attach(MIMEText(corpo_html, 'html', 'utf-8'))
-        with smtplib.SMTP(host, porta, timeout=10) as srv:
-            srv.ehlo(); srv.starttls(); srv.login(user, pwd)
+        smtp_cls = smtplib.SMTP_SSL if porta == 465 else smtplib.SMTP
+        with smtp_cls(host, porta, timeout=20) as srv:
+            srv.ehlo()
+            if tls and porta != 465:
+                srv.starttls()
+                srv.ehlo()
+            srv.login(user, pwd)
             srv.sendmail(de, para, msg.as_string())
         return True, ""
     except Exception as e:
@@ -1134,8 +1158,13 @@ def admin_reset_senha(uid):
     flash(f"Senha de '{u['nome']}' redefinida. Senha temporária: {nova}", "warning")
     if u['email']:
         html = f"<p>Olá, <b>{u['nome']}</b>.</p><p>Sua senha foi redefinida pelo administrador.</p><p><b>Nova senha temporária:</b> {nova}</p><p>Altere no próximo acesso.</p>"
-        ok, _ = enviar_email_smtp(u['email'], "Senha redefinida — Banco de Horas Ibiporã", html)
-        if ok: flash("E-mail enviado ao usuário com a nova senha.", "info")
+        ok, err = enviar_email_smtp(u['email'], "Senha redefinida — Banco de Horas Ibiporã", html)
+        if ok:
+            flash("E-mail enviado ao usuário com a nova senha.", "info")
+        elif err == "SMTP_NAO_CONFIGURADO":
+            flash("E-mail não enviado: SMTP não configurado. A senha temporária foi exibida acima para repasse manual.", "warning")
+        else:
+            flash(f"E-mail não enviado: {err}. A senha temporária foi exibida acima para repasse manual.", "warning")
     return redirect(url_for('admin_usuarios'))
 
 
@@ -1144,12 +1173,26 @@ def admin_reset_senha(uid):
 def admin_config_email():
     db = get_db()
     if request.method == 'POST':
-        for chave in ['smtp_host','smtp_port','smtp_user','smtp_pass','smtp_from']:
+        cfg_atual = obter_config_smtp()
+        for chave in ['smtp_host','smtp_port','smtp_user','smtp_from','smtp_tls']:
             valor = request.form.get(chave,'').strip()
             db.upsert(
                 "INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)",
                 "INSERT INTO config (chave,valor) VALUES (?,?) ON CONFLICT (chave) DO UPDATE SET valor=EXCLUDED.valor",
                 (chave, valor)
+            )
+        senha = request.form.get('smtp_pass','').strip()
+        if senha:
+            db.upsert(
+                "INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)",
+                "INSERT INTO config (chave,valor) VALUES (?,?) ON CONFLICT (chave) DO UPDATE SET valor=EXCLUDED.valor",
+                ('smtp_pass', senha)
+            )
+        elif not cfg_atual.get('smtp_pass'):
+            db.upsert(
+                "INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)",
+                "INSERT INTO config (chave,valor) VALUES (?,?) ON CONFLICT (chave) DO UPDATE SET valor=EXCLUDED.valor",
+                ('smtp_pass', '')
             )
         db.commit()
         flash("Configurações de e-mail salvas.", "success")
@@ -1160,7 +1203,7 @@ def admin_config_email():
                                         "<p>Configuração de e-mail funcionando corretamente!</p>")
             flash(f"Teste: {'✅ E-mail enviado com sucesso!' if ok else f'❌ Falha: {err}'}", "info" if ok else "danger")
         return redirect(url_for('admin_config_email'))
-    cfg = {r['chave']: r['valor'] for r in db.execute("SELECT * FROM config").fetchall()}
+    cfg = obter_config_smtp()
     return render_template('admin/config_email.html', cfg=cfg)
 
 
