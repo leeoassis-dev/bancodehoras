@@ -992,8 +992,8 @@ def compensacoes(matricula):
     if not srv: flash("Não encontrado.","danger"); return redirect(url_for("servidores"))
     saldo = calcular_saldo(db, matricula)
     if request.method == "POST":
-        data = request.form["data"]; tipo = request.form["tipo"]; desc = request.form["descricao"].strip()
-        mc   = 8*60 if tipo=="dia_inteiro" else horas_para_minutos(request.form.get("horas","").strip())
+        data = request.form["data"]; tipo = "parcial"; desc = request.form["descricao"].strip()
+        mc   = horas_para_minutos(request.form.get("horas","").strip())
         if mc <= 0: flash("Valor inválido.","danger")
         else:
             cid = db.insert("INSERT INTO compensacoes (matricula,data,tipo,minutos_compensados,descricao) VALUES (?,?,?,?,?)",
