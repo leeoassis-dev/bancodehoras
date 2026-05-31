@@ -4,7 +4,7 @@ from datetime import datetime, date, timedelta
 from urllib.parse import urlencode
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-import os, json, io, csv, secrets, string, smtplib
+import os, json, io, csv, secrets, string, smtplib, time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from database import six_months_ago, five_months_ago
@@ -17,6 +17,25 @@ LIMITE_PAGAMENTO_MINUTOS = 45 * 60
 MESES_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
 MESES_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
               "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
+
+_CACHE = {}
+
+def cache_get(chave):
+    item = _CACHE.get(chave)
+    if not item:
+        return None
+    expira_em, valor = item
+    if expira_em < time.time():
+        _CACHE.pop(chave, None)
+        return None
+    return valor
+
+def cache_set(chave, valor, ttl=30):
+    _CACHE[chave] = (time.time() + ttl, valor)
+    return valor
+
+def limpar_cache():
+    _CACHE.clear()
 
 # â”€â”€â”€ Auth helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -144,6 +163,12 @@ def verificar_acesso():
     # Master: bloqueia apenas se tentar acessar rota de outro nível
     # (master tem acesso total, nada a bloquear)
     registrar_visualizacao()
+
+@app.after_request
+def invalidar_cache_em_gravacao(response):
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        limpar_cache()
+    return response
 
 # â”€â”€â”€ Utilitários â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -431,11 +456,15 @@ def _filtro_servidores(busca="", secretaria="", setor="", arquivado=0):
     return f, p
 
 def _listas_filtro(db, arquivado=0):
+    chave = f"listas_filtro:{arquivado}"
+    cached = cache_get(chave)
+    if cached is not None:
+        return cached
     secs = [r[0] for r in db.execute(
         f"SELECT DISTINCT secretaria FROM servidores WHERE secretaria IS NOT NULL AND secretaria!='' AND arquivado={arquivado} ORDER BY secretaria").fetchall()]
     sets = [r[0] for r in db.execute(
         f"SELECT DISTINCT setor FROM servidores WHERE setor IS NOT NULL AND setor!='' AND arquivado={arquivado} ORDER BY setor").fetchall()]
-    return secs, sets
+    return cache_set(chave, (secs, sets), ttl=60)
 
 def _fg(servidor): return bool(servidor["funcao_gratificada"])
 
@@ -551,6 +580,11 @@ def ultimos_n_meses(n=6):
 @app.route("/")
 def dashboard():
     db = get_db()
+    cache_key = f"dashboard:{date.today().isoformat()}"
+    dados_cache = cache_get(cache_key)
+    if dados_cache is not None:
+        return render_template("dashboard.html", **dados_cache, fmt=minutos_para_horas)
+
     meses6 = ultimos_n_meses(6)
     servidores_atalho = db.execute(
         "SELECT matricula,nome,secretaria,setor FROM servidores WHERE arquivado=0 ORDER BY nome"
@@ -627,20 +661,22 @@ def dashboard():
     """).fetchall()
     top5_deptos = [r for r in top5_deptos if minutos_num(r["saldo"]) > 0]
 
-    return render_template("dashboard.html",
-        meses_labels=json.dumps([m["label"] for m in meses6]),
-        lanc_mes=json.dumps(lanc_mes),
-        comp_mes=json.dumps(comp_mes),
-        pag_mes=json.dumps(pag_mes),
-        saldo_total=saldo_total,
-        total_serv=total_serv,
-        serv_fg=serv_fg,
-        venc_count=venc_count,
-        prox_venc=prox_venc,
-        top5=top5,
-        top5_deptos=top5_deptos,
-        servidores_atalho=servidores_atalho,
-        fmt=minutos_para_horas)
+    dados = {
+        "meses_labels": json.dumps([m["label"] for m in meses6]),
+        "lanc_mes": json.dumps(lanc_mes),
+        "comp_mes": json.dumps(comp_mes),
+        "pag_mes": json.dumps(pag_mes),
+        "saldo_total": saldo_total,
+        "total_serv": total_serv,
+        "serv_fg": serv_fg,
+        "venc_count": venc_count,
+        "prox_venc": prox_venc,
+        "top5": top5,
+        "top5_deptos": top5_deptos,
+        "servidores_atalho": servidores_atalho,
+    }
+    cache_set(cache_key, dados, ttl=30)
+    return render_template("dashboard.html", **dados, fmt=minutos_para_horas)
 
 # â”€â”€â”€ Servidores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

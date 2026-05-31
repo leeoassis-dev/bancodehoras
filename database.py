@@ -370,11 +370,31 @@ def init_db():
             pass
 
     # Migra vinculos de colunas únicas para JSON
+    _criar_indices(db)
     _migrar_vinculos(db)
     _migrar_consumos(db)
     _criar_master_padrao(db)
     _popular_demo_render(db)
     db.close()
+
+
+def _criar_indices(db):
+    """Cria índices idempotentes para acelerar consultas e filtros mais usados."""
+    db.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_servidores_arquivado_nome ON servidores (arquivado, nome);
+        CREATE INDEX IF NOT EXISTS idx_servidores_secretaria ON servidores (arquivado, secretaria);
+        CREATE INDEX IF NOT EXISTS idx_servidores_setor ON servidores (arquivado, setor);
+        CREATE INDEX IF NOT EXISTS idx_servidores_cpf ON servidores (cpf);
+        CREATE INDEX IF NOT EXISTS idx_lancamentos_matricula_data ON lancamentos (matricula, data);
+        CREATE INDEX IF NOT EXISTS idx_compensacoes_matricula_data ON compensacoes (matricula, data);
+        CREATE INDEX IF NOT EXISTS idx_pagamentos_matricula_data ON pagamentos (matricula, data_pagamento);
+        CREATE INDEX IF NOT EXISTS idx_consumos_lancamento_tipo ON consumos (lancamento_id, tipo);
+        CREATE INDEX IF NOT EXISTS idx_usuarios_ativo_nivel ON usuarios (ativo, nivel);
+        CREATE INDEX IF NOT EXISTS idx_usuarios_cpf ON usuarios (cpf);
+        CREATE INDEX IF NOT EXISTS idx_usuarios_matricula ON usuarios (matricula);
+        CREATE INDEX IF NOT EXISTS idx_pre_autorizacoes_cpf ON pre_autorizacoes (cpf);
+    """)
+    db.commit()
 
 
 def _migrar_vinculos(db):

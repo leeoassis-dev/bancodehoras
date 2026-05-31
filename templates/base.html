@@ -24,50 +24,204 @@
       opacity:.85;
       font-size:.8rem;
     }
+    .app-shell { min-height:100vh; }
+    .app-sidebar {
+      position:fixed;
+      inset:0 auto 0 0;
+      width:260px;
+      z-index:1040;
+      background:#1a3a6b;
+      color:#fff;
+      display:flex;
+      flex-direction:column;
+      box-shadow:2px 0 14px rgba(0,0,0,.14);
+      transition:width .18s ease, transform .18s ease;
+    }
+    .sidebar-collapsed .app-sidebar { width:74px; }
+    .sidebar-brand {
+      min-height:68px;
+      display:flex;
+      align-items:center;
+      gap:.65rem;
+      padding:0 1rem;
+      color:#fff;
+      text-decoration:none;
+      font-size:1.05rem;
+      font-weight:700;
+      border-bottom:1px solid rgba(255,255,255,.12);
+    }
+    .sidebar-brand-icon { font-size:1.45rem; line-height:1; }
+    .sidebar-brand-text,
+    .sidebar-link-text,
+    .sidebar-user-text,
+    .sidebar-section-title { transition:opacity .12s ease; }
+    .sidebar-collapsed .sidebar-brand-text,
+    .sidebar-collapsed .sidebar-link-text,
+    .sidebar-collapsed .sidebar-user-text,
+    .sidebar-collapsed .sidebar-section-title { opacity:0; width:0; overflow:hidden; white-space:nowrap; }
+    .sidebar-toggle {
+      width:38px;
+      height:38px;
+      border:1px solid rgba(255,255,255,.22);
+      background:rgba(255,255,255,.08);
+      color:#fff;
+      border-radius:.5rem;
+      display:grid;
+      place-items:center;
+      margin:.85rem 1rem .35rem;
+    }
+    .sidebar-collapsed .sidebar-toggle { margin-inline:auto; }
+    .sidebar-nav {
+      padding:.45rem .65rem;
+      overflow-y:auto;
+      flex:1;
+    }
+    .sidebar-section-title {
+      padding:.8rem .6rem .35rem;
+      font-size:.72rem;
+      text-transform:uppercase;
+      letter-spacing:.05rem;
+      color:rgba(255,255,255,.58);
+      white-space:nowrap;
+    }
+    .sidebar-link {
+      min-height:42px;
+      display:flex;
+      align-items:center;
+      gap:.75rem;
+      padding:.55rem .75rem;
+      margin:.12rem 0;
+      color:rgba(255,255,255,.78);
+      text-decoration:none;
+      border-radius:.55rem;
+      font-weight:500;
+      white-space:nowrap;
+    }
+    .sidebar-link:hover,
+    .sidebar-link.active {
+      background:rgba(255,255,255,.12);
+      color:#fff;
+    }
+    .sidebar-link i {
+      width:1.2rem;
+      text-align:center;
+      font-size:1.05rem;
+      flex:0 0 1.2rem;
+    }
+    .sidebar-collapsed .sidebar-link {
+      justify-content:center;
+      padding:.65rem .45rem;
+    }
+    .sidebar-user {
+      border-top:1px solid rgba(255,255,255,.12);
+      padding:.8rem .85rem;
+    }
+    .sidebar-user-line {
+      display:flex;
+      align-items:center;
+      gap:.6rem;
+      min-height:34px;
+      color:#fff;
+      font-size:.85rem;
+    }
+    .app-main {
+      margin-left:260px;
+      min-height:100vh;
+      transition:margin-left .18s ease;
+    }
+    .sidebar-collapsed .app-main { margin-left:74px; }
+    .app-topbar {
+      min-height:58px;
+      background:#fff;
+      border-bottom:1px solid #dee2e6;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:0 1.5rem;
+      position:sticky;
+      top:0;
+      z-index:1020;
+    }
+    .mobile-menu-button { display:none; }
+    .sidebar-backdrop {
+      display:none;
+      position:fixed;
+      inset:0;
+      z-index:1030;
+      background:rgba(15,23,42,.38);
+    }
+    @media (max-width: 991.98px) {
+      .app-sidebar { transform:translateX(-100%); width:260px; }
+      .sidebar-open .app-sidebar { transform:translateX(0); }
+      .sidebar-collapsed .app-sidebar { width:260px; }
+      .app-main,
+      .sidebar-collapsed .app-main { margin-left:0; }
+      .mobile-menu-button { display:inline-flex; }
+      .sidebar-open .sidebar-backdrop { display:block; }
+      .sidebar-collapsed .sidebar-brand-text,
+      .sidebar-collapsed .sidebar-link-text,
+      .sidebar-collapsed .sidebar-user-text,
+      .sidebar-collapsed .sidebar-section-title { opacity:1; width:auto; overflow:visible; }
+      .sidebar-collapsed .sidebar-link { justify-content:flex-start; padding:.55rem .75rem; }
+    }
   </style>
 </head>
-<body>
-<nav class="navbar navbar-dark navbar-expand-lg mb-4">
-  <div class="container-fluid px-4">
-    <a class="navbar-brand fw-bold" href="/portal"><i class="bi bi-clock-history me-2"></i>Banco de Horas – Ibiporã</a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav">
-      <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="nav">
-      {% if u_nivel %}
-      <ul class="navbar-nav me-auto gap-1">
-        {% if u_nivel == 'master' %}
-          <li class="nav-item"><a class="nav-link" href="/"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a></li>
-          <li class="nav-item"><a class="nav-link" href="/servidores"><i class="bi bi-people me-1"></i>Servidores</a></li>
-          <li class="nav-item"><a class="nav-link" href="/pagamentos"><i class="bi bi-cash-coin me-1"></i>Pagamentos</a></li>
-          <li class="nav-item"><a class="nav-link" href="/relatorios"><i class="bi bi-file-earmark-text me-1"></i>Relatórios</a></li>
-          <li class="nav-item"><a class="nav-link" href="/admin/importacao"><i class="bi bi-upload me-1"></i>Importação</a></li>
-          <li class="nav-item"><a class="nav-link text-warning" href="/arquivados"><i class="bi bi-archive me-1"></i>Arquivados</a></li>
-          <li class="nav-item"><a class="nav-link text-info" href="/admin/usuarios"><i class="bi bi-person-gear me-1"></i>Usuários</a></li>
-          <li class="nav-item"><a class="nav-link text-warning" href="/admin/acessos"><i class="bi bi-shield-lock me-1"></i>Acessos</a></li>
-          <li class="nav-item"><a class="nav-link text-light" href="/admin/auditoria"><i class="bi bi-clipboard-data me-1"></i>Auditoria</a></li>
-        {% elif u_nivel in ('secretario','chefia') %}
-          <li class="nav-item"><a class="nav-link" href="/consulta"><i class="bi bi-people me-1"></i>Consulta</a></li>
-        {% elif u_nivel == 'servidor' %}
-          <li class="nav-item"><a class="nav-link" href="/meu-banco"><i class="bi bi-person-badge me-1"></i>Meu Banco</a></li>
-        {% endif %}
-      </ul>
-      <ul class="navbar-nav ms-auto gap-1 align-items-center">
-        <li class="nav-item">
-          <span class="navbar-text text-light small me-2">
-            <i class="bi bi-person-circle me-1"></i>{{ u_nome }}
-            <span class="badge bg-secondary ms-1">{{ {'master':'Master','secretario':'Secretário','chefia':'Chefia','servidor':'Servidor'}.get(u_nivel,u_nivel) }}</span>
-          </span>
-        </li>
-        <li class="nav-item"><a class="nav-link" href="/meu-cadastro"><i class="bi bi-person-lines-fill me-1"></i>Cadastro</a></li>
-        <li class="nav-item"><a class="nav-link text-danger" href="/logout"><i class="bi bi-box-arrow-right me-1"></i>Sair</a></li>
-      </ul>
-      {% endif %}
+<body class="{% if u_nivel %}app-shell{% endif %}">
+{% if u_nivel %}
+<aside class="app-sidebar" aria-label="Menu principal">
+  <a class="sidebar-brand" href="/portal" title="Banco de Horas">
+    <i class="bi bi-clock-history sidebar-brand-icon"></i>
+    <span class="sidebar-brand-text">Banco de Horas<br><small class="fw-normal">Ibiporã</small></span>
+  </a>
+  <button class="sidebar-toggle" id="sidebarToggle" type="button" title="Recolher menu" aria-label="Recolher menu">
+    <i class="bi bi-layout-sidebar-inset"></i>
+  </button>
+  <nav class="sidebar-nav">
+    {% if u_nivel == 'master' %}
+      <div class="sidebar-section-title">Operação</div>
+      <a class="sidebar-link {% if request.path == '/' %}active{% endif %}" href="/" title="Dashboard"><i class="bi bi-speedometer2"></i><span class="sidebar-link-text">Dashboard</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/servidores') %}active{% endif %}" href="/servidores" title="Servidores"><i class="bi bi-people"></i><span class="sidebar-link-text">Servidores</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/pagamentos') %}active{% endif %}" href="/pagamentos" title="Pagamentos"><i class="bi bi-cash-coin"></i><span class="sidebar-link-text">Pagamentos</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/relatorios') %}active{% endif %}" href="/relatorios" title="Relatórios"><i class="bi bi-file-earmark-text"></i><span class="sidebar-link-text">Relatórios</span></a>
+      <div class="sidebar-section-title">Administração</div>
+      <a class="sidebar-link {% if request.path.startswith('/admin/importacao') %}active{% endif %}" href="/admin/importacao" title="Importação"><i class="bi bi-upload"></i><span class="sidebar-link-text">Importação</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/arquivados') %}active{% endif %}" href="/arquivados" title="Arquivados"><i class="bi bi-archive"></i><span class="sidebar-link-text">Arquivados</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/admin/usuarios') %}active{% endif %}" href="/admin/usuarios" title="Usuários"><i class="bi bi-person-gear"></i><span class="sidebar-link-text">Usuários</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/admin/acessos') %}active{% endif %}" href="/admin/acessos" title="Acessos"><i class="bi bi-shield-lock"></i><span class="sidebar-link-text">Acessos</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/admin/auditoria') %}active{% endif %}" href="/admin/auditoria" title="Auditoria"><i class="bi bi-clipboard-data"></i><span class="sidebar-link-text">Auditoria</span></a>
+    {% elif u_nivel in ('secretario','chefia') %}
+      <div class="sidebar-section-title">Consulta</div>
+      <a class="sidebar-link {% if request.path.startswith('/consulta') %}active{% endif %}" href="/consulta" title="Consulta"><i class="bi bi-people"></i><span class="sidebar-link-text">Consulta</span></a>
+    {% elif u_nivel == 'servidor' %}
+      <div class="sidebar-section-title">Meu acesso</div>
+      <a class="sidebar-link {% if request.path.startswith('/meu-banco') %}active{% endif %}" href="/meu-banco" title="Meu Banco"><i class="bi bi-person-badge"></i><span class="sidebar-link-text">Meu Banco</span></a>
+    {% endif %}
+  </nav>
+  <div class="sidebar-user">
+    <div class="sidebar-user-line" title="{{ u_nome }}">
+      <i class="bi bi-person-circle"></i>
+      <span class="sidebar-user-text text-truncate">
+        {{ u_nome }} <span class="badge bg-secondary ms-1">{{ {'master':'Master','secretario':'Secretário','chefia':'Chefia','servidor':'Servidor'}.get(u_nivel,u_nivel) }}</span>
+      </span>
     </div>
+    <a class="sidebar-link {% if request.path.startswith('/meu-cadastro') %}active{% endif %}" href="/meu-cadastro" title="Cadastro"><i class="bi bi-person-lines-fill"></i><span class="sidebar-link-text">Cadastro</span></a>
+    <a class="sidebar-link text-danger" href="/logout" title="Sair"><i class="bi bi-box-arrow-right"></i><span class="sidebar-link-text">Sair</span></a>
   </div>
-</nav>
+</aside>
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+<main class="app-main">
+  <header class="app-topbar">
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-outline-primary mobile-menu-button" id="mobileSidebarToggle" type="button" aria-label="Abrir menu">
+        <i class="bi bi-list"></i>
+      </button>
+      <span class="fw-semibold text-primary">Banco de Horas - Prefeitura Municipal de Ibiporã</span>
+    </div>
+    <span class="text-muted small d-none d-md-inline">{{ {'master':'Administrador Master','secretario':'Secretário','chefia':'Chefia Imediata','servidor':'Servidor'}.get(u_nivel,u_nivel) }}</span>
+  </header>
+{% endif %}
 
-<div class="container-fluid px-4 pb-5">
+<div class="container-fluid px-4 pb-5 {% if u_nivel %}pt-4{% endif %}">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in messages %}
       <div class="alert alert-{{ cat }} alert-dismissible fade show">
@@ -77,11 +231,26 @@
   {% endwith %}
   {% block content %}{% endblock %}
 </div>
+{% if u_nivel %}
+</main>
+{% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+  const body = document.body;
+  const sidebarToggle = document.getElementById('sidebarToggle');
+  const mobileSidebarToggle = document.getElementById('mobileSidebarToggle');
+  const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+  if (localStorage.getItem('sidebarCollapsed') === '1') body.classList.add('sidebar-collapsed');
+  sidebarToggle?.addEventListener('click', () => {
+    body.classList.toggle('sidebar-collapsed');
+    localStorage.setItem('sidebarCollapsed', body.classList.contains('sidebar-collapsed') ? '1' : '0');
+  });
+  mobileSidebarToggle?.addEventListener('click', () => body.classList.add('sidebar-open'));
+  sidebarBackdrop?.addEventListener('click', () => body.classList.remove('sidebar-open'));
+
   const parseSortValue = (cell) => {
     const raw = (cell.dataset.sortValue || cell.innerText || '').trim();
     const text = raw.replace(/\s+/g, ' ');
