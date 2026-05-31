@@ -404,7 +404,7 @@ def api_historico(matricula):
                COALESCE(SUM(c.minutos),0) AS minutos_pagos
         FROM pagamentos p JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
         JOIN lancamentos l ON l.id=c.lancamento_id WHERE p.matricula=?
-        GROUP BY p.id ORDER BY p.data_pagamento DESC LIMIT 20""", (matricula,)).fetchall()
+        GROUP BY p.id,p.data_pagamento,p.descricao ORDER BY p.data_pagamento DESC LIMIT 20""", (matricula,)).fetchall()
     return jsonify({
         "lancamentos": [{**dict(r),"minutos_fmt":minutos_para_horas(r["minutos_creditados"]),"saldo_fmt":minutos_para_horas(r["minutos_creditados"]-r["consumido"])} for r in lancs],
         "compensacoes": [{**dict(r),"minutos_fmt":minutos_para_horas(r["minutos_compensados"])} for r in comps],
@@ -701,7 +701,10 @@ def relatorios():
                 COALESCE(SUM(c.minutos),0) AS minutos_pagos
                 FROM pagamentos p JOIN servidores s ON s.matricula=p.matricula
                 JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
-                JOIN lancamentos l ON l.id=c.lancamento_id {fp} GROUP BY p.id ORDER BY p.data_pagamento DESC""",pp).fetchall():
+                JOIN lancamentos l ON l.id=c.lancamento_id {fp}
+                GROUP BY p.id,p.matricula,p.data_pagamento,p.descricao,p.criado_em,
+                         s.nome,s.secretaria,s.funcao_gratificada
+                ORDER BY p.data_pagamento DESC""",pp).fetchall():
                 ev.append({**dict(r),"tipo_evento":"pagamento","data_ord":r["data_pagamento"]})
             ev.sort(key=lambda x:x["data_ord"],reverse=True); data["eventos"]=ev
         if fmt_out=="csv":
@@ -727,7 +730,10 @@ def relatorios():
             COALESCE(SUM(c.minutos),0) AS minutos_pagos
             FROM pagamentos p JOIN servidores s ON s.matricula=p.matricula
             LEFT JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
-            LEFT JOIN lancamentos l ON l.id=c.lancamento_id {fp} GROUP BY p.id ORDER BY p.data_pagamento DESC""",pp).fetchall()
+            LEFT JOIN lancamentos l ON l.id=c.lancamento_id {fp}
+            GROUP BY p.id,p.matricula,p.data_pagamento,p.descricao,p.criado_em,
+                     s.nome,s.secretaria,s.setor,s.funcao_gratificada
+            ORDER BY p.data_pagamento DESC""",pp).fetchall()
         dets={p["id"]:db.execute("""SELECT l.data AS data_hora,l.horas_base,l.minutos_base,l.percentual,
             l.minutos_creditados,c.minutos AS minutos_consumidos,
             ROUND(c.minutos*l.minutos_base*1.0/l.minutos_creditados) AS base_paga
@@ -1012,7 +1018,9 @@ def meu_banco():
         FROM pagamentos p
         LEFT JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
         LEFT JOIN lancamentos l ON l.id=c.lancamento_id
-        WHERE p.matricula=? GROUP BY p.id ORDER BY p.data_pagamento DESC""", (mat,)).fetchall()
+        WHERE p.matricula=?
+        GROUP BY p.id,p.matricula,p.data_pagamento,p.descricao,p.criado_em
+        ORDER BY p.data_pagamento DESC""", (mat,)).fetchall()
     return render_template('meu_banco.html', servidor=srv, saldo=saldo,
                            lancamentos=lancs, compensacoes=comps, pagamentos=pags,
                            fmt=minutos_para_horas)
