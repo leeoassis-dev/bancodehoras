@@ -236,6 +236,14 @@ def _xlsx_response(filename, title, headers, rows):
         c.alignment = Alignment(horizontal="center")
     for row in rows:
         ws.append(row)
+        label = str(row[0] if row else "")
+        if label.startswith("TOTAL DO GRUPO") or label.startswith("TOTAL GERAL"):
+            fill = "D9EAF7" if label.startswith("TOTAL DO GRUPO") else "1A3A6B"
+            font_color = "000000" if label.startswith("TOTAL DO GRUPO") else "FFFFFF"
+            for c in ws[ws.max_row]:
+                c.font = Font(bold=True, color=font_color)
+                c.fill = PatternFill("solid", fgColor=fill)
+                c.alignment = Alignment(horizontal="center" if c.column >= 5 else "left")
     for col in range(1, len(headers) + 1):
         max_len = max(len(str(ws.cell(r, col).value or "")) for r in range(1, ws.max_row + 1))
         ws.column_dimensions[get_column_letter(col)].width = min(max(max_len + 2, 12), 45)
@@ -259,7 +267,7 @@ def _pdf_response(filename, title, headers, rows):
     story = [Paragraph(f"<b>{title}</b>", styles["Title"]), Spacer(1, 10)]
     table_data = [headers] + [[str(v or "") for v in row] for row in rows]
     table = Table(table_data, repeatRows=1)
-    table.setStyle(TableStyle([
+    estilos = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1A3A6B")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
@@ -267,7 +275,21 @@ def _pdf_response(filename, title, headers, rows):
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D0D7DE")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F6F9")]),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
+    ]
+    for idx, row in enumerate(rows, start=1):
+        label = str(row[0] if row else "")
+        if label.startswith("TOTAL DO GRUPO"):
+            estilos.extend([
+                ("BACKGROUND", (0, idx), (-1, idx), colors.HexColor("#D9EAF7")),
+                ("FONTNAME", (0, idx), (-1, idx), "Helvetica-Bold"),
+            ])
+        elif label.startswith("TOTAL GERAL"):
+            estilos.extend([
+                ("BACKGROUND", (0, idx), (-1, idx), colors.HexColor("#1A3A6B")),
+                ("TEXTCOLOR", (0, idx), (-1, idx), colors.white),
+                ("FONTNAME", (0, idx), (-1, idx), "Helvetica-Bold"),
+            ])
+    table.setStyle(TableStyle(estilos))
     story.append(table)
     doc.build(story)
     buf.seek(0)
@@ -964,9 +986,30 @@ def relatorios():
         if fmt_out in ("csv", "xlsx", "pdf") and data["grupos"]:
             headers = ["Grupo","Matrícula","Servidor","Data","H.Base","%","H.Creditadas","Descrição"]
             rows = []
+            total_geral_base = 0
+            total_geral_creditado = 0
+            total_geral_lancamentos = 0
             for g,its in data["grupos"].items():
+                total_grupo_base = 0
+                total_grupo_creditado = 0
                 for r in its:
-                    rows.append([g,r["matricula"],r["nome"],r["data"],r["horas_base"],f"{r['percentual']}%",minutos_para_horas(r["minutos_creditados"]),r["descricao"] or ""])
+                    base = minutos_num(r["minutos_base"])
+                    creditado = minutos_num(r["minutos_creditados"])
+                    total_grupo_base += base
+                    total_grupo_creditado += creditado
+                    total_geral_base += base
+                    total_geral_creditado += creditado
+                    total_geral_lancamentos += 1
+                    rows.append([g,r["matricula"],r["nome"],r["data"],r["horas_base"],f"{r['percentual']}%",minutos_para_horas(creditado),r["descricao"] or ""])
+                rows.append([
+                    f"TOTAL DO GRUPO: {g}", "", f"{len(its)} lançamento(s)", "",
+                    minutos_para_horas(total_grupo_base), "", minutos_para_horas(total_grupo_creditado), ""
+                ])
+                rows.append(["", "", "", "", "", "", "", ""])
+            rows.append([
+                "TOTAL GERAL", "", f"{total_geral_lancamentos} lançamento(s)", "",
+                minutos_para_horas(total_geral_base), "", minutos_para_horas(total_geral_creditado), ""
+            ])
             return _export_response(fmt_out, f"competencia_{mes}_{ano}", f"Relatório de Horas por Competência {mes}/{ano}", headers, rows)
 
     return render_template("relatorios.html", aba=aba, data=data, fmt=minutos_para_horas,
