@@ -29,7 +29,7 @@
           {% endfor %}
         {% endwith %}
 
-        <form method="post" id="formCadastro">
+        <form method="post" id="formCadastro" action="{{ url_for('criar_conta') }}">
           <!-- STEP 1: CPF -->
           <div id="step1">
             <h6 class="fw-bold mb-3">Passo 1 — Identificação</h6>
@@ -119,7 +119,7 @@ document.getElementById('btnVerificar').addEventListener('click', async () => {
   document.getElementById('btnVerificar').disabled = true;
   document.getElementById('msgCpf').innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split me-1"></i>Verificando...</span>';
 
-  const resp = await fetch('/api/verificar-cpf?cpf=' + encodeURIComponent(cpf));
+  const resp = await fetch('{{ url_for("api_verificar_cpf") }}?cpf=' + encodeURIComponent(cpf));
   const data = await resp.json();
 
   if (!data.ok) {

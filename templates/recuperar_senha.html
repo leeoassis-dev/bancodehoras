@@ -17,14 +17,14 @@
       Informe seu CPF cadastrado. Enviaremos um link de redefinição para o e-mail vinculado.
       Se o envio de e-mail ainda não estiver configurado, o RH poderá redefinir sua senha temporária pelo painel administrativo.
     </p>
-    <form method="post">
+    <form method="post" action="{{ url_for('recuperar_senha') }}">
       <div class="mb-3">
         <label class="form-label fw-semibold">CPF</label>
         <input type="text" name="cpf" id="cpf" class="form-control" maxlength="14" placeholder="000.000.000-00" required>
       </div>
       <button type="submit" class="btn btn-primary w-100">Enviar link de recuperação</button>
     </form>
-    <div class="text-center mt-3"><a href="/login" class="text-muted small">← Voltar ao login</a></div>
+    <div class="text-center mt-3"><a href="{{ url_for('login') }}" class="text-muted small">← Voltar ao login</a></div>
   </div>
 </div></div></div>
 <script>

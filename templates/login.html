@@ -31,7 +31,7 @@
 
         <h5 class="mb-4 text-center fw-bold">Acesso ao Sistema</h5>
 
-        <form method="post">
+        <form method="post" action="{{ url_for('login') }}">
           <div class="mb-3">
             <label class="form-label fw-semibold">CPF</label>
             <input type="text" name="cpf" id="cpf" class="form-control form-control-lg"
@@ -48,10 +48,10 @@
         </form>
 
         <div class="text-center mt-3 d-flex justify-content-between">
-          <a href="/recuperar-senha" class="text-muted small">
+          <a href="{{ url_for('recuperar_senha') }}" class="text-muted small">
             <i class="bi bi-key me-1"></i>Esqueci minha senha
           </a>
-          <a href="/criar-conta" class="text-primary small fw-semibold">
+          <a href="{{ url_for('criar_conta') }}" class="text-primary small fw-semibold">
             <i class="bi bi-person-plus me-1"></i>Criar conta
           </a>
         </div>

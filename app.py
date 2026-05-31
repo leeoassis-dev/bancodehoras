@@ -11,6 +11,7 @@ from database import six_months_ago, five_months_ago
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ibipora_banco_horas_2024_seguro")
+app.url_map.strict_slashes = False
 
 LIMITE_PAGAMENTO_MINUTOS = 45 * 60
 MESES_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
@@ -21,6 +22,21 @@ MESES_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
 
 ROTAS_PUBLICAS = {'login','logout','recuperar_senha','recuperar_senha_token','setup',
                   'criar_conta','api_verificar_cpf','static'}
+
+@app.errorhandler(404)
+def pagina_nao_encontrada(e):
+    """Evita 404 por pequenas variações de URL em produção."""
+    caminho = (request.path or "").rstrip("/")
+    rotas = {
+        "/login": "login",
+        "/recuperar-senha": "recuperar_senha",
+        "/criar-conta": "criar_conta",
+        "/portal": "portal",
+        "/": "portal",
+    }
+    if caminho in rotas:
+        return redirect(url_for(rotas[caminho]))
+    return render_template("404.html"), 404
 
 def gerar_senha_temp(n=10):
     chars = string.ascii_letters + string.digits + "!@#$"
