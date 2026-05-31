@@ -24,6 +24,10 @@
            href="/relatorios?aba=competencia&{{ filtros_qs }}">
           <i class="bi bi-calendar3 me-2"></i>Por Competência
         </a>
+        <a class="nav-link {% if aba=='vencimentos' %}active{% endif %} text-start"
+           href="/relatorios?aba=vencimentos&{{ filtros_qs }}">
+          <i class="bi bi-hourglass-split me-2"></i>A Vencer / Vencidas
+        </a>
       </div>
 
       <hr class="mx-3">
@@ -92,6 +96,16 @@
           <input type="number" name="ano" class="form-control form-control-sm"
                  value="{{ filtros.ano }}" min="2000" max="2099">
         </div>
+        {% elif aba != 'saldos' %}
+        <div class="col-md-1">
+          <label class="form-label small fw-semibold mb-1">{{ 'Venc. de' if aba=='vencimentos' else 'De' }}</label>
+          <input type="date" name="data_ini" class="form-control form-control-sm" value="{{ filtros.data_ini }}">
+        </div>
+        <div class="col-md-1">
+          <label class="form-label small fw-semibold mb-1">{{ 'Venc. até' if aba=='vencimentos' else 'Até' }}</label>
+          <input type="date" name="data_fim" class="form-control form-control-sm" value="{{ filtros.data_fim }}">
+        </div>
+        {% endif %}
         <div class="col-md-2">
           <label class="form-label small fw-semibold mb-1">Agrupar por</label>
           <select name="agrupar" class="form-select form-select-sm">
@@ -100,16 +114,6 @@
             <option value="departamento" {{ 'selected' if filtros.agrupar=='departamento' }}>Departamento</option>
           </select>
         </div>
-        {% elif aba != 'saldos' %}
-        <div class="col-md-1">
-          <label class="form-label small fw-semibold mb-1">De</label>
-          <input type="date" name="data_ini" class="form-control form-control-sm" value="{{ filtros.data_ini }}">
-        </div>
-        <div class="col-md-1">
-          <label class="form-label small fw-semibold mb-1">Até</label>
-          <input type="date" name="data_fim" class="form-control form-control-sm" value="{{ filtros.data_fim }}">
-        </div>
-        {% endif %}
         <div class="col d-flex gap-1">
           <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
           <button type="submit" name="fmt" value="csv" class="btn btn-outline-success btn-sm">
@@ -146,7 +150,11 @@
             </tr>
           </thead>
           <tbody>
-            {% for s in data.servidores %}
+            {% for grupo, itens in data.grupos.items() %}
+            <tr class="table-primary">
+              <td colspan="10" class="fw-bold"><i class="bi bi-folder2 me-1"></i>{{ grupo }}</td>
+            </tr>
+            {% for s in itens %}
             <tr>
               <td><span class="badge bg-secondary">{{ s.matricula }}</span></td>
               <td class="fw-semibold">{{ s.nome }}</td>
@@ -165,7 +173,26 @@
               </td>
             </tr>
             {% endfor %}
+            <tr class="table-light fw-bold">
+              <td colspan="5" class="text-end">Subtotal:</td>
+              <td class="text-center text-success">{{ fmt(itens | sum(attribute='total_credito')) }}</td>
+              <td class="text-center text-warning">{{ fmt(itens | sum(attribute='total_compensado')) }}</td>
+              <td class="text-center text-danger">{{ fmt(itens | sum(attribute='total_pago')) }}</td>
+              <td class="text-center">{{ fmt(itens | sum(attribute='saldo')) }}</td>
+              <td></td>
+            </tr>
+            {% endfor %}
           </tbody>
+          <tfoot class="table-dark fw-bold">
+            <tr>
+              <td colspan="5" class="text-end">Total geral:</td>
+              <td class="text-center">{{ fmt(data.servidores | sum(attribute='total_credito')) }}</td>
+              <td class="text-center">{{ fmt(data.servidores | sum(attribute='total_compensado')) }}</td>
+              <td class="text-center">{{ fmt(data.servidores | sum(attribute='total_pago')) }}</td>
+              <td class="text-center">{{ fmt(data.servidores | sum(attribute='saldo')) }}</td>
+              <td></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
       {% else %}
@@ -187,7 +214,16 @@
             </tr>
           </thead>
           <tbody>
-            {% for e in data.eventos %}
+            {% for grupo, eventos in data.grupos.items() %}
+            <tr class="table-primary">
+              <td colspan="7" class="fw-bold">
+                <i class="bi bi-folder2 me-1"></i>{{ grupo }}
+                <span class="badge bg-success ms-2">Lançado: {{ fmt(data.totais_historico[grupo].lanc) }}</span>
+                <span class="badge bg-warning text-dark ms-1">Compensado: {{ fmt(data.totais_historico[grupo].comp) }}</span>
+                <span class="badge bg-danger ms-1">Pago base: {{ fmt(data.totais_historico[grupo].pago) }}</span>
+              </td>
+            </tr>
+            {% for e in eventos %}
             <tr>
               <td class="text-nowrap">
                 {% if e.tipo_evento == 'pagamento' %}{{ e.data_pagamento }}
@@ -227,7 +263,26 @@
               </td>
             </tr>
             {% endfor %}
+            <tr class="table-light fw-bold">
+              <td colspan="5" class="text-end">Subtotal: {{ data.totais_historico[grupo].qtd }} evento(s)</td>
+              <td colspan="2">
+                Lançado {{ fmt(data.totais_historico[grupo].lanc) }} |
+                Compensado {{ fmt(data.totais_historico[grupo].comp) }} |
+                Pago base {{ fmt(data.totais_historico[grupo].pago) }}
+              </td>
+            </tr>
+            {% endfor %}
           </tbody>
+          <tfoot class="table-dark fw-bold">
+            <tr>
+              <td colspan="5" class="text-end">Total geral:</td>
+              <td colspan="2">
+                Lançado {{ fmt(data.eventos | selectattr('tipo_evento','equalto','lancamento') | sum(attribute='minutos_creditados')) }} |
+                Compensado {{ fmt(data.eventos | selectattr('tipo_evento','equalto','compensacao') | sum(attribute='minutos_compensados')) }} |
+                Pago base {{ fmt(data.eventos | selectattr('tipo_evento','equalto','pagamento') | sum(attribute='base_paga')) }}
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
       {% else %}
@@ -239,7 +294,17 @@
     {% elif aba == 'pagamentos' %}
     <h5 class="mb-3"><i class="bi bi-receipt me-2 text-danger"></i>Pagamentos Realizados em Folha</h5>
     {% if data.pagamentos %}
-    {% for pag in data.pagamentos %}
+    {% for grupo, pagamentos in data.grupos.items() %}
+    <div class="card mb-3">
+      <div class="card-header bg-primary bg-opacity-10 d-flex justify-content-between align-items-center">
+        <span class="fw-bold"><i class="bi bi-folder2 me-2"></i>{{ grupo }}</span>
+        <span class="badge bg-danger">
+          Total base paga: {{ fmt(data.totais_pagamentos[grupo].base) }} |
+          {{ data.totais_pagamentos[grupo].qtd }} pagamento(s)
+        </span>
+      </div>
+    </div>
+    {% for pag in pagamentos %}
     <div class="card mb-3">
       <div class="card-header d-flex justify-content-between align-items-center bg-light">
         <div>
@@ -279,12 +344,75 @@
       </div>
     </div>
     {% endfor %}
+    {% endfor %}
+    <div class="card border-danger mb-3">
+      <div class="card-body d-flex justify-content-between fw-bold">
+        <span>Total geral de pagamentos</span>
+        <span class="text-danger">{{ fmt(data.pagamentos | sum(attribute='base_paga')) }}</span>
+      </div>
+    </div>
     {% else %}
     <div class="text-center text-muted py-5">
       <i class="bi bi-inbox" style="font-size:2.5rem"></i>
       <p class="mt-3">Nenhum pagamento encontrado.</p>
     </div>
     {% endif %}
+
+    <!-- ══ ABA: A Vencer / Vencidas ══ -->
+    {% elif aba == 'vencimentos' %}
+    <h5 class="mb-1"><i class="bi bi-hourglass-split me-2 text-warning"></i>Horas a Vencer / Vencidas</h5>
+    <p class="text-muted mb-3">Saldo remanescente por data de realização, considerando vencimento em 6 meses e agrupamento selecionado.</p>
+    {% if data.vencimentos %}
+      {% for grupo, itens in data.grupos.items() %}
+      <div class="card mb-3">
+        <div class="card-header bg-primary bg-opacity-10 d-flex justify-content-between align-items-center">
+          <span class="fw-bold"><i class="bi bi-folder2 me-2"></i>{{ grupo }}</span>
+          <span class="badge bg-warning text-dark">
+            Saldo: {{ fmt(itens | sum(attribute='saldo_creditado')) }}
+            | Base: {{ fmt(itens | sum(attribute='saldo_base')) }}
+          </span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Vencimento</th><th>Realização</th><th>Servidor</th><th>Secretaria</th><th>Departamento</th>
+                <th class="text-center">H. Base</th><th class="text-center">%</th><th class="text-center">Saldo</th><th class="text-center">Base Ref.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in itens %}
+              <tr>
+                <td class="fw-semibold">{{ r.vencimento }}</td>
+                <td>{{ r.data }}</td>
+                <td>{{ r.nome }} <span class="text-muted small">({{ r.matricula }})</span></td>
+                <td class="small text-muted">{{ r.secretaria or '–' }}</td>
+                <td class="small text-muted">{{ r.setor or '–' }}</td>
+                <td class="text-center">{{ r.horas_base }}</td>
+                <td class="text-center"><span class="badge {{ 'badge-50' if r.percentual==50 else 'badge-100' }}">{{ r.percentual }}%</span></td>
+                <td class="text-center fw-bold text-success">{{ fmt(r.saldo_creditado) }}</td>
+                <td class="text-center fw-bold">{{ fmt(r.saldo_base) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot class="table-light fw-bold">
+              <tr>
+                <td colspan="7" class="text-end">Subtotal:</td>
+                <td class="text-center text-success">{{ fmt(itens | sum(attribute='saldo_creditado')) }}</td>
+                <td class="text-center">{{ fmt(itens | sum(attribute='saldo_base')) }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-inbox" style="font-size:2.5rem"></i>
+        <p class="mt-3">Nenhuma hora com saldo encontrada para os filtros.</p>
+      </div>
+    {% endif %}
+
     <!-- ══ ABA: Por Competência ══ -->
     {% elif aba == 'competencia' %}
     <h5 class="mb-1"><i class="bi bi-calendar3 me-2 text-primary"></i>Lançamentos por Competência</h5>
@@ -352,6 +480,16 @@
         </div>
       </div>
       {% endfor %}
+      <div class="card border-primary mb-3">
+        <div class="card-body d-flex justify-content-between fw-bold">
+          <span>Total geral da competência</span>
+          <span>
+            Base: {{ fmt(data.totais_competencia.base) }}
+            &nbsp;|&nbsp;
+            Creditadas: {{ fmt(data.totais_competencia.creditadas) }}
+          </span>
+        </div>
+      </div>
     {% elif data.mes and data.ano %}
     <div class="text-center text-muted py-4">
       <i class="bi bi-inbox" style="font-size:2rem"></i>

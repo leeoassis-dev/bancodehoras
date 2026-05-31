@@ -307,6 +307,33 @@ def _export_response(fmt_out, filename, title, headers, rows):
         return _pdf_response(filename, title, headers, rows)
     return None
 
+def _grupo_relatorio(row, agr):
+    if agr == "secretaria":
+        return row.get("secretaria") or "Sem Secretaria"
+    if agr == "departamento":
+        return row.get("setor") or "Sem Departamento"
+    nome = row.get("nome") or row.get("servidor_nome") or "Servidor"
+    matricula = row.get("matricula") or row.get("mat") or ""
+    return f"{nome} ({matricula})" if matricula else nome
+
+def _agrupar_itens(itens, agr):
+    grupos = {}
+    for item in itens:
+        d = dict(item)
+        grupos.setdefault(_grupo_relatorio(d, agr), []).append(d)
+    return grupos
+
+def _somar_meses_iso(data_iso, meses):
+    try:
+        d = datetime.strptime(data_iso, "%Y-%m-%d").date()
+        mes = d.month - 1 + meses
+        ano = d.year + mes // 12
+        mes = mes % 12 + 1
+        ultimo = [31, 29 if ano % 4 == 0 and (ano % 100 != 0 or ano % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mes - 1]
+        return date(ano, mes, min(d.day, ultimo)).isoformat()
+    except Exception:
+        return data_iso
+
 def calcular_saldo(db, matricula):
     c = db.execute("SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=?", (matricula,)).fetchone()[0]
     u = db.execute("""SELECT COALESCE(SUM(c.minutos),0) FROM consumos c
@@ -892,12 +919,25 @@ def relatorios():
                 (SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=s.matricula)
                 -(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=s.matricula) AS saldo
             FROM servidores s {filt_srv} ORDER BY s.nome""", params_srv).fetchall()
+        data["grupos"] = _agrupar_itens(data["servidores"], agr)
         if fmt_out in ("csv", "xlsx", "pdf"):
-            headers = ["Matrícula","Nome","CPF","Email","Secretaria","Departamento","Cargo","Total Creditado","Total Compensado","Total Pago","Saldo","FG"]
-            rows = [[s["matricula"],s["nome"],s["cpf"] or "",s["email"] or "",s["secretaria"] or "",s["setor"] or "",s["cargo"] or "",
-                     minutos_para_horas(s["total_credito"]),minutos_para_horas(s["total_compensado"]),
-                     minutos_para_horas(s["total_pago"]),minutos_para_horas(s["saldo"]),"Sim" if s["funcao_gratificada"] else "Não"]
-                    for s in data["servidores"]]
+            headers = ["Grupo","Matrícula","Nome","CPF","Email","Secretaria","Departamento","Cargo","Total Creditado","Total Compensado","Total Pago","Saldo","FG"]
+            rows = []
+            geral = {"credito": 0, "comp": 0, "pago": 0, "saldo": 0, "qtd": 0}
+            for grupo, itens in data["grupos"].items():
+                subt = {"credito": 0, "comp": 0, "pago": 0, "saldo": 0}
+                for s in itens:
+                    credito = minutos_num(s["total_credito"]); comp = minutos_num(s["total_compensado"])
+                    pago = minutos_num(s["total_pago"]); saldo = minutos_num(s["saldo"])
+                    subt["credito"] += credito; subt["comp"] += comp; subt["pago"] += pago; subt["saldo"] += saldo
+                    geral["credito"] += credito; geral["comp"] += comp; geral["pago"] += pago; geral["saldo"] += saldo; geral["qtd"] += 1
+                    rows.append([grupo, s["matricula"], s["nome"], s["cpf"] or "", s["email"] or "", s["secretaria"] or "", s["setor"] or "", s["cargo"] or "",
+                                 minutos_para_horas(credito), minutos_para_horas(comp), minutos_para_horas(pago), minutos_para_horas(saldo), "Sim" if s["funcao_gratificada"] else "Não"])
+                rows.append([f"TOTAL DO GRUPO: {grupo}", "", f"{len(itens)} servidor(es)", "", "", "", "", "",
+                             minutos_para_horas(subt["credito"]), minutos_para_horas(subt["comp"]), minutos_para_horas(subt["pago"]), minutos_para_horas(subt["saldo"]), ""])
+                rows.append(["", "", "", "", "", "", "", "", "", "", "", "", ""])
+            rows.append(["TOTAL GERAL", "", f"{geral['qtd']} servidor(es)", "", "", "", "", "",
+                         minutos_para_horas(geral["credito"]), minutos_para_horas(geral["comp"]), minutos_para_horas(geral["pago"]), minutos_para_horas(geral["saldo"]), ""])
             return _export_response(fmt_out, "saldos", "Relatório de Saldos em Banco de Horas", headers, rows)
 
     elif aba == "historico":
@@ -910,34 +950,57 @@ def relatorios():
                 if df: f+=f" AND {c}<=?"; p.append(df)
                 return f,p
             fl,pl=apd(f"WHERE l.matricula IN ({ph})",list(mats),"l.data")
-            for r in db.execute(f"SELECT l.*,s.nome,s.secretaria,s.funcao_gratificada FROM lancamentos l JOIN servidores s ON s.matricula=l.matricula {fl} ORDER BY l.data DESC",pl).fetchall():
+            for r in db.execute(f"SELECT l.*,s.nome,s.secretaria,s.setor,s.funcao_gratificada FROM lancamentos l JOIN servidores s ON s.matricula=l.matricula {fl} ORDER BY l.data DESC",pl).fetchall():
                 ev.append({**dict(r),"tipo_evento":"lancamento","data_ord":r["data"]})
             fc,pc=apd(f"WHERE c.matricula IN ({ph})",list(mats),"c.data")
-            for r in db.execute(f"SELECT c.*,s.nome,s.secretaria,s.funcao_gratificada FROM compensacoes c JOIN servidores s ON s.matricula=c.matricula {fc} ORDER BY c.data DESC",pc).fetchall():
+            for r in db.execute(f"SELECT c.*,s.nome,s.secretaria,s.setor,s.funcao_gratificada FROM compensacoes c JOIN servidores s ON s.matricula=c.matricula {fc} ORDER BY c.data DESC",pc).fetchall():
                 ev.append({**dict(r),"tipo_evento":"compensacao","data_ord":r["data"]})
             fp,pp=apd(f"WHERE p.matricula IN ({ph})",list(mats),"p.data_pagamento")
-            for r in db.execute(f"""SELECT p.*,s.nome,s.secretaria,s.funcao_gratificada,
+            for r in db.execute(f"""SELECT p.*,s.nome,s.secretaria,s.setor,s.funcao_gratificada,
                 COALESCE(SUM(ROUND(c.minutos*l.minutos_base*1.0/l.minutos_creditados)),0) AS base_paga,
                 COALESCE(SUM(c.minutos),0) AS minutos_pagos
                 FROM pagamentos p JOIN servidores s ON s.matricula=p.matricula
                 JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
                 JOIN lancamentos l ON l.id=c.lancamento_id {fp}
                 GROUP BY p.id,p.matricula,p.data_pagamento,p.descricao,p.criado_em,
-                         s.nome,s.secretaria,s.funcao_gratificada
+                         s.nome,s.secretaria,s.setor,s.funcao_gratificada
                 ORDER BY p.data_pagamento DESC""",pp).fetchall():
                 ev.append({**dict(r),"tipo_evento":"pagamento","data_ord":r["data_pagamento"]})
             ev.sort(key=lambda x:x["data_ord"],reverse=True); data["eventos"]=ev
+        data["grupos"] = _agrupar_itens(data["eventos"], agr)
+        data["totais_historico"] = {}
+        for grupo, eventos in data["grupos"].items():
+            data["totais_historico"][grupo] = {
+                "qtd": len(eventos),
+                "lanc": sum(minutos_num(e.get("minutos_creditados")) for e in eventos if e.get("tipo_evento") == "lancamento"),
+                "comp": sum(minutos_num(e.get("minutos_compensados")) for e in eventos if e.get("tipo_evento") == "compensacao"),
+                "pago": sum(minutos_num(e.get("base_paga")) for e in eventos if e.get("tipo_evento") == "pagamento"),
+            }
         if fmt_out in ("csv", "xlsx", "pdf"):
-            headers = ["Data","Matrícula","Servidor","Secretaria","FG","Tipo","Detalhes","Horas"]
+            headers = ["Grupo","Data","Matrícula","Servidor","Secretaria","Departamento","FG","Tipo","Detalhes","H. Lançadas","H. Compensadas","H. Pagas Base"]
             rows = []
-            for e in data["eventos"]:
-                fg_s="Sim" if e.get("funcao_gratificada") else "Não"
-                if e["tipo_evento"]=="lancamento":
-                    rows.append([e["data"],e["matricula"],e["nome"],e.get("secretaria",""),fg_s,"Lançamento",f"{e['horas_base']} + {e['percentual']}%",minutos_para_horas(e["minutos_creditados"])])
-                elif e["tipo_evento"]=="compensacao":
-                    rows.append([e["data"],e["matricula"],e["nome"],e.get("secretaria",""),fg_s,"Compensação","Dia inteiro" if e["tipo"]=="dia_inteiro" else "Parcial",minutos_para_horas(e["minutos_compensados"])])
-                else:
-                    rows.append([e["data_pagamento"],e["matricula"],e["nome"],e.get("secretaria",""),fg_s,"Pagamento Folha",e.get("descricao",""),minutos_para_horas(int(e["base_paga"]))])
+            geral = {"lanc": 0, "comp": 0, "pago": 0, "qtd": 0}
+            for grupo, eventos in data["grupos"].items():
+                subt = {"lanc": 0, "comp": 0, "pago": 0}
+                for e in eventos:
+                    fg_s="Sim" if e.get("funcao_gratificada") else "Não"
+                    data_ev = e["data_pagamento"] if e["tipo_evento"] == "pagamento" else e["data"]
+                    lanc = comp = pago = 0
+                    if e["tipo_evento"]=="lancamento":
+                        lanc = minutos_num(e["minutos_creditados"]); detalhes = f"{e['horas_base']} + {e['percentual']}%"; tipo_ev = "Lançamento"
+                    elif e["tipo_evento"]=="compensacao":
+                        comp = minutos_num(e["minutos_compensados"]); detalhes = "Dia inteiro" if e["tipo"]=="dia_inteiro" else "Parcial"; tipo_ev = "Compensação"
+                    else:
+                        pago = minutos_num(e["base_paga"]); detalhes = e.get("descricao",""); tipo_ev = "Pagamento Folha"
+                    subt["lanc"] += lanc; subt["comp"] += comp; subt["pago"] += pago
+                    geral["lanc"] += lanc; geral["comp"] += comp; geral["pago"] += pago; geral["qtd"] += 1
+                    rows.append([grupo, data_ev, e["matricula"], e["nome"], e.get("secretaria",""), e.get("setor",""), fg_s, tipo_ev, detalhes,
+                                 minutos_para_horas(lanc) if lanc else "", minutos_para_horas(comp) if comp else "", minutos_para_horas(pago) if pago else ""])
+                rows.append([f"TOTAL DO GRUPO: {grupo}", "", f"{len(eventos)} evento(s)", "", "", "", "", "", "",
+                             minutos_para_horas(subt["lanc"]), minutos_para_horas(subt["comp"]), minutos_para_horas(subt["pago"])])
+                rows.append(["", "", "", "", "", "", "", "", "", "", "", ""])
+            rows.append(["TOTAL GERAL", "", f"{geral['qtd']} evento(s)", "", "", "", "", "", "",
+                         minutos_para_horas(geral["lanc"]), minutos_para_horas(geral["comp"]), minutos_para_horas(geral["pago"])])
             return _export_response(fmt_out, "historico", "Relatório de Histórico Completo", headers, rows)
 
     elif aba == "pagamentos":
@@ -959,13 +1022,28 @@ def relatorios():
             FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id
             WHERE c.tipo='pagamento' AND c.referencia_id=? ORDER BY l.data ASC""",(p["id"],)).fetchall() for p in pags}
         data["pagamentos"]=pags; data["detalhes"]=dets
+        data["grupos"] = _agrupar_itens(pags, agr)
+        data["totais_pagamentos"] = {}
+        for grupo, pags_grupo in data["grupos"].items():
+            total = sum(minutos_num(d["base_paga"]) for p in pags_grupo for d in dets[p["id"]])
+            data["totais_pagamentos"][grupo] = {"qtd": len(pags_grupo), "base": total}
         if fmt_out in ("csv", "xlsx", "pdf"):
-            headers = ["Pag.ID","Matrícula","Servidor","Secretaria","Departamento","FG","Data Pagamento","Referência","Data Realização","H.Base Realizadas","%","H.Base Pagas"]
+            headers = ["Grupo","Pag.ID","Matrícula","Servidor","Secretaria","Departamento","FG","Data Pagamento","Referência","Data Realização","H.Base Realizadas","%","H.Base Pagas"]
             rows = []
-            for p in pags:
-                fg_s="Sim" if p.get("funcao_gratificada") else "Não"
-                for d in dets[p["id"]]:
-                    rows.append([p["id"],p["matricula"],p["nome"],p.get("secretaria",""),p.get("setor",""),fg_s,p["data_pagamento"],p.get("descricao",""),d["data_hora"],d["horas_base"],f"{d['percentual']}%",minutos_para_horas(int(d["base_paga"] or 0))])
+            total_geral = 0
+            qtd_geral = 0
+            for grupo, pags_grupo in data["grupos"].items():
+                subtotal = 0
+                qtd = 0
+                for p in pags_grupo:
+                    fg_s="Sim" if p.get("funcao_gratificada") else "Não"
+                    for d in dets[p["id"]]:
+                        base_paga = minutos_num(d["base_paga"])
+                        subtotal += base_paga; total_geral += base_paga; qtd += 1; qtd_geral += 1
+                        rows.append([grupo,p["id"],p["matricula"],p["nome"],p.get("secretaria",""),p.get("setor",""),fg_s,p["data_pagamento"],p.get("descricao",""),d["data_hora"],d["horas_base"],f"{d['percentual']}%",minutos_para_horas(base_paga)])
+                rows.append([f"TOTAL DO GRUPO: {grupo}", "", f"{qtd} item(ns)", "", "", "", "", "", "", "", "", "", minutos_para_horas(subtotal)])
+                rows.append(["", "", "", "", "", "", "", "", "", "", "", "", ""])
+            rows.append(["TOTAL GERAL", "", f"{qtd_geral} item(ns)", "", "", "", "", "", "", "", "", "", minutos_para_horas(total_geral)])
             return _export_response(fmt_out, "pagamentos", "Relatório de Pagamentos Realizados", headers, rows)
 
     elif aba == "competencia":
@@ -983,6 +1061,11 @@ def relatorios():
                     chave=(r["secretaria"] or "Sem Secretaria") if agr=="secretaria" else (r["setor"] or "Sem Departamento") if agr=="departamento" else f"{r['nome']} ({r['mat']})"
                     grps.setdefault(chave,[]).append(dict(r))
                 data["grupos"]=grps
+                data["totais_competencia"] = {
+                    "base": sum(minutos_num(r["minutos_base"]) for r in rows),
+                    "creditadas": sum(minutos_num(r["minutos_creditados"]) for r in rows),
+                    "qtd": len(rows),
+                }
         if fmt_out in ("csv", "xlsx", "pdf") and data["grupos"]:
             headers = ["Grupo","Matrícula","Servidor","Data","H.Base","%","H.Creditadas","Descrição"]
             rows = []
@@ -1011,6 +1094,51 @@ def relatorios():
                 minutos_para_horas(total_geral_base), "", minutos_para_horas(total_geral_creditado), ""
             ])
             return _export_response(fmt_out, f"competencia_{mes}_{ano}", f"Relatório de Horas por Competência {mes}/{ano}", headers, rows)
+
+    elif aba == "vencimentos":
+        rows_v = db.execute(f"""
+            SELECT l.*, s.nome, s.secretaria, s.setor, s.matricula AS mat, s.funcao_gratificada,
+                   l.minutos_creditados - COALESCE((SELECT SUM(c.minutos) FROM consumos c WHERE c.lancamento_id=l.id),0) AS saldo_creditado
+            FROM lancamentos l
+            JOIN servidores s ON s.matricula=l.matricula
+            {filt_srv}
+            ORDER BY l.data ASC, s.nome
+        """, params_srv).fetchall()
+        itens = []
+        for r in rows_v:
+            saldo_creditado = minutos_num(r["saldo_creditado"])
+            if saldo_creditado <= 0:
+                continue
+            venc = _somar_meses_iso(r["data"], 6)
+            if di and venc < di:
+                continue
+            if df and venc > df:
+                continue
+            d = dict(r)
+            d["matricula"] = r["mat"]
+            d["vencimento"] = venc
+            d["saldo_base"] = round(saldo_creditado * minutos_num(r["minutos_base"]) / minutos_num(r["minutos_creditados"])) if minutos_num(r["minutos_creditados"]) else saldo_creditado
+            itens.append(d)
+        data["vencimentos"] = itens
+        data["grupos"] = _agrupar_itens(itens, agr)
+        if fmt_out in ("csv", "xlsx", "pdf"):
+            headers = ["Grupo","Matrícula","Servidor","Secretaria","Departamento","Data Realização","Vencimento","H.Base Original","%","Saldo Creditado","Saldo Base"]
+            rows = []
+            total_creditado = 0
+            total_base = 0
+            total_qtd = 0
+            for grupo, grupo_itens in data["grupos"].items():
+                sub_creditado = 0
+                sub_base = 0
+                for r in grupo_itens:
+                    saldo_creditado = minutos_num(r["saldo_creditado"]); saldo_base = minutos_num(r["saldo_base"])
+                    sub_creditado += saldo_creditado; sub_base += saldo_base
+                    total_creditado += saldo_creditado; total_base += saldo_base; total_qtd += 1
+                    rows.append([grupo,r["matricula"],r["nome"],r.get("secretaria",""),r.get("setor",""),r["data"],r["vencimento"],r["horas_base"],f"{r['percentual']}%",minutos_para_horas(saldo_creditado),minutos_para_horas(saldo_base)])
+                rows.append([f"TOTAL DO GRUPO: {grupo}", "", f"{len(grupo_itens)} lançamento(s)", "", "", "", "", "", "", minutos_para_horas(sub_creditado), minutos_para_horas(sub_base)])
+                rows.append(["", "", "", "", "", "", "", "", "", "", ""])
+            rows.append(["TOTAL GERAL", "", f"{total_qtd} lançamento(s)", "", "", "", "", "", "", minutos_para_horas(total_creditado), minutos_para_horas(total_base)])
+            return _export_response(fmt_out, "vencimentos", "Relatório de Horas a Vencer/Vencidas", headers, rows)
 
     return render_template("relatorios.html", aba=aba, data=data, fmt=minutos_para_horas,
                            secretarias=secs, setores=sets, servidores_lista=srvs_lista,
