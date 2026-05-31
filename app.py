@@ -1180,6 +1180,20 @@ def admin_importacao_modelo():
     r.headers["Content-Disposition"] = "attachment; filename=modelo_importacao_servidores.csv"
     return r
 
+@app.route("/admin/importacao/modelo-cadastros")
+@master_required
+def admin_importacao_modelo_cadastros():
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["tipo","nome"])
+    w.writerow(["secretaria","Secretaria Municipal de Administração"])
+    w.writerow(["departamento","Departamento de Recursos Humanos"])
+    w.writerow(["cargo","Assistente Administrativo"])
+    r = make_response("\ufeff" + out.getvalue())
+    r.headers["Content-Type"] = "text/csv; charset=utf-8"
+    r.headers["Content-Disposition"] = "attachment; filename=modelo_importacao_cadastros.csv"
+    return r
+
 @app.route("/admin/importacao/servidores", methods=["POST"])
 @master_required
 def admin_importar_servidores():
@@ -1247,6 +1261,81 @@ def admin_importar_servidores():
     flash(f"Importação concluída: {criados} criado(s), {atualizados} atualizado(s), {erros} erro(s).", "success")
     return redirect(url_for("admin_importacao"))
 
+def _normalizar_tipo_cadastro(valor):
+    v = (valor or "").strip().lower()
+    mapa = {
+        "secretaria": "secretaria",
+        "secretarias": "secretaria",
+        "departamento": "departamento",
+        "departamentos": "departamento",
+        "local": "departamento",
+        "local de trabalho": "departamento",
+        "locais de trabalho": "departamento",
+        "setor": "departamento",
+        "setores": "departamento",
+        "cargo": "cargo",
+        "cargos": "cargo",
+    }
+    return mapa.get(v, "")
+
+@app.route("/admin/importacao/cadastros", methods=["POST"])
+@master_required
+def admin_importar_cadastros_auxiliares():
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        flash("Selecione um arquivo CSV.", "danger")
+        return redirect(url_for("admin_importacao"))
+    conteudo = arquivo.read().decode("utf-8-sig", errors="replace")
+    leitor = csv.DictReader(io.StringIO(conteudo))
+    campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
+    if not {"tipo", "nome"}.issubset(campos):
+        flash("CSV inválido. Campos obrigatórios: tipo e nome.", "danger")
+        return redirect(url_for("admin_importacao"))
+
+    db = get_db()
+    criados = atualizados = erros = total = 0
+    payload = []
+    vistos = set()
+    for row in leitor:
+        total += 1
+        tipo = _normalizar_tipo_cadastro(_valor_csv(row, "tipo"))
+        nome = _valor_csv(row, "nome", "descrição", "descricao")
+        if tipo not in CADASTROS_TIPOS or not nome:
+            erros += 1
+            continue
+        chave = (tipo, nome.strip().lower())
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+
+        atual = db.execute("SELECT * FROM cadastros_auxiliares WHERE tipo=? AND nome=?", (tipo, nome)).fetchone()
+        antes = dict(atual) if atual else None
+        if atual:
+            if not atual["ativo"]:
+                db.execute("UPDATE cadastros_auxiliares SET ativo=1 WHERE id=?", (atual["id"],))
+                atualizados += 1
+                payload.append({"acao": "reativado", "antes": antes, "depois": {"id": atual["id"], "tipo": tipo, "nome": nome, "ativo": 1}})
+        else:
+            cid = db.insert(
+                "INSERT INTO cadastros_auxiliares (tipo,nome,ativo) VALUES (?,?,1)",
+                (tipo, nome)
+            )
+            criados += 1
+            payload.append({"acao": "criado", "antes": None, "depois": {"id": cid, "tipo": tipo, "nome": nome, "ativo": 1}})
+
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    imp_id = db.insert("""INSERT INTO importacoes
+        (tipo,arquivo,usuario_id,usuario_nome,usuario_cpf,total_linhas,criados,atualizados,erros,payload,criado_em)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        ("cadastros_auxiliares", arquivo.filename, session.get("uid"), session.get("nome"), session.get("cpf"),
+         total, criados, atualizados, erros, json.dumps(payload, ensure_ascii=False), agora))
+    registrar_auditoria(db, "Importou cadastros auxiliares", "importacao", imp_id, None, None,
+                        f"Arquivo {arquivo.filename}; criados {criados}; reativados {atualizados}; erros {erros}.")
+    db.commit()
+    limpar_cache()
+    flash(f"Importação de cadastros concluída: {criados} criado(s), {atualizados} reativado(s), {erros} erro(s).", "success")
+    return redirect(url_for("admin_importacao"))
+
 @app.route("/admin/importacao/<int:importacao_id>/estornar", methods=["POST"])
 @master_required
 def admin_estornar_importacao(importacao_id):
@@ -1260,29 +1349,51 @@ def admin_estornar_importacao(importacao_id):
         return redirect(url_for("admin_importacao"))
     payload = json.loads(imp["payload"] or "[]")
     restaurados = removidos = 0
-    for item in reversed(payload):
-        acao = item.get("acao")
-        depois = item.get("depois") or {}
-        antes = item.get("antes")
-        matricula = depois.get("matricula") or (antes or {}).get("matricula")
-        if not matricula:
-            continue
-        if acao == "criado":
-            db.execute("DELETE FROM servidores WHERE matricula=?", (matricula,))
-            removidos += 1
-        elif acao == "atualizado" and antes:
-            db.execute("""UPDATE servidores
-                          SET nome=?,cpf=?,email=?,cargo=?,secretaria=?,setor=?,funcao_gratificada=?,arquivado=?
-                          WHERE matricula=?""",
-                       (antes.get("nome"), antes.get("cpf"), antes.get("email"), antes.get("cargo"),
-                        antes.get("secretaria"), antes.get("setor"), antes.get("funcao_gratificada", 0),
-                        antes.get("arquivado", 0), matricula))
-            restaurados += 1
+    if imp["tipo"] == "cadastros_auxiliares":
+        for item in reversed(payload):
+            acao = item.get("acao")
+            depois = item.get("depois") or {}
+            antes = item.get("antes")
+            tipo = depois.get("tipo") or (antes or {}).get("tipo")
+            nome = depois.get("nome") or (antes or {}).get("nome")
+            if not tipo or not nome:
+                continue
+            if acao == "criado":
+                row = db.execute("SELECT id FROM cadastros_auxiliares WHERE tipo=? AND nome=?", (tipo, nome)).fetchone()
+                if row and _cadastro_auxiliar_em_uso(db, tipo, nome):
+                    db.execute("UPDATE cadastros_auxiliares SET ativo=0 WHERE id=?", (row["id"],))
+                elif row:
+                    db.execute("DELETE FROM cadastros_auxiliares WHERE id=?", (row["id"],))
+                removidos += 1
+            elif acao == "reativado" and antes:
+                db.execute("UPDATE cadastros_auxiliares SET ativo=? WHERE tipo=? AND nome=?",
+                           (antes.get("ativo", 0), tipo, nome))
+                restaurados += 1
+    else:
+        for item in reversed(payload):
+            acao = item.get("acao")
+            depois = item.get("depois") or {}
+            antes = item.get("antes")
+            matricula = depois.get("matricula") or (antes or {}).get("matricula")
+            if not matricula:
+                continue
+            if acao == "criado":
+                db.execute("DELETE FROM servidores WHERE matricula=?", (matricula,))
+                removidos += 1
+            elif acao == "atualizado" and antes:
+                db.execute("""UPDATE servidores
+                              SET nome=?,cpf=?,email=?,cargo=?,secretaria=?,setor=?,funcao_gratificada=?,arquivado=?
+                              WHERE matricula=?""",
+                           (antes.get("nome"), antes.get("cpf"), antes.get("email"), antes.get("cargo"),
+                            antes.get("secretaria"), antes.get("setor"), antes.get("funcao_gratificada", 0),
+                            antes.get("arquivado", 0), matricula))
+                restaurados += 1
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     db.execute("UPDATE importacoes SET estornado=1, estornado_em=? WHERE id=?", (agora, importacao_id))
     registrar_auditoria(db, "Estornou importação", "importacao", importacao_id, None, None,
                         f"Importação {importacao_id}; removidos {removidos}; restaurados {restaurados}.")
     db.commit()
+    limpar_cache()
     flash(f"Importação estornada: {removidos} removido(s), {restaurados} restaurado(s).", "warning")
     return redirect(url_for("admin_importacao"))
 
