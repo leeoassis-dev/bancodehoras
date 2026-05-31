@@ -250,6 +250,7 @@
           </div>
           <div id="modalSetDiv" class="mb-3" style="display:none">
             <label class="form-label fw-semibold">Departamento(s) vinculado(s) <small class="text-muted">(selecione um ou mais)</small></label>
+            <div class="form-text mb-1">Para chefia, marque todos os departamentos que essa pessoa poderá consultar.</div>
             <div class="border rounded p-2" style="max-height:160px;overflow-y:auto">
               {% for s in setores %}
               <div class="form-check">
@@ -313,6 +314,7 @@
           </div>
           <div id="nvSetDiv" class="mb-3" style="display:none">
             <label class="form-label fw-semibold">Departamento(s) <small class="text-muted">(um ou mais)</small></label>
+            <div class="form-text mb-1">A chefia poderá consultar servidores de todos os departamentos selecionados.</div>
             <div class="border rounded p-2" style="max-height:160px;overflow-y:auto" id="nvSetChecks">
               {% for s in setores %}
               <div class="form-check">
@@ -360,6 +362,18 @@ function ajustarModal() {
 }
 ajustarModal();
 
+document.querySelector('#modalPreAuth form')?.addEventListener('submit', function(e) {
+  const nv = document.getElementById('nivelModal').value;
+  if (nv === 'chefia' && !document.querySelector('#modalSetDiv input[name="vinculos"]:checked')) {
+    e.preventDefault();
+    alert('Selecione ao menos um departamento para a chefia.');
+  }
+  if (nv === 'secretario' && !document.querySelector('#modalSecDiv input[name="vinculos"]:checked')) {
+    e.preventDefault();
+    alert('Selecione ao menos uma secretaria para o secretário.');
+  }
+});
+
 function ajustarModalNivel() {
   const nv = document.getElementById('nivelNvModal').value;
   document.getElementById('nvSecDiv').style.display = nv==='secretario' ? '' : 'none';
@@ -382,5 +396,17 @@ function abrirModalNivel(uid, nivel, vinculosJson, mat) {
   if(matSel) matSel.value = mat;
   new bootstrap.Modal(document.getElementById('modalNivel')).show();
 }
+
+document.getElementById('formNivel')?.addEventListener('submit', function(e) {
+  const nv = document.getElementById('nivelNvModal').value;
+  if (nv === 'chefia' && !document.querySelector('#nvSetDiv input[name="vinculos"]:checked')) {
+    e.preventDefault();
+    alert('Selecione ao menos um departamento para a chefia.');
+  }
+  if (nv === 'secretario' && !document.querySelector('#nvSecDiv input[name="vinculos"]:checked')) {
+    e.preventDefault();
+    alert('Selecione ao menos uma secretaria para o secretário.');
+  }
+});
 </script>
 {% endblock %}

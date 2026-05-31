@@ -39,6 +39,44 @@
   </div>
 </div>
 
+<!-- ── Acesso rápido ── -->
+<div class="card p-3 mb-4 border-start border-primary border-4">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+      <h6 class="fw-bold mb-1"><i class="bi bi-lightning-charge-fill me-1 text-primary"></i>Atalhos de Lançamento</h6>
+      <span class="text-muted small">Escolha a matrícula e abra diretamente a tela de lançamento, compensação ou pagamento.</span>
+    </div>
+  </div>
+  <div class="row g-2 align-items-end">
+    <div class="col-lg-7">
+      <label class="form-label small fw-semibold mb-1">Servidor / Matrícula</label>
+      <select id="atalhoMatricula" class="form-select">
+        <option value="">— Selecione o servidor —</option>
+        {% for s in servidores_atalho %}
+        <option value="{{ s.matricula }}"
+                data-info="{{ s.secretaria or 'Sem secretaria' }} | {{ s.setor or 'Sem departamento' }}">
+          {{ s.matricula }} — {{ s.nome }}
+        </option>
+        {% endfor %}
+      </select>
+      <div id="atalhoInfo" class="form-text">As informações do servidor serão carregadas da base de dados.</div>
+    </div>
+    <div class="col-lg-5">
+      <div class="d-flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-success flex-fill" onclick="abrirAtalho('lancamentos')">
+          <i class="bi bi-plus-circle me-1"></i>Lançar hora
+        </button>
+        <button type="button" class="btn btn-warning text-white flex-fill" onclick="abrirAtalho('compensacoes')">
+          <i class="bi bi-arrow-left-right me-1"></i>Compensar
+        </button>
+        <button type="button" class="btn btn-danger flex-fill" onclick="abrirAtalho('pagamentos')">
+          <i class="bi bi-cash-coin me-1"></i>Pagar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Gráficos linha 1 ── -->
 <div class="row g-3 mb-4">
   <div class="col-md-6">
@@ -137,6 +175,21 @@ const compData = {{ comp_mes|safe }};
 const pagData  = {{ pag_mes|safe }};
 const pieLabels = {{ saldo_sec_labels|safe }};
 const pieData   = {{ saldo_sec_data|safe }};
+
+const selectAtalho = document.getElementById('atalhoMatricula');
+selectAtalho?.addEventListener('change', () => {
+  const opt = selectAtalho.options[selectAtalho.selectedIndex];
+  document.getElementById('atalhoInfo').textContent = opt?.dataset?.info || 'As informações do servidor serão carregadas da base de dados.';
+});
+
+function abrirAtalho(tipo) {
+  const matricula = document.getElementById('atalhoMatricula').value;
+  if (!matricula) {
+    alert('Selecione uma matrícula antes de abrir o lançamento.');
+    return;
+  }
+  window.location.href = `/${tipo}/${encodeURIComponent(matricula)}`;
+}
 
 // Gráfico lançamentos x compensações
 new Chart(document.getElementById('chartLanc'), {

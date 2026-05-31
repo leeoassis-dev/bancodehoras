@@ -15,9 +15,13 @@
     <div class="card p-4">
       <h6 class="mb-3 text-warning"><i class="bi bi-calendar-check me-1"></i>Nova Compensação</h6>
 
-      <div class="alert {{ 'alert-success' if saldo > 0 else 'alert-danger' }} py-2 mb-3">
-        <strong>Saldo disponível:</strong>
+      <div class="alert {{ 'alert-success' if saldo > 0 else 'alert-danger' }} py-2 mb-2">
+        <strong>Saldo disponível atual:</strong>
         <span class="fw-bold">{{ fmt(saldo) }}</span>
+      </div>
+      <div class="alert alert-warning py-2 mb-3 small">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        O sistema permite compensação acima do saldo disponível, mas avisará quando o banco ficar negativo.
       </div>
 
       <form method="post">
@@ -37,7 +41,17 @@
         <div class="mb-3" id="campo_horas">
           <label class="form-label fw-semibold">Quantidade de horas</label>
           <input type="text" name="horas" class="form-control" placeholder="HH:MM"
-                 pattern="\d{1,3}:\d{2}" title="Formato HH:MM">
+                 pattern="\d{1,3}:\d{2}" title="Formato HH:MM" id="horasInput">
+        </div>
+
+        <div class="border rounded p-2 small mb-3 bg-light">
+          <div class="d-flex justify-content-between">
+            <span class="text-muted">Saldo após compensação</span>
+            <strong id="saldoProjetado">{{ fmt(saldo) }}</strong>
+          </div>
+          <div id="avisoNegativo" class="text-danger mt-1 d-none">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>Esta movimentação deixará o banco de horas negativo.
+          </div>
         </div>
 
         <div class="mb-3">
@@ -108,6 +122,7 @@
 {% block scripts %}
 <script>
   document.querySelector('[name=data]').valueAsDate = new Date();
+  const saldoAtual = {{ saldo|int }};
 
   function toggleHoras(tipo) {
     const campo = document.getElementById('campo_horas');
@@ -119,6 +134,34 @@
       campo.style.display = '';
       input.setAttribute('required', '');
     }
+    atualizarSaldoProjetado();
   }
+
+  function horasParaMinutos(valor) {
+    const m = /^(\d{1,3}):(\d{2})$/.exec((valor || '').trim());
+    if (!m) return 0;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  }
+
+  function minutosParaHoras(minutos) {
+    const sinal = minutos < 0 ? '-' : '';
+    minutos = Math.abs(minutos);
+    const h = String(Math.floor(minutos / 60)).padStart(2, '0');
+    const m = String(minutos % 60).padStart(2, '0');
+    return `${sinal}${h}:${m}`;
+  }
+
+  function atualizarSaldoProjetado() {
+    const tipo = document.getElementById('tipo').value;
+    const comp = tipo === 'dia_inteiro' ? 480 : horasParaMinutos(document.getElementById('horasInput').value);
+    const projetado = saldoAtual - comp;
+    document.getElementById('saldoProjetado').textContent = minutosParaHoras(projetado);
+    document.getElementById('saldoProjetado').className = projetado < 0 ? 'text-danger' : 'text-success';
+    document.getElementById('avisoNegativo').classList.toggle('d-none', projetado >= 0);
+  }
+
+  document.getElementById('horasInput').addEventListener('input', atualizarSaldoProjetado);
+  document.getElementById('tipo').addEventListener('change', atualizarSaldoProjetado);
+  atualizarSaldoProjetado();
 </script>
 {% endblock %}

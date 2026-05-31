@@ -240,6 +240,9 @@ def ultimos_n_meses(n=6):
 def dashboard():
     db = get_db()
     meses6 = ultimos_n_meses(6)
+    servidores_atalho = db.execute(
+        "SELECT matricula,nome,secretaria,setor FROM servidores WHERE arquivado=0 ORDER BY nome"
+    ).fetchall()
 
     # Lançamentos por mês (horas base)
     lanc_mes = []
@@ -335,6 +338,7 @@ def dashboard():
         prox_venc=prox_venc,
         top5=top5,
         top5_deptos=top5_deptos,
+        servidores_atalho=servidores_atalho,
         saldo_sec_labels=json.dumps([r["sec"] for r in saldo_sec]),
         saldo_sec_data=json.dumps([r["tot"]//60 for r in saldo_sec]),
         fmt=minutos_para_horas)
@@ -502,12 +506,16 @@ def compensacoes(matricula):
         data = request.form["data"]; tipo = request.form["tipo"]; desc = request.form["descricao"].strip()
         mc   = 8*60 if tipo=="dia_inteiro" else horas_para_minutos(request.form.get("horas","").strip())
         if mc <= 0: flash("Valor inválido.","danger")
-        elif mc > saldo: flash(f"Saldo insuficiente: {minutos_para_horas(saldo)}","danger")
         else:
             cid = db.insert("INSERT INTO compensacoes (matricula,data,tipo,minutos_compensados,descricao) VALUES (?,?,?,?,?)",
                             (matricula, data, tipo, mc, desc))
             _consumir_fifo_raw(db, matricula, mc, "compensacao", cid)
-            db.commit(); flash(f"Compensação de {minutos_para_horas(mc)} registrada (FIFO).","success")
+            db.commit()
+            novo_saldo = saldo - mc
+            if novo_saldo < 0:
+                flash(f"Compensação registrada. Atenção: o saldo ficou negativo em {minutos_para_horas(novo_saldo)}.", "warning")
+            else:
+                flash(f"Compensação de {minutos_para_horas(mc)} registrada (FIFO).", "success")
             return redirect(url_for("compensacoes", matricula=matricula))
     hist = db.execute("SELECT * FROM compensacoes WHERE matricula=? ORDER BY data DESC", (matricula,)).fetchall()
     return render_template("compensacoes.html", servidor=srv, historico=hist,
