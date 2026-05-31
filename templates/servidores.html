@@ -8,14 +8,14 @@
 
 <form method="get" class="card p-3 mb-3">
   <div class="row g-2 align-items-end">
-    <div class="col-md-4">
+    <div class="col-md-3">
       <label class="form-label small fw-semibold mb-1">Buscar por matrícula ou nome</label>
       <div class="input-group">
         <span class="input-group-text"><i class="bi bi-search"></i></span>
         <input type="text" name="busca" class="form-control" placeholder="Digite matrícula ou nome..." value="{{ busca }}">
       </div>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-1">
       <label class="form-label small fw-semibold mb-1">Secretaria</label>
       <select name="secretaria" class="form-select">
         <option value="">— Todas —</option>
@@ -36,9 +36,24 @@
         <option value="com_saldo" {{ 'selected' if saldo_sel=='com_saldo' }}>Com saldo em banco</option>
       </select>
     </div>
-    <div class="col-md-2 d-flex gap-2">
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold mb-1">Destaque</label>
+      <select name="vencimento" class="form-select">
+        <option value="">Todos</option>
+        <option value="vencidas" {{ 'selected' if vencimento_sel=='vencidas' }}>Horas vencidas</option>
+        <option value="proximos" {{ 'selected' if vencimento_sel=='proximos' }}>Vence em até 30 dias</option>
+      </select>
+    </div>
+    <div class="col-md-1">
+      <label class="form-label small fw-semibold mb-1">FG</label>
+      <select name="fg" class="form-select">
+        <option value="">Todos</option>
+        <option value="1" {{ 'selected' if fg_sel=='1' }}>Sim</option>
+      </select>
+    </div>
+    <div class="col-md-1 d-flex gap-2">
       <button type="submit" class="btn btn-primary flex-fill">Filtrar</button>
-      {% if busca or secretaria_sel or setor_sel or saldo_sel %}<a href="/servidores" class="btn btn-outline-secondary">✕</a>{% endif %}
+      {% if busca or secretaria_sel or setor_sel or saldo_sel or fg_sel or vencimento_sel %}<a href="/servidores" class="btn btn-outline-secondary">✕</a>{% endif %}
     </div>
   </div>
 </form>
@@ -98,7 +113,7 @@
 <div class="text-center py-5 text-muted">
   <i class="bi bi-person-x" style="font-size:3rem"></i>
   <p class="mt-3">
-    {% if busca or secretaria_sel or setor_sel or saldo_sel %}Nenhum servidor encontrado para os filtros aplicados.
+    {% if busca or secretaria_sel or setor_sel or saldo_sel or fg_sel or vencimento_sel %}Nenhum servidor encontrado para os filtros aplicados.
     {% else %}Nenhum servidor cadastrado. <a href="/servidores/novo">Cadastrar</a>{% endif %}
   </p>
 </div>

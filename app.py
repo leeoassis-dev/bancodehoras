@@ -725,7 +725,27 @@ def servidores():
     sec   = request.args.get("secretaria","").strip()
     set_  = request.args.get("setor","").strip()
     apenas_com_saldo = request.args.get("saldo") == "com_saldo"
+    fg_sel = request.args.get("fg","").strip()
+    vencimento_sel = request.args.get("vencimento","").strip()
     f, p  = _filtro_servidores(busca, sec, set_, arquivado=0)
+    if fg_sel == "1":
+        f += " AND s.funcao_gratificada=1"
+    if vencimento_sel == "vencidas":
+        f += """ AND EXISTS (
+            SELECT 1 FROM lancamentos l
+            WHERE l.matricula=s.matricula
+              AND l.data<=?
+              AND l.minutos_creditados>(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c WHERE c.lancamento_id=l.id)
+        )"""
+        p.append(six_months_ago())
+    elif vencimento_sel == "proximos":
+        f += """ AND EXISTS (
+            SELECT 1 FROM lancamentos l
+            WHERE l.matricula=s.matricula
+              AND l.data<=? AND l.data>?
+              AND l.minutos_creditados>(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c WHERE c.lancamento_id=l.id)
+        )"""
+        p.extend([five_months_ago(), six_months_ago()])
     saldo_expr = """
         (SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=s.matricula)
         -(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=s.matricula)
@@ -740,7 +760,8 @@ def servidores():
     return render_template("servidores.html", servidores=lista, fmt=minutos_para_horas,
                             secretarias=secs, setores=sets,
                             busca=busca, secretaria_sel=sec, setor_sel=set_,
-                            saldo_sel="com_saldo" if apenas_com_saldo else "")
+                            saldo_sel="com_saldo" if apenas_com_saldo else "",
+                            fg_sel=fg_sel, vencimento_sel=vencimento_sel)
 
 @app.route("/api/historico/<matricula>")
 def api_historico(matricula):

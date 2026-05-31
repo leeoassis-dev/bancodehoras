@@ -8,34 +8,42 @@
 <!-- ── KPI Cards ── -->
 <div class="row g-3 mb-4">
   <div class="col-md-3">
+    <a href="/servidores?saldo=com_saldo" class="text-decoration-none text-reset" title="Ver servidores com saldo em banco">
     <div class="card p-3 h-100 border-start border-success border-4">
       <div class="text-muted small">Saldo Total em Banco</div>
       <div class="fs-3 fw-bold text-success">{{ fmt(saldo_total) }}</div>
       <div class="text-muted small mt-1">de {{ total_serv }} servidor(es) ativo(s)</div>
     </div>
+    </a>
   </div>
   <div class="col-md-3">
+    <a href="/servidores?vencimento=vencidas" class="text-decoration-none text-reset" title="Ver servidores com horas vencidas">
     <div class="card p-3 h-100 border-start border-danger border-4">
       <div class="text-muted small">Com Horas Vencidas (+6 meses)</div>
       <div class="fs-3 fw-bold text-danger">{{ venc_count }}</div>
       <div class="text-muted small mt-1">
-        <a href="/pagamentos" class="text-danger">Ver pagamentos pendentes →</a>
+        Ver detalhamento →
       </div>
     </div>
+    </a>
   </div>
   <div class="col-md-3">
+    <a href="/servidores?vencimento=proximos" class="text-decoration-none text-reset" title="Ver servidores com horas perto do vencimento">
     <div class="card p-3 h-100 border-start border-warning border-4">
       <div class="text-muted small">Vencimento em ≤ 30 dias</div>
       <div class="fs-3 fw-bold text-warning">{{ prox_venc }}</div>
       <div class="text-muted small mt-1">servidor(es) com horas prestes a vencer</div>
     </div>
+    </a>
   </div>
   <div class="col-md-3">
+    <a href="/servidores?fg=1" class="text-decoration-none text-reset" title="Ver servidores com Função Gratificada">
     <div class="card p-3 h-100 border-start border-info border-4">
       <div class="text-muted small">Em Função Gratificada</div>
       <div class="fs-3 fw-bold text-info">{{ serv_fg }}</div>
       <div class="text-muted small mt-1">servidor(es) com FG ativo</div>
     </div>
+    </a>
   </div>
 </div>
 
@@ -106,7 +114,7 @@
             {% for s in top5 %}
             <tr>
               <td><span class="badge bg-warning text-dark">{{ loop.index }}</span></td>
-              <td class="fw-semibold">{{ s.nome }}</td>
+              <td class="fw-semibold"><a href="/servidores?busca={{ s.matricula|urlencode }}" class="text-decoration-none">{{ s.nome }}</a></td>
               <td class="small text-muted">{{ s.secretaria or '–' }}</td>
               <td class="small text-muted">{{ s.setor or '–' }}</td>
               <td class="text-center saldo-positivo">{{ fmt(s.saldo) }}</td>
@@ -138,7 +146,7 @@
             {% for d in top5_deptos %}
             <tr>
               <td><span class="badge bg-primary">{{ loop.index }}</span></td>
-              <td class="fw-semibold">{{ d.setor }}</td>
+              <td class="fw-semibold"><a href="/servidores?setor={{ d.setor|urlencode }}&saldo=com_saldo" class="text-decoration-none">{{ d.setor }}</a></td>
               <td class="small text-muted">{{ d.secretaria }}</td>
               <td class="text-center"><span class="badge bg-light text-dark border">{{ d.qtd_servidores }}</span></td>
               <td class="text-center saldo-positivo">{{ fmt(d.saldo) }}</td>
