@@ -1,0 +1,158 @@
+﻿{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-people-fill me-2 text-primary"></i>Servidores</h4>
+  <a href="/servidores/novo" class="btn btn-primary btn-sm"><i class="bi bi-person-plus me-1"></i>Novo Servidor</a>
+</div>
+
+<form method="get" class="card p-3 mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label small fw-semibold mb-1">Buscar por matrícula ou nome</label>
+      <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" name="busca" class="form-control" placeholder="Digite matrícula ou nome..." value="{{ busca }}">
+      </div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Secretaria</label>
+      <select name="secretaria" class="form-select">
+        <option value="">— Todas —</option>
+        {% for s in secretarias %}<option value="{{ s }}" {{ 'selected' if s==secretaria_sel }}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Departamento</label>
+      <select name="setor" class="form-select">
+        <option value="">— Todos —</option>
+        {% for s in setores %}<option value="{{ s }}" {{ 'selected' if s==setor_sel }}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2 d-flex gap-2">
+      <button type="submit" class="btn btn-primary flex-fill">Filtrar</button>
+      {% if busca or secretaria_sel or setor_sel %}<a href="/servidores" class="btn btn-outline-secondary">✕</a>{% endif %}
+    </div>
+  </div>
+</form>
+
+{% if servidores %}
+<div class="card">
+  <div class="card-header bg-white small text-muted">{{ servidores|length }} servidor(es) encontrado(s)</div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Matrícula</th><th>Nome</th><th>Secretaria</th><th>Departamento</th>
+          <th class="text-center">Saldo</th><th class="text-center">Histórico</th><th class="text-center">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in servidores %}
+        <tr>
+          <td>
+            <span class="badge bg-secondary">{{ s.matricula }}</span>
+            {% if s.funcao_gratificada %}<span class="badge bg-warning text-dark ms-1" title="Função Gratificada"><i class="bi bi-star-fill"></i> FG</span>{% endif %}
+          </td>
+          <td class="fw-semibold">{{ s.nome }}</td>
+          <td class="small text-muted">{{ s.secretaria or '–' }}</td>
+          <td class="small text-muted">{{ s.setor or '–' }}</td>
+          <td class="text-center">
+            <span class="{{ 'saldo-positivo' if s.saldo_minutos>=0 else 'saldo-negativo' }}">{{ fmt(s.saldo_minutos) }}</span>
+          </td>
+          <td class="text-center">
+            <button class="btn btn-sm btn-outline-info" onclick="verHistorico('{{ s.matricula }}','{{ s.nome }}')" title="Ver histórico">
+              <i class="bi bi-clock-history"></i>
+            </button>
+          </td>
+          <td class="text-center">
+            <div class="d-flex flex-wrap gap-1 justify-content-center">
+              <a href="/lancamentos/{{ s.matricula }}" class="btn btn-sm btn-outline-success"><i class="bi bi-plus-circle"></i> Horas</a>
+              <a href="/compensacoes/{{ s.matricula }}" class="btn btn-sm btn-outline-warning"><i class="bi bi-arrow-left-right"></i> Comp.</a>
+              <a href="/pagamentos/{{ s.matricula }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-cash-coin"></i> Pagar</a>
+              <a href="/servidores/{{ s.matricula }}/editar" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+              <form method="post" action="/servidores/{{ s.matricula }}/arquivar"
+                    onsubmit="return confirm('Arquivar {{ s.nome }}? O servidor sairá da lista mas seus dados serão preservados.')">
+                <button class="btn btn-sm btn-outline-dark" title="Arquivar servidor"><i class="bi bi-archive"></i></button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-person-x" style="font-size:3rem"></i>
+  <p class="mt-3">
+    {% if busca or secretaria_sel or setor_sel %}Nenhum servidor encontrado para os filtros aplicados.
+    {% else %}Nenhum servidor cadastrado. <a href="/servidores/novo">Cadastrar</a>{% endif %}
+  </p>
+</div>
+{% endif %}
+
+<!-- Modal histórico -->
+<div class="modal fade" id="modalHistorico" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i><span id="modalNome"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="modalBody">
+        <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+      </div>
+      <div class="modal-footer justify-content-start" id="modalLinks"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function verHistorico(matricula, nome) {
+  document.getElementById('modalNome').textContent = nome + ' (' + matricula + ')';
+  document.getElementById('modalBody').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+  document.getElementById('modalLinks').innerHTML = '';
+  new bootstrap.Modal(document.getElementById('modalHistorico')).show();
+  fetch('/api/historico/' + matricula).then(r=>r.json()).then(data=>{
+    let html='';
+    html+='<h6 class="text-success fw-bold mb-2"><i class="bi bi-plus-circle me-1"></i>Lançamentos</h6>';
+    if(data.lancamentos.length){
+      html+='<div class="table-responsive mb-3"><table class="table table-sm table-hover align-middle small"><thead class="table-light"><tr><th>Data</th><th>H.Base</th><th>%</th><th>Creditado</th><th>Saldo</th><th>Descrição</th></tr></thead><tbody>';
+      data.lancamentos.forEach(l=>{
+        const z=l.saldo_fmt==='00:00';
+        html+=`<tr class="${z?'table-secondary':''}"><td>${l.data}</td><td>${l.horas_base}</td><td><span class="badge ${l.percentual==50?'badge-50':'badge-100'}">${l.percentual}%</span></td><td class="fw-semibold text-success">${l.minutos_fmt}</td><td>${z?'<span class="badge bg-secondary">Zerado</span>':`<span class="fw-semibold text-primary">${l.saldo_fmt}</span>`}</td><td class="text-muted">${l.descricao||'–'}</td></tr>`;
+      });
+      html+='</tbody></table></div>';
+    } else html+='<p class="text-muted small">Nenhum lançamento.</p>';
+
+    html+='<h6 class="text-warning fw-bold mb-2"><i class="bi bi-arrow-left-right me-1"></i>Compensações</h6>';
+    if(data.compensacoes.length){
+      html+='<div class="table-responsive mb-3"><table class="table table-sm table-hover align-middle small"><thead class="table-light"><tr><th>Data</th><th>Tipo</th><th>Compensado</th><th>Descrição</th></tr></thead><tbody>';
+      data.compensacoes.forEach(c=>{
+        html+=`<tr><td>${c.data}</td><td>${c.tipo==='dia_inteiro'?'<span class="badge bg-primary">Dia inteiro</span>':'<span class="badge bg-secondary">Parcial</span>'}</td><td class="fw-semibold text-warning">${c.minutos_fmt}</td><td class="text-muted">${c.descricao||'–'}</td></tr>`;
+      });
+      html+='</tbody></table></div>';
+    } else html+='<p class="text-muted small">Nenhuma compensação.</p>';
+
+    html+='<h6 class="text-danger fw-bold mb-2"><i class="bi bi-cash-coin me-1"></i>Pagamentos em Folha</h6>';
+    if(data.pagamentos.length){
+      html+='<div class="table-responsive"><table class="table table-sm table-hover align-middle small"><thead class="table-light"><tr><th>Data Folha</th><th>H.Base Pagas</th><th>Saldo Banco Baixado</th><th>Referência</th></tr></thead><tbody>';
+      data.pagamentos.forEach(p=>{
+        html+=`<tr><td>${p.data}</td><td class="fw-bold text-danger">${p.base_fmt}</td><td class="text-muted">${p.banco_fmt}</td><td class="text-muted">${p.descricao||'–'}</td></tr>`;
+      });
+      html+='</tbody></table></div>';
+    } else html+='<p class="text-muted small">Nenhum pagamento.</p>';
+
+    document.getElementById('modalBody').innerHTML=html;
+    document.getElementById('modalLinks').innerHTML=`
+      <a href="/lancamentos/${matricula}" class="btn btn-sm btn-outline-success me-2"><i class="bi bi-plus-circle me-1"></i>Lançar</a>
+      <a href="/compensacoes/${matricula}" class="btn btn-sm btn-outline-warning me-2"><i class="bi bi-arrow-left-right me-1"></i>Compensar</a>
+      <a href="/pagamentos/${matricula}" class="btn btn-sm btn-outline-danger"><i class="bi bi-cash-coin me-1"></i>Pagamento</a>`;
+  });
+}
+</script>
+{% endblock %}

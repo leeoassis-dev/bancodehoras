@@ -1,0 +1,386 @@
+﻿{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-shield-lock me-2 text-warning"></i>Gerenciamento de Acessos</h4>
+    <p class="text-muted small mb-0">Controle quem acessa o sistema e com qual nível de permissão</p>
+  </div>
+  <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalPreAuth">
+    <i class="bi bi-person-plus me-1"></i>Nova Pré-autorização
+  </button>
+</div>
+
+<!-- KPIs de segurança -->
+<div class="row g-3 mb-4">
+  {% set cores = {'master':'danger','secretario':'primary','chefia':'info','servidor':'secondary'} %}
+  {% set labels = {'master':'Master','secretario':'Secretário','chefia':'Chefia','servidor':'Servidor'} %}
+  {% for nv in ['master','secretario','chefia','servidor'] %}
+  <div class="col-md-3">
+    <div class="card p-3 border-start border-{{ cores[nv] }} border-4">
+      <div class="text-muted small">{{ labels[nv] }}</div>
+      <div class="fs-2 fw-bold text-{{ cores[nv] }}">{{ contadores.get(nv, 0) }}</div>
+      <div class="text-muted small">usuário(s) ativo(s)</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Abas -->
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabUsuarios">
+    <i class="bi bi-people me-1"></i>Contas Ativas ({{ usuarios|length }})
+  </button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPre">
+    <i class="bi bi-clock me-1"></i>Pré-autorizações Pendentes ({{ pre_autorizacoes|length }})
+  </button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAcessos">
+    <i class="bi bi-activity me-1"></i>Últimos Acessos
+  </button></li>
+</ul>
+
+<div class="tab-content">
+
+  <!-- ── Tab Usuários ── -->
+  <div class="tab-pane fade show active" id="tabUsuarios">
+    {% for nv in ['master','secretario','chefia','servidor'] %}
+    {% set grupo = usuarios | selectattr('nivel','equalto',nv) | list %}
+    {% if grupo %}
+    <div class="mb-4">
+      <h6 class="fw-bold mb-2">
+        <span class="badge bg-{{ cores[nv] }} me-2">{{ labels[nv] }}</span>
+        {{ grupo|length }} usuário(s)
+      </h6>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Nome</th><th>CPF</th><th>E-mail</th><th>Vínculo</th>
+                <th class="text-center">Status</th><th>Último Acesso</th><th>Senha</th>
+                <th class="text-center">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in grupo %}
+              <tr class="{{ 'text-muted' if not u.ativo }}">
+                <td class="fw-semibold">{{ u.nome }}
+                  {% if u.senha_temporaria %}<span class="badge bg-warning text-dark ms-1 small">Temp.</span>{% endif %}
+                </td>
+                <td class="small">{{ u.cpf }}</td>
+                <td class="small text-muted">{{ u.email or '–' }}</td>
+                <td class="small text-muted">
+                  {% if u.nivel in ['secretario','chefia'] %}
+                    {% if u.vinculos_lista %}
+                      {% for v in u.vinculos_lista %}<span class="badge bg-light text-dark border me-1">{{ v }}</span>{% endfor %}
+                    {% else %}<span class="text-danger">Sem vínculo</span>{% endif %}
+                  {% elif u.nivel=='servidor' %}Mat. {{ u.matricula or '–' }}
+                  {% else %}—{% endif %}
+                </td>
+                <td class="text-center">
+                  {% if u.ativo %}<span class="badge bg-success">Ativo</span>
+                  {% else %}<span class="badge bg-secondary">Inativo</span>{% endif %}
+                </td>
+                <td class="small text-muted">{{ u.ultimo_acesso or 'Nunca' }}</td>
+                <td class="text-center">
+                  {% if u.senha_temporaria %}
+                  <span class="badge bg-warning text-dark">Temporária</span>
+                  {% else %}
+                  <span class="badge bg-success">Definida</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">
+                  <div class="d-flex gap-1 justify-content-center">
+                    <!-- Alterar nível -->
+                    <button class="btn btn-sm btn-outline-primary"
+                            onclick='abrirModalNivel({{ u.id }}, {{ u.nivel|tojson }}, {{ u.vinculos_lista|tojson }}, {{ (u.matricula or "")|tojson }})'
+                            title="Alterar nível">
+                      <i class="bi bi-arrow-up-down"></i>
+                    </button>
+                    <!-- Revogar -->
+                    {% if u.ativo %}
+                    <form method="post" action="/admin/acessos/usuario/{{ u.id }}/revogar"
+                          onsubmit="return confirm('Revogar acesso de {{ u.nome }}?')">
+                      <button class="btn btn-sm btn-outline-danger" title="Revogar acesso">
+                        <i class="bi bi-x-circle"></i>
+                      </button>
+                    </form>
+                    {% endif %}
+                    <!-- Reset senha -->
+                    <form method="post" action="/admin/usuarios/{{ u.id }}/reset-senha"
+                          onsubmit="return confirm('Redefinir senha de {{ u.nome }}?')">
+                      <button class="btn btn-sm btn-outline-warning" title="Redefinir senha">
+                        <i class="bi bi-key"></i>
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- ── Tab Pré-autorizações ── -->
+  <div class="tab-pane fade" id="tabPre">
+    {% if pre_autorizacoes %}
+    <div class="alert alert-info small">
+      <i class="bi bi-info-circle me-1"></i>
+      CPFs abaixo estão autorizados a criar conta pelo link "Criar Conta" na tela de login.
+      O nível de acesso já estará pré-configurado.
+    </div>
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-dark">
+            <tr><th>CPF</th><th>Nome (cadastro)</th><th>Nível autorizado</th><th>Vínculo</th><th>Obs.</th><th>Criado em</th><th class="text-center">Ação</th></tr>
+          </thead>
+          <tbody>
+            {% for p in pre_autorizacoes %}
+            <tr>
+              <td class="fw-semibold">{{ p.cpf }}</td>
+              <td class="text-muted">{{ p.nome_servidor or '(não encontrado)' }}</td>
+              <td><span class="badge bg-{{ cores.get(p.nivel,'secondary') }}">{{ labels.get(p.nivel,p.nivel) }}</span></td>
+              <td class="small text-muted">
+                {% if p.nivel in ['secretario','chefia'] %}
+                  {% if p.vinculos_lista %}
+                    {% for v in p.vinculos_lista %}<span class="badge bg-light text-dark border me-1">{{ v }}</span>{% endfor %}
+                  {% else %}<span class="text-danger">Sem vínculo</span>{% endif %}
+                {% elif p.nivel=='servidor' %}Mat. {{ p.matricula or '–' }}
+                {% else %}—{% endif %}
+              </td>
+              <td class="small text-muted">{{ p.obs or '–' }}</td>
+              <td class="small text-muted">{{ p.criado_em[:10] }}</td>
+              <td class="text-center">
+                <form method="post" action="/admin/acessos/pre/{{ p.id }}/excluir"
+                      onsubmit="return confirm('Remover pré-autorização do CPF {{ p.cpf }}?')">
+                  <button class="btn btn-sm btn-outline-danger" title="Remover">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">
+      <i class="bi bi-person-check" style="font-size:2rem"></i>
+      <p class="mt-2">Nenhuma pré-autorização pendente.</p>
+      <p class="small">Use "Nova Pré-autorização" para liberar um CPF para auto-cadastro.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Tab Últimos Acessos ── -->
+  <div class="tab-pane fade" id="tabAcessos">
+    <div class="card">
+      {% if ultimos %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-dark">
+            <tr><th>Nome</th><th>CPF</th><th>Nível</th><th>Último Acesso</th></tr>
+          </thead>
+          <tbody>
+            {% for u in ultimos %}
+            <tr>
+              <td class="fw-semibold">{{ u.nome }}</td>
+              <td class="text-muted small">{{ u.cpf }}</td>
+              <td><span class="badge bg-{{ cores.get(u.nivel,'secondary') }}">{{ labels.get(u.nivel,u.nivel) }}</span></td>
+              <td>{{ u.ultimo_acesso }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center text-muted py-4">Nenhum acesso registrado.</div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal: Nova Pré-autorização -->
+<div class="modal fade" id="modalPreAuth" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Nova Pré-autorização de Acesso</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/admin/acessos/pre/novo">
+        <div class="modal-body">
+          <div class="alert alert-info small">
+            O CPF pré-autorizado poderá criar conta pelo link "Criar Conta" na tela de login.
+            O nível de acesso estará pré-configurado conforme definido aqui.
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">CPF <span class="text-danger">*</span></label>
+            <input type="text" name="cpf" id="cpfModal" class="form-control" maxlength="14"
+                   placeholder="000.000.000-00" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Nível de acesso</label>
+            <select name="nivel" id="nivelModal" class="form-select" onchange="ajustarModal()">
+              <option value="servidor">Servidor</option>
+              <option value="chefia">Chefia Imediata</option>
+              <option value="secretario">Secretário</option>
+              <option value="master">Master (RH)</option>
+            </select>
+          </div>
+          <div id="modalSecDiv" class="mb-3" style="display:none">
+            <label class="form-label fw-semibold">Secretaria(s) vinculada(s) <small class="text-muted">(selecione uma ou mais)</small></label>
+            <div class="border rounded p-2" style="max-height:160px;overflow-y:auto">
+              {% for s in secretarias %}
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="vinculos" value="{{ s }}" id="msec_{{ loop.index }}">
+                <label class="form-check-label small" for="msec_{{ loop.index }}">{{ s }}</label>
+              </div>
+              {% endfor %}
+              {% if not secretarias %}<p class="text-muted small mb-0">Nenhuma secretaria cadastrada nos servidores.</p>{% endif %}
+            </div>
+          </div>
+          <div id="modalSetDiv" class="mb-3" style="display:none">
+            <label class="form-label fw-semibold">Departamento(s) vinculado(s) <small class="text-muted">(selecione um ou mais)</small></label>
+            <div class="border rounded p-2" style="max-height:160px;overflow-y:auto">
+              {% for s in setores %}
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="vinculos" value="{{ s }}" id="mset_{{ loop.index }}">
+                <label class="form-check-label small" for="mset_{{ loop.index }}">{{ s }}</label>
+              </div>
+              {% endfor %}
+              {% if not setores %}<p class="text-muted small mb-0">Nenhum departamento cadastrado.</p>{% endif %}
+            </div>
+          </div>
+          <div id="modalMatDiv" class="mb-3">
+            <label class="form-label fw-semibold">Servidor (matrícula)</label>
+            <select name="matricula" class="form-select">
+              <option value="">— Selecione (se servidor) —</option>
+              {% for s in servidores %}<option value="{{ s.matricula }}">{{ s.nome }} ({{ s.matricula }})</option>{% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Observação</label>
+            <input type="text" name="obs" class="form-control" placeholder="Opcional">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check me-1"></i>Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Alterar Nível -->
+<div class="modal fade" id="modalNivel" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-arrow-up-down me-2"></i>Alterar Nível de Acesso</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="formNivel">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Novo nível</label>
+            <select name="nivel" id="nivelNvModal" class="form-select" onchange="ajustarModalNivel()">
+              <option value="servidor">Servidor</option>
+              <option value="chefia">Chefia Imediata</option>
+              <option value="secretario">Secretário</option>
+              <option value="master">Master (RH)</option>
+            </select>
+          </div>
+          <div id="nvSecDiv" class="mb-3" style="display:none">
+            <label class="form-label fw-semibold">Secretaria(s) <small class="text-muted">(uma ou mais)</small></label>
+            <div class="border rounded p-2" style="max-height:160px;overflow-y:auto" id="nvSecChecks">
+              {% for s in secretarias %}
+              <div class="form-check">
+                <input class="form-check-input nv-vinculos" type="checkbox" name="vinculos" value="{{ s }}" id="nvsec_{{ loop.index }}">
+                <label class="form-check-label small" for="nvsec_{{ loop.index }}">{{ s }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          <div id="nvSetDiv" class="mb-3" style="display:none">
+            <label class="form-label fw-semibold">Departamento(s) <small class="text-muted">(um ou mais)</small></label>
+            <div class="border rounded p-2" style="max-height:160px;overflow-y:auto" id="nvSetChecks">
+              {% for s in setores %}
+              <div class="form-check">
+                <input class="form-check-input nv-vinculos" type="checkbox" name="vinculos" value="{{ s }}" id="nvset_{{ loop.index }}">
+                <label class="form-check-label small" for="nvset_{{ loop.index }}">{{ s }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          <div id="nvMatDiv" class="mb-3">
+            <label class="form-label fw-semibold">Matrícula (se servidor)</label>
+            <select name="matricula" class="form-select">
+              <option value="">— Selecione —</option>
+              {% for s in servidores %}<option value="{{ s.matricula }}">{{ s.nome }} ({{ s.matricula }})</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Máscara CPF modal
+document.getElementById('cpfModal').addEventListener('input',function(){
+  let v=this.value.replace(/\D/g,'').slice(0,11);
+  if(v.length>9)v=v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');
+  else if(v.length>6)v=v.replace(/(\d{3})(\d{3})(\d{0,3})/,'$1.$2.$3');
+  else if(v.length>3)v=v.replace(/(\d{3})(\d{0,3})/,'$1.$2');
+  this.value=v;
+});
+
+function ajustarModal() {
+  const nv = document.getElementById('nivelModal').value;
+  document.getElementById('modalSecDiv').style.display = nv==='secretario' ? '' : 'none';
+  document.getElementById('modalSetDiv').style.display = nv==='chefia'     ? '' : 'none';
+  document.getElementById('modalMatDiv').style.display = nv==='servidor'   ? '' : 'none';
+}
+ajustarModal();
+
+function ajustarModalNivel() {
+  const nv = document.getElementById('nivelNvModal').value;
+  document.getElementById('nvSecDiv').style.display = nv==='secretario' ? '' : 'none';
+  document.getElementById('nvSetDiv').style.display = nv==='chefia'     ? '' : 'none';
+  document.getElementById('nvMatDiv').style.display = nv==='servidor'   ? '' : 'none';
+}
+
+function abrirModalNivel(uid, nivel, vinculosJson, mat) {
+  document.getElementById('formNivel').action = '/admin/acessos/usuario/' + uid + '/alterar-nivel';
+  const sel = document.getElementById('nivelNvModal');
+  sel.value = nivel;
+  ajustarModalNivel();
+  // Pré-marcar vínculos
+
+  let vinculos = Array.isArray(vinculosJson) ? vinculosJson : [];
+  document.querySelectorAll('.nv-vinculos').forEach(cb => {
+    cb.checked = vinculos.includes(cb.value);
+  });
+  const matSel = document.querySelector('#nvMatDiv select');
+  if(matSel) matSel.value = mat;
+  new bootstrap.Modal(document.getElementById('modalNivel')).show();
+}
+</script>
+{% endblock %}

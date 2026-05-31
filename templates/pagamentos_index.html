@@ -1,0 +1,91 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-cash-coin me-2 text-danger"></i>Pagamento de Banco de Horas</h4>
+    <p class="text-muted small mb-0">Todos os servidores com saldo disponível para pagamento</p>
+  </div>
+  <a href="/relatorios?aba=pagamentos" class="btn btn-outline-danger btn-sm">
+    <i class="bi bi-file-earmark-text me-1"></i>Relatório de Pagamentos
+  </a>
+</div>
+
+{% if pendentes %}
+{% set vencidos = pendentes | selectattr('qtd_vencidas', 'gt', 0) | list %}
+{% if vencidos %}
+<div class="alert alert-warning d-flex gap-2 align-items-center mb-3">
+  <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+  <div>
+    <strong>{{ vencidos|length }} servidor(es)</strong> possuem horas <strong>vencidas (+6 meses)</strong> aguardando pagamento ou compensação.
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Matrícula</th>
+          <th>Servidor</th>
+          <th>Secretaria</th>
+          <th>Departamento</th>
+          <th class="text-center">Total Lançamentos</th>
+          <th class="text-center text-danger">Vencidas</th>
+          <th class="text-center" title="Horas base totais disponíveis para pagamento">H. Base Total</th>
+          <th class="text-center" title="Horas base vencidas (+6 meses)">H. Base Vencidas</th>
+          <th class="text-center">Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pendentes %}
+        <tr class="{{ 'table-warning bg-opacity-25' if p.acima_limite }}">
+          <td>
+            <span class="badge bg-secondary">{{ p.matricula }}</span>
+            {% if p.funcao_gratificada %}<span class="badge bg-warning text-dark ms-1"><i class="bi bi-star-fill"></i> FG</span>{% endif %}
+          </td>
+          <td class="fw-semibold">{{ p.nome }}</td>
+          <td class="small text-muted">{{ p.secretaria or '–' }}</td>
+          <td class="small text-muted">{{ p.setor or '–' }}</td>
+          <td class="text-center">
+            <span class="badge bg-secondary">{{ p.qtd_total }}</span>
+          </td>
+          <td class="text-center">
+            {% if p.qtd_vencidas > 0 %}
+            <span class="badge bg-danger">{{ p.qtd_vencidas }}</span>
+            {% else %}
+            <span class="text-muted">–</span>
+            {% endif %}
+          </td>
+          <td class="text-center fw-bold text-primary">
+            {{ fmt(p.total_base_todos) }}
+            {% if p.acima_limite %}
+            <br><span class="badge bg-warning text-dark small" title="Acima do limite legal de 45h">⚠️ +45h — Mat. {{ p.matricula }}</span>
+            {% endif %}
+          </td>
+          <td class="text-center fw-bold {{ 'text-danger' if p.qtd_vencidas > 0 else 'text-muted' }}">
+            {% if p.qtd_vencidas > 0 %}
+              {{ fmt(p.total_base_vencidas) }}
+            {% else %}
+              –
+            {% endif %}
+          </td>
+          <td class="text-center">
+            <a href="/pagamentos/{{ p.matricula }}" class="btn btn-sm btn-danger">
+              <i class="bi bi-cash-coin me-1"></i>Registrar
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-check-circle-fill text-success" style="font-size:3rem"></i>
+  <p class="mt-3 fs-5">Nenhum servidor possui saldo disponível no momento.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="row justify-content-center">
+  <div class="col-lg-7 col-xl-6">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h4 class="mb-0"><i class="bi bi-person-lines-fill me-2 text-primary"></i>Atualização Cadastral</h4>
+        <span class="text-muted small">Atualize seu e-mail e, se necessário, altere sua senha de acesso.</span>
+      </div>
+      <a href="/portal" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+    </div>
+
+    <div class="card p-4">
+      <div class="row g-3 mb-3">
+        <div class="col-md-7">
+          <label class="form-label small fw-semibold mb-1">Nome</label>
+          <input type="text" class="form-control bg-light" value="{{ usuario.nome }}" readonly>
+        </div>
+        <div class="col-md-5">
+          <label class="form-label small fw-semibold mb-1">CPF</label>
+          <input type="text" class="form-control bg-light" value="{{ usuario.cpf }}" readonly>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold mb-1">Perfil de acesso</label>
+          <input type="text" class="form-control bg-light"
+                 value="{{ {'master':'Master','secretario':'Secretário','chefia':'Chefia','servidor':'Servidor'}.get(usuario.nivel, usuario.nivel) }}"
+                 readonly>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold mb-1">Último acesso</label>
+          <input type="text" class="form-control bg-light" value="{{ usuario.ultimo_acesso or 'Nunca registrado' }}" readonly>
+        </div>
+      </div>
+
+      <hr>
+
+      <form method="post">
+        <div class="mb-4">
+          <label class="form-label fw-semibold">E-mail</label>
+          <input type="email" name="email" class="form-control"
+                 value="{{ usuario.email or '' }}" placeholder="seu@email.com">
+          <div class="form-text">Este e-mail será usado para recuperação de senha quando o SMTP estiver configurado.</div>
+        </div>
+
+        <div class="alert alert-light border small">
+          <i class="bi bi-info-circle me-1 text-primary"></i>
+          Para alterar somente o e-mail, deixe os campos de senha em branco.
+        </div>
+
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label fw-semibold">Senha atual</label>
+            <input type="password" name="senha_atual" class="form-control" autocomplete="current-password">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Nova senha</label>
+            <input type="password" name="senha_nova" class="form-control" minlength="8" autocomplete="new-password">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Confirmar nova senha</label>
+            <input type="password" name="confirmar" class="form-control" minlength="8" autocomplete="new-password">
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <a href="/portal" class="btn btn-outline-secondary">Cancelar</a>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-circle me-1"></i>Salvar alterações
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

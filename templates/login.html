@@ -1,0 +1,74 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login — Banco de Horas Ibiporã</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    body { background:#1a3a6b; min-height:100vh; display:flex; align-items:center; }
+    .card { border:none; box-shadow:0 8px 32px rgba(0,0,0,.25); border-radius:16px; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-5 col-lg-4">
+
+      <div class="text-center mb-4">
+        <i class="bi bi-clock-history text-white" style="font-size:3rem"></i>
+        <h4 class="text-white mt-2 mb-0">Banco de Horas</h4>
+        <p class="text-white-50 small">Prefeitura Municipal de Ibiporã</p>
+      </div>
+
+      <div class="card p-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for cat, msg in messages %}
+            <div class="alert alert-{{ cat }} py-2 small">{{ msg }}</div>
+          {% endfor %}
+        {% endwith %}
+
+        <h5 class="mb-4 text-center fw-bold">Acesso ao Sistema</h5>
+
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">CPF</label>
+            <input type="text" name="cpf" id="cpf" class="form-control form-control-lg"
+                   placeholder="000.000.000-00" maxlength="14" required autofocus>
+          </div>
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Senha</label>
+            <input type="password" name="senha" class="form-control form-control-lg"
+                   placeholder="Sua senha" required>
+          </div>
+          <button type="submit" class="btn btn-primary w-100 btn-lg fw-semibold">
+            <i class="bi bi-box-arrow-in-right me-2"></i>Entrar
+          </button>
+        </form>
+
+        <div class="text-center mt-3 d-flex justify-content-between">
+          <a href="/recuperar-senha" class="text-muted small">
+            <i class="bi bi-key me-1"></i>Esqueci minha senha
+          </a>
+          <a href="/criar-conta" class="text-primary small fw-semibold">
+            <i class="bi bi-person-plus me-1"></i>Criar conta
+          </a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+document.getElementById('cpf').addEventListener('input', function () {
+  let v = this.value.replace(/\D/g, '').slice(0,11);
+  if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');
+  else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{0,3})/,'$1.$2.$3');
+  else if (v.length > 3) v = v.replace(/(\d{3})(\d{0,3})/,'$1.$2');
+  this.value = v;
+});
+</script>
+</body>
+</html>

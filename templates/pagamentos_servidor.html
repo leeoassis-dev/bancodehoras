@@ -1,0 +1,269 @@
+﻿{% extends "base.html" %}
+{% block content %}
+
+{% include '_alerta_fg.html' %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="mb-0"><i class="bi bi-cash-coin me-2 text-danger"></i>Pagamento — {{ servidor.nome }}</h5>
+    <span class="text-muted small">Matrícula {{ servidor.matricula }}
+      {% if servidor.secretaria %} | {{ servidor.secretaria }}{% endif %}
+      {% if servidor.setor %} | {{ servidor.setor }}{% endif %}
+    </span>
+  </div>
+  <a href="/pagamentos" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+</div>
+
+{% if itens %}
+
+<!-- Alertas dinâmicos -->
+<div id="alertaLimite" class="alert alert-warning d-none mb-2">
+  <i class="bi bi-exclamation-triangle-fill me-2"></i>
+  <strong>Atenção — Matrícula {{ servidor.matricula }}:</strong>
+  O total de horas base para pagamento ultrapassa o limite legal de <strong>45:00</strong>.
+  O pagamento será permitido, mas <strong>é obrigatória justificativa</strong>.
+</div>
+<div id="alertaNaoVenc" class="alert alert-info d-none mb-2">
+  <i class="bi bi-info-circle-fill me-2"></i>
+  Horas <strong>não vencidas</strong> (menos de 6 meses) estão sendo incluídas.
+  O pagamento será permitido, mas <strong>é obrigatória justificativa</strong>.
+</div>
+
+<!-- Cabeçalho com total dinâmico -->
+<div class="alert alert-danger mb-3">
+  <div class="row align-items-center">
+    <div class="col-md-8">
+      <strong><i class="bi bi-calculator me-1"></i>Total de horas base para lançar na folha:</strong>
+      <span class="fs-4 ms-2 fw-bold" id="totalBase">00:00</span>
+      <span class="ms-2 text-muted small">(limite legal: 45:00)</span>
+    </div>
+    <div class="col-md-4 text-end">
+      <button class="btn btn-danger" id="btnRegistrar" data-bs-toggle="modal" data-bs-target="#modalPagamento">
+        <i class="bi bi-check2-circle me-1"></i>Registrar Baixa
+      </button>
+    </div>
+  </div>
+</div>
+
+<form id="formPagamento" method="post" action="/pagamentos/{{ servidor.matricula }}/registrar">
+  <input type="hidden" name="data_pagamento" id="hid_data">
+  <input type="hidden" name="descricao" id="hid_descricao">
+  <input type="hidden" name="justificativa" id="hid_justificativa">
+
+  <div class="card mb-4">
+    <div class="card-header bg-white fw-semibold small">
+      <i class="bi bi-pencil-square me-1"></i>
+      Edite as horas base a pagar por lançamento (mais antigo → mais recente)
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Data Realização</th>
+            <th>Status</th>
+            <th class="text-center">H. Base Realizadas</th>
+            <th class="text-center">%</th>
+            <th class="text-center">Saldo Banco</th>
+            <th class="text-center text-danger fw-bold" style="min-width:120px">
+              H. Base p/ Folha <i class="bi bi-pencil-fill small"></i>
+            </th>
+            <th>Descrição</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in itens %}
+          <tr class="{{ '' if i.vencido else 'table-info bg-opacity-25' }}">
+            <td>{{ i.data }}</td>
+            <td>
+              {% if i.vencido %}
+              <span class="badge bg-danger">Vencida</span>
+              {% else %}
+              <span class="badge bg-info text-dark">Não vencida</span>
+              {% endif %}
+            </td>
+            <td class="text-center">{{ i.horas_base }}</td>
+            <td class="text-center">
+              <span class="badge {{ 'badge-50' if i.percentual==50 else 'badge-100' }}">{{ i.percentual }}%</span>
+            </td>
+            <td class="text-center text-muted">{{ fmt(i.saldo_minutos) }}</td>
+            <td class="text-center">
+              <input type="text" name="horas_{{ i.id }}"
+                     class="form-control form-control-sm text-center fw-bold horas-input"
+                     value="{{ fmt(i.saldo_base_minutos) }}"
+                     data-max="{{ fmt(i.saldo_base_minutos) }}"
+                     data-vencido="{{ '1' if i.vencido else '0' }}"
+                     placeholder="HH:MM" pattern="\d{1,3}:\d{2}"
+                     style="max-width:90px;margin:auto">
+            </td>
+            <td class="text-muted small">{{ i.descricao or '–' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td colspan="5">Total p/ folha</td>
+            <td class="text-center text-danger" id="totalRodape">00:00</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</form>
+
+{% else %}
+<div class="alert alert-success">
+  <i class="bi bi-check-circle me-1"></i>Este servidor não possui horas com saldo disponível.
+</div>
+{% endif %}
+
+<!-- Histórico de pagamentos -->
+{% if historico %}
+<h6 class="fw-bold mt-2 mb-2"><i class="bi bi-receipt me-1 text-secondary"></i>Histórico de Pagamentos</h6>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr><th>Data Pagamento</th><th>Referência / Competência</th><th class="text-center">Estornar</th></tr>
+      </thead>
+      <tbody>
+        {% for p in historico %}
+        <tr>
+          <td>{{ p.data_pagamento }}</td>
+          <td>{{ p.descricao or '–' }}</td>
+          <td class="text-center">
+            <form method="post" action="/pagamentos/{{ p.id }}/estornar"
+                  onsubmit="return confirm('Estornar? As horas voltarão ao banco.')">
+              <button class="btn btn-sm btn-outline-warning">
+                <i class="bi bi-arrow-counterclockwise"></i> Estornar
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Modal de confirmação -->
+<div class="modal fade" id="modalPagamento" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-cash-coin me-2"></i>Confirmar Baixa por Pagamento</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <!-- Avisos contextuais -->
+        <div id="aviso45" class="alert alert-warning small d-none">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          <strong>Total acima de 45:00 — Matrícula {{ servidor.matricula }}</strong><br>
+          Justificativa obrigatória abaixo.
+        </div>
+        <div id="avisoNaoVenc" class="alert alert-info small d-none">
+          <i class="bi bi-info-circle-fill me-1"></i>
+          Horas não vencidas incluídas — justificativa obrigatória.
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Data do pagamento em folha</label>
+          <input type="date" id="modal_data" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Referência / Competência da folha</label>
+          <input type="text" id="modal_desc" class="form-control"
+                 placeholder="Ex: Folha 06/2026 – competência maio/2026">
+        </div>
+        <div class="mb-3" id="campoJustificativa">
+          <label class="form-label fw-semibold">
+            Justificativa <span class="text-danger" id="starJust">*</span>
+          </label>
+          <textarea id="modal_just" class="form-control" rows="2"
+                    placeholder="Obrigatória para horas não vencidas ou acima de 45h"></textarea>
+        </div>
+        <div class="border rounded p-3 bg-light">
+          <div class="small text-muted mb-1">Horas base que serão lançadas na folha:</div>
+          <div class="fw-bold fs-5 text-danger" id="modal_total">–</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="btnConfirmar">
+          <i class="bi bi-check2-circle me-1"></i>Confirmar Pagamento
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const LIMITE = {{ limite }};
+
+function parseHM(str) {
+  const p = str.trim().split(':');
+  if (p.length !== 2) return 0;
+  return parseInt(p[0]) * 60 + parseInt(p[1]);
+}
+function fmtHM(m) {
+  m = Math.abs(Math.round(m));
+  return String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+}
+
+function calcularEstado() {
+  let total = 0, temNaoVenc = false;
+  document.querySelectorAll('.horas-input').forEach(inp => {
+    const v = parseHM(inp.value);
+    total += v;
+    if (v > 0 && inp.dataset.vencido === '0') temNaoVenc = true;
+  });
+  document.getElementById('totalBase').textContent = fmtHM(total);
+  document.getElementById('totalRodape').textContent = fmtHM(total);
+  document.getElementById('modal_total').textContent = fmtHM(total);
+
+  const acima = total > LIMITE;
+  document.getElementById('alertaLimite').classList.toggle('d-none', !acima);
+  document.getElementById('alertaNaoVenc').classList.toggle('d-none', !temNaoVenc);
+  document.getElementById('aviso45').classList.toggle('d-none', !acima);
+  document.getElementById('avisoNaoVenc').classList.toggle('d-none', !temNaoVenc);
+
+  const justObrig = acima || temNaoVenc;
+  document.getElementById('starJust').textContent = justObrig ? '*' : '';
+  document.getElementById('modal_just').required = justObrig;
+
+  return { total, temNaoVenc, acima };
+}
+
+document.querySelectorAll('.horas-input').forEach(inp => {
+  inp.addEventListener('input', calcularEstado);
+  inp.addEventListener('blur', () => {
+    const maxMin = parseHM(inp.dataset.max);
+    const val = parseHM(inp.value);
+    if (val > maxMin) { inp.value = fmtHM(maxMin); calcularEstado(); }
+  });
+});
+
+document.getElementById('modal_data').valueAsDate = new Date();
+
+document.getElementById('btnConfirmar').addEventListener('click', () => {
+  const data = document.getElementById('modal_data').value;
+  if (!data) { alert('Informe a data do pagamento.'); return; }
+  const { acima, temNaoVenc } = calcularEstado();
+  const just = document.getElementById('modal_just').value.trim();
+  if ((acima || temNaoVenc) && !just) {
+    alert('Justificativa obrigatória para horas não vencidas ou acima de 45h.');
+    document.getElementById('modal_just').focus();
+    return;
+  }
+  document.getElementById('hid_data').value = data;
+  document.getElementById('hid_descricao').value = document.getElementById('modal_desc').value;
+  document.getElementById('hid_justificativa').value = just;
+  document.getElementById('formPagamento').submit();
+});
+
+calcularEstado();
+</script>
+{% endblock %}

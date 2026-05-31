@@ -1,0 +1,110 @@
+﻿{% extends "base.html" %}
+{% block content %}
+
+<div class="row mb-4 align-items-center">
+  <div class="col">
+    <h4 class="mb-0"><i class="bi bi-person-badge me-2 text-primary"></i>Meu Banco de Horas</h4>
+    <span class="text-muted">{{ servidor.nome }} — Matrícula {{ servidor.matricula }}</span>
+    {% if servidor.secretaria %}<span class="ms-2 text-muted small">| {{ servidor.secretaria }}</span>{% endif %}
+    {% if servidor.setor %}<span class="ms-2 text-muted small">| {{ servidor.setor }}</span>{% endif %}
+  </div>
+  <div class="col-auto">
+    <div class="card px-4 py-2 text-center border-start border-4 {{ 'border-success' if saldo >= 0 else 'border-danger' }}">
+      <div class="small text-muted">Saldo atual</div>
+      <div class="fs-3 fw-bold {{ 'text-success' if saldo >= 0 else 'text-danger' }}">{{ fmt(saldo) }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Abas -->
+<ul class="nav nav-tabs mb-3" id="tabsHistorico">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabLanc"><i class="bi bi-plus-circle me-1 text-success"></i>Lançamentos ({{ lancamentos|length }})</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabComp"><i class="bi bi-arrow-left-right me-1 text-warning"></i>Compensações ({{ compensacoes|length }})</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPag"><i class="bi bi-cash-coin me-1 text-danger"></i>Pagamentos ({{ pagamentos|length }})</button></li>
+</ul>
+
+<div class="tab-content">
+
+  <!-- Lançamentos -->
+  <div class="tab-pane fade show active" id="tabLanc">
+    <div class="card">
+      {% if lancamentos %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 small">
+          <thead class="table-dark">
+            <tr><th>Data</th><th>H. Base</th><th>%</th><th>Creditado</th><th>Saldo Restante</th><th>Descrição</th></tr>
+          </thead>
+          <tbody>
+            {% for l in lancamentos %}
+            {% set sl = l.minutos_creditados - l.consumido %}
+            <tr>
+              <td>{{ l.data }}</td>
+              <td>{{ l.horas_base }}</td>
+              <td><span class="badge {{ 'badge-50' if l.percentual==50 else 'badge-100' }}">{{ l.percentual }}%</span></td>
+              <td class="text-success fw-semibold">{{ fmt(l.minutos_creditados) }}</td>
+              <td>{% if sl <= 0 %}<span class="badge bg-secondary">Zerado</span>
+                  {% elif sl < l.minutos_creditados %}<span class="text-warning fw-semibold">{{ fmt(sl) }}</span>
+                  {% else %}<span class="text-success fw-semibold">{{ fmt(sl) }}</span>{% endif %}</td>
+              <td class="text-muted">{{ l.descricao or '–' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:2rem"></i><p class="mt-2">Nenhum lançamento.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Compensações -->
+  <div class="tab-pane fade" id="tabComp">
+    <div class="card">
+      {% if compensacoes %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 small">
+          <thead class="table-dark"><tr><th>Data</th><th>Tipo</th><th>Compensado</th><th>Descrição</th></tr></thead>
+          <tbody>
+            {% for c in compensacoes %}
+            <tr>
+              <td>{{ c.data }}</td>
+              <td>{% if c.tipo=='dia_inteiro' %}<span class="badge bg-primary">Dia inteiro</span>{% else %}<span class="badge bg-secondary">Parcial</span>{% endif %}</td>
+              <td class="text-warning fw-semibold">{{ fmt(c.minutos_compensados) }}</td>
+              <td class="text-muted">{{ c.descricao or '–' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:2rem"></i><p class="mt-2">Nenhuma compensação.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Pagamentos -->
+  <div class="tab-pane fade" id="tabPag">
+    <div class="card">
+      {% if pagamentos %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 small">
+          <thead class="table-dark"><tr><th>Data Folha</th><th>H. Base Pagas</th><th>Referência</th></tr></thead>
+          <tbody>
+            {% for p in pagamentos %}
+            <tr>
+              <td>{{ p.data_pagamento }}</td>
+              <td class="text-danger fw-bold">{{ fmt(p.base_paga|int) }}</td>
+              <td class="text-muted">{{ p.descricao or '–' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:2rem"></i><p class="mt-2">Nenhum pagamento em folha.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

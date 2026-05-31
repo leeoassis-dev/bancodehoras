@@ -1,0 +1,87 @@
+﻿{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-archive-fill me-2 text-secondary"></i>Servidores Arquivados</h4>
+    <p class="text-muted small mb-0">Exonerados, aposentados e desligados — dados preservados para consulta</p>
+  </div>
+  <a href="/servidores" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Servidores Ativos</a>
+</div>
+
+<form method="get" class="card p-3 mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label small fw-semibold mb-1"><i class="bi bi-search me-1"></i>Buscar arquivado</label>
+      <input type="text" name="busca" class="form-control" placeholder="Matrícula ou nome..." value="{{ busca }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Secretaria</label>
+      <select name="secretaria" class="form-select">
+        <option value="">— Todas —</option>
+        {% for s in secretarias %}<option value="{{ s }}" {{ 'selected' if s==secretaria_sel }}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Departamento</label>
+      <select name="setor" class="form-select">
+        <option value="">— Todos —</option>
+        {% for s in setores %}<option value="{{ s }}" {{ 'selected' if s==setor_sel }}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2 d-flex gap-2">
+      <button type="submit" class="btn btn-secondary flex-fill">Buscar</button>
+      {% if busca or secretaria_sel or setor_sel %}<a href="/arquivados" class="btn btn-outline-secondary">✕</a>{% endif %}
+    </div>
+  </div>
+</form>
+
+{% if servidores %}
+<div class="card">
+  <div class="card-header bg-white small text-muted">{{ servidores|length }} arquivado(s) encontrado(s)</div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Matrícula</th><th>Nome</th><th>CPF</th><th>Secretaria</th><th>Departamento</th><th>Cargo</th>
+          <th class="text-center">Saldo Banco</th><th class="text-center">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in servidores %}
+        <tr class="text-muted">
+          <td><span class="badge bg-secondary">{{ s.matricula }}</span></td>
+          <td class="fw-semibold">{{ s.nome }}</td>
+          <td class="small">{{ s.cpf or '–' }}</td>
+          <td class="small">{{ s.secretaria or '–' }}</td>
+          <td class="small">{{ s.setor or '–' }}</td>
+          <td class="small">{{ s.cargo or '–' }}</td>
+          <td class="text-center">
+            <span class="{{ 'saldo-positivo' if s.saldo_minutos>0 else 'text-muted' }}">{{ fmt(s.saldo_minutos) }}</span>
+          </td>
+          <td class="text-center">
+            <div class="d-flex gap-1 justify-content-center">
+              <a href="/lancamentos/{{ s.matricula }}" class="btn btn-sm btn-outline-secondary" title="Consultar histórico">
+                <i class="bi bi-eye"></i> Consultar
+              </a>
+              <form method="post" action="/servidores/{{ s.matricula }}/restaurar"
+                    onsubmit="return confirm('Restaurar {{ s.nome }} para a lista ativa?')">
+                <button class="btn btn-sm btn-outline-success" title="Restaurar">
+                  <i class="bi bi-arrow-counterclockwise"></i> Restaurar
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-archive" style="font-size:3rem"></i>
+  <p class="mt-3">Nenhum servidor arquivado{{ ' para os filtros aplicados' if busca or secretaria_sel or setor_sel }}.</p>
+</div>
+{% endif %}
+{% endblock %}

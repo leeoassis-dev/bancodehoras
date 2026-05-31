@@ -1,0 +1,58 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card p-4">
+      <div class="d-flex justify-content-between mb-4">
+        <h5 class="mb-0"><i class="bi bi-envelope-gear me-2 text-secondary"></i>Configuração de E-mail (SMTP)</h5>
+        <a href="/admin/usuarios" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+      </div>
+      <div class="alert alert-info small">
+        <i class="bi bi-info-circle me-1"></i>
+        Configure o servidor SMTP para envio de senhas temporárias e recuperação de senha.
+        Funciona com Gmail (smtp.gmail.com:587), Outlook, e outros.
+      </div>
+      <form method="post">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label fw-semibold">Servidor SMTP</label>
+            <input type="text" name="smtp_host" class="form-control" placeholder="smtp.gmail.com"
+                   value="{{ cfg.get('smtp_host','') }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Porta</label>
+            <input type="number" name="smtp_port" class="form-control" placeholder="587"
+                   value="{{ cfg.get('smtp_port','587') }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Usuário / E-mail de envio</label>
+            <input type="email" name="smtp_user" class="form-control"
+                   placeholder="sistema@ibipora.pr.gov.br"
+                   value="{{ cfg.get('smtp_user','') }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Senha do e-mail</label>
+            <input type="password" name="smtp_pass" class="form-control"
+                   placeholder="{{ '••••••••' if cfg.get('smtp_pass') else 'Informe a senha' }}">
+            <small class="text-muted">Deixe em branco para manter a senha atual.</small>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Nome/E-mail do remetente (From)</label>
+            <input type="text" name="smtp_from" class="form-control"
+                   placeholder="Banco de Horas Ibiporã &lt;sistema@ibipora.pr.gov.br&gt;"
+                   value="{{ cfg.get('smtp_from','') }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Testar envio (e-mail de destino)</label>
+            <input type="email" name="email_teste" class="form-control"
+                   placeholder="seu@email.com (opcional — envia um e-mail de teste ao salvar)">
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-4">
+          <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Salvar configurações</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

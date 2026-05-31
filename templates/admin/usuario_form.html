@@ -1,0 +1,117 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7">
+    <div class="card p-4">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h5 class="mb-0"><i class="bi bi-person-gear me-2 text-info"></i>{{ 'Editar Usuário' if usuario else 'Novo Usuário' }}</h5>
+        <a href="/admin/usuarios" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+      </div>
+
+      <form method="post">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">CPF <span class="text-danger">*</span></label>
+            <input type="text" name="cpf" id="cpf" class="form-control"
+                   value="{{ usuario.cpf if usuario else '' }}"
+                   maxlength="14" placeholder="000.000.000-00"
+                   {{ 'readonly' if usuario }} required>
+            {% if usuario %}<small class="text-muted">CPF não pode ser alterado.</small>{% endif %}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">E-mail</label>
+            <input type="email" name="email" class="form-control"
+                   value="{{ usuario.email if usuario else '' }}" placeholder="Para recuperação de senha">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Nome completo <span class="text-danger">*</span></label>
+            <input type="text" name="nome" class="form-control"
+                   value="{{ usuario.nome if usuario else '' }}" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Nível de acesso <span class="text-danger">*</span></label>
+            <select name="nivel" id="nivelSelect" class="form-select" onchange="ajustarCampos()" required>
+              {% for nv, label in [('master','Master (RH)'),('secretario','Secretário'),('chefia','Chefia Imediata'),('servidor','Servidor')] %}
+              <option value="{{ nv }}" {{ 'selected' if usuario and usuario.nivel==nv }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Secretaria (para secretário) -->
+          <div class="col-md-8" id="campoSecretaria" style="display:none">
+            <label class="form-label fw-semibold">Secretaria vinculada</label>
+            <select name="secretaria" class="form-select">
+              <option value="">— Selecione —</option>
+              {% for s in secretarias %}
+              <option value="{{ s }}" {{ 'selected' if usuario and usuario.secretaria==s }}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Setor (para chefia) -->
+          <div class="col-md-8" id="campoSetor" style="display:none">
+            <label class="form-label fw-semibold">Departamento vinculado</label>
+            <select name="setor" class="form-select">
+              <option value="">— Selecione —</option>
+              {% for s in setores %}
+              <option value="{{ s }}" {{ 'selected' if usuario and usuario.setor==s }}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Matrícula (para servidor) -->
+          <div class="col-md-8" id="campoMatricula" style="display:none">
+            <label class="form-label fw-semibold">Servidor vinculado</label>
+            <select name="matricula" class="form-select">
+              <option value="">— Selecione —</option>
+              {% for s in servidores %}
+              <option value="{{ s.matricula }}" {{ 'selected' if usuario and usuario.matricula==s.matricula }}>
+                {{ s.nome }} ({{ s.matricula }})
+              </option>
+              {% endfor %}
+            </select>
+            <small class="text-muted">O servidor deve ter CPF cadastrado e será linkado por matrícula.</small>
+          </div>
+
+        </div>
+
+        {% if not usuario %}
+        <div class="alert alert-info small mt-3">
+          <i class="bi bi-info-circle me-1"></i>
+          Uma senha temporária será gerada automaticamente. Se o usuário tiver e-mail, ela será enviada por e-mail.
+          Caso contrário, será exibida na tela após o cadastro.
+        </div>
+        {% endif %}
+
+        <div class="d-flex gap-2 mt-4">
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Salvar</button>
+          <a href="/admin/usuarios" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function ajustarCampos() {
+  const nivel = document.getElementById('nivelSelect').value;
+  document.getElementById('campoSecretaria').style.display = nivel==='secretario' ? '' : 'none';
+  document.getElementById('campoSetor').style.display      = nivel==='chefia'     ? '' : 'none';
+  document.getElementById('campoMatricula').style.display  = nivel==='servidor'   ? '' : 'none';
+}
+ajustarCampos();
+
+const cpfInput = document.getElementById('cpf');
+if (cpfInput && !cpfInput.readOnly) {
+  cpfInput.addEventListener('input', function () {
+    let v = this.value.replace(/\D/g,'').slice(0,11);
+    if(v.length>9)v=v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');
+    else if(v.length>6)v=v.replace(/(\d{3})(\d{3})(\d{0,3})/,'$1.$2.$3');
+    else if(v.length>3)v=v.replace(/(\d{3})(\d{0,3})/,'$1.$2');
+    this.value=v;
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,94 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card p-4">
+      <h5 class="mb-4">
+        <i class="bi bi-person-fill me-2 text-primary"></i>
+        {{ 'Editar Servidor' if servidor else 'Novo Servidor' }}
+      </h5>
+      <form method="post">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Matrícula <span class="text-danger">*</span></label>
+            <input type="text" name="matricula" class="form-control"
+                   value="{{ servidor.matricula if servidor else '' }}"
+                   {{ 'readonly' if servidor }} required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">CPF</label>
+            <input type="text" name="cpf" id="cpf" class="form-control" maxlength="14"
+                   value="{{ servidor.cpf if servidor else '' }}" placeholder="000.000.000-00">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Nome Completo <span class="text-danger">*</span></label>
+
+            <input type="text" name="nome" class="form-control"
+                   value="{{ servidor.nome if servidor else '' }}" required>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">E-mail</label>
+            <input type="email" name="email" class="form-control"
+                   value="{{ servidor.email if servidor else '' }}" placeholder="servidor@ibipora.pr.gov.br">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Secretaria</label>
+            <input type="text" name="secretaria" class="form-control"
+                   value="{{ servidor.secretaria if servidor else '' }}"
+                   placeholder="Ex: Secretaria de Administração">
+          </div>
+          <div class="col-md-8">
+            <label class="form-label fw-semibold">Departamento / Setor</label>
+            <input type="text" name="setor" class="form-control"
+                   value="{{ servidor.setor if servidor else '' }}"
+                   placeholder="Ex: Departamento de TI">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Cargo</label>
+            <input type="text" name="cargo" class="form-control"
+                   value="{{ servidor.cargo if servidor else '' }}">
+          </div>
+
+          <!-- Função Gratificada -->
+          <div class="col-12">
+            <div class="card border-warning p-3 bg-warning bg-opacity-10">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       name="funcao_gratificada" id="fg"
+                       {{ 'checked' if servidor and servidor.funcao_gratificada }}>
+                <label class="form-check-label fw-semibold" for="fg">
+                  <i class="bi bi-star-fill text-warning me-1"></i>
+                  Função Gratificada (FG)
+                </label>
+              </div>
+              <small class="text-muted mt-1">
+                Ativa um alerta em todas as movimentações do banco de horas deste servidor.
+              </small>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-4">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-lg me-1"></i>Salvar
+          </button>
+          <a href="/servidores" class="btn btn-outline-secondary">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Máscara CPF
+document.getElementById('cpf').addEventListener('input', function () {
+  let v = this.value.replace(/\D/g, '').slice(0, 11);
+  if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{0,3})/, '$1.$2.$3');
+  else if (v.length > 3) v = v.replace(/(\d{3})(\d{0,3})/, '$1.$2');
+  this.value = v;
+});
+</script>
+{% endblock %}

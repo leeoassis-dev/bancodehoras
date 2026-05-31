@@ -1,0 +1,58 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h5 class="mb-0"><i class="bi bi-bar-chart-fill me-2 text-success"></i>Saldo Atual – Todos os Servidores</h5>
+  <a href="/relatorios" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+</div>
+
+<div class="card">
+  {% if servidores %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Matrícula</th>
+          <th>Nome</th>
+          <th>Cargo</th>
+          <th>Setor</th>
+          <th class="text-center">Total Creditado</th>
+          <th class="text-center">Total Compensado</th>
+          <th class="text-center">Saldo Atual</th>
+          <th class="text-center">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in servidores %}
+        <tr>
+          <td><span class="badge bg-secondary">{{ s.matricula }}</span></td>
+          <td class="fw-semibold">{{ s.nome }}</td>
+          <td>{{ s.cargo or '–' }}</td>
+          <td>{{ s.setor or '–' }}</td>
+          <td class="text-center text-success fw-semibold">{{ fmt(s.total_credito) }}</td>
+          <td class="text-center text-warning fw-semibold">{{ fmt(s.total_debito) }}</td>
+          <td class="text-center">
+            <span class="fs-6 {{ 'saldo-positivo' if s.saldo >= 0 else 'saldo-negativo' }}">
+              {{ fmt(s.saldo) }}
+            </span>
+          </td>
+          <td class="text-center">
+            <a href="/lancamentos/{{ s.matricula }}" class="btn btn-sm btn-outline-success me-1">
+              <i class="bi bi-plus-circle"></i>
+            </a>
+            <a href="/compensacoes/{{ s.matricula }}" class="btn btn-sm btn-outline-warning">
+              <i class="bi bi-arrow-left-right"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-center text-muted py-4">
+    <i class="bi bi-people" style="font-size:2rem"></i>
+    <p class="mt-2 mb-0">Nenhum servidor cadastrado.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

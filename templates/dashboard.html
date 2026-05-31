@@ -1,0 +1,177 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h4>
+  <span class="text-muted small">Prefeitura Municipal de Ibiporã</span>
+</div>
+
+<!-- ── KPI Cards ── -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card p-3 h-100 border-start border-success border-4">
+      <div class="text-muted small">Saldo Total em Banco</div>
+      <div class="fs-3 fw-bold text-success">{{ fmt(saldo_total) }}</div>
+      <div class="text-muted small mt-1">de {{ total_serv }} servidor(es) ativo(s)</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-3 h-100 border-start border-danger border-4">
+      <div class="text-muted small">Com Horas Vencidas (+6 meses)</div>
+      <div class="fs-3 fw-bold text-danger">{{ venc_count }}</div>
+      <div class="text-muted small mt-1">
+        <a href="/pagamentos" class="text-danger">Ver pagamentos pendentes →</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-3 h-100 border-start border-warning border-4">
+      <div class="text-muted small">Vencimento em ≤ 30 dias</div>
+      <div class="fs-3 fw-bold text-warning">{{ prox_venc }}</div>
+      <div class="text-muted small mt-1">servidor(es) com horas prestes a vencer</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-3 h-100 border-start border-info border-4">
+      <div class="text-muted small">Em Função Gratificada</div>
+      <div class="fs-3 fw-bold text-info">{{ serv_fg }}</div>
+      <div class="text-muted small mt-1">servidor(es) com FG ativo</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Gráficos linha 1 ── -->
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h6 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill me-1 text-success"></i>Horas Lançadas × Compensadas — Últimos 6 Meses</h6>
+      <canvas id="chartLanc" height="180"></canvas>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h6 class="fw-bold mb-3"><i class="bi bi-receipt me-1 text-danger"></i>Horas Pagas em Folha — Últimos 6 Meses</h6>
+      <canvas id="chartPag" height="180"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ── Top 5 + Pizza ── -->
+<div class="row g-3">
+  <div class="col-md-7">
+    <div class="card p-3">
+      <h6 class="fw-bold mb-3"><i class="bi bi-trophy-fill me-1 text-warning"></i>Top 5 — Maior Saldo em Banco</h6>
+      {% if top5 %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr><th>#</th><th>Servidor</th><th>Secretaria</th><th>Departamento</th><th class="text-center">Saldo</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for s in top5 %}
+            <tr>
+              <td><span class="badge bg-warning text-dark">{{ loop.index }}</span></td>
+              <td class="fw-semibold">{{ s.nome }}</td>
+              <td class="small text-muted">{{ s.secretaria or '–' }}</td>
+              <td class="small text-muted">{{ s.setor or '–' }}</td>
+              <td class="text-center saldo-positivo">{{ fmt(s.saldo) }}</td>
+              <td>
+                <a href="/pagamentos/{{ s.matricula }}" class="btn btn-sm btn-outline-danger">
+                  <i class="bi bi-cash-coin"></i>
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted text-center py-3">Nenhum saldo disponível.</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-md-5">
+    <div class="card p-3">
+      <h6 class="fw-bold mb-3"><i class="bi bi-pie-chart-fill me-1 text-primary"></i>Saldo por Secretaria</h6>
+      <canvas id="chartPie" height="220"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-1">
+  <div class="col-md-7">
+    <div class="card p-3">
+      <h6 class="fw-bold mb-3"><i class="bi bi-building-fill me-1 text-primary"></i>Top 5 — Departamentos com Maior Saldo</h6>
+      {% if top5_deptos %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr><th>#</th><th>Departamento</th><th>Secretaria</th><th class="text-center">Servidores</th><th class="text-center">Saldo</th></tr>
+          </thead>
+          <tbody>
+            {% for d in top5_deptos %}
+            <tr>
+              <td><span class="badge bg-primary">{{ loop.index }}</span></td>
+              <td class="fw-semibold">{{ d.setor }}</td>
+              <td class="small text-muted">{{ d.secretaria }}</td>
+              <td class="text-center"><span class="badge bg-light text-dark border">{{ d.qtd_servidores }}</span></td>
+              <td class="text-center saldo-positivo">{{ fmt(d.saldo) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted text-center py-3">Nenhum departamento com saldo disponível.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const labels  = {{ meses_labels|safe }};
+const lancData = {{ lanc_mes|safe }};
+const compData = {{ comp_mes|safe }};
+const pagData  = {{ pag_mes|safe }};
+const pieLabels = {{ saldo_sec_labels|safe }};
+const pieData   = {{ saldo_sec_data|safe }};
+
+// Gráfico lançamentos x compensações
+new Chart(document.getElementById('chartLanc'), {
+  type: 'bar',
+  data: {
+    labels,
+    datasets: [
+      { label: 'Horas Lançadas', data: lancData, backgroundColor: '#198754cc' },
+      { label: 'Horas Compensadas', data: compData, backgroundColor: '#ffc107cc' }
+    ]
+  },
+  options: { responsive:true, plugins:{legend:{position:'bottom'}},
+    scales:{y:{beginAtZero:true, title:{display:true,text:'Horas'}}} }
+});
+
+// Gráfico pagamentos
+new Chart(document.getElementById('chartPag'), {
+  type: 'bar',
+  data: {
+    labels,
+    datasets: [{ label: 'H. Base Pagas em Folha', data: pagData, backgroundColor: '#dc3545cc' }]
+  },
+  options: { responsive:true, plugins:{legend:{position:'bottom'}},
+    scales:{y:{beginAtZero:true, title:{display:true,text:'Horas'}}} }
+});
+
+// Pizza secretaria
+new Chart(document.getElementById('chartPie'), {
+  type: 'doughnut',
+  data: {
+    labels: pieLabels,
+    datasets: [{ data: pieData,
+      backgroundColor: ['#0d6efd','#198754','#ffc107','#dc3545','#0dcaf0','#6f42c1','#fd7e14','#20c997'] }]
+  },
+  options: { responsive:true, plugins:{legend:{position:'bottom'}} }
+});
+</script>
+{% endblock %}
