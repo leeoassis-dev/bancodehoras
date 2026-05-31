@@ -343,17 +343,6 @@ def dashboard():
     """).fetchall()
     top5_deptos = [r for r in top5_deptos if minutos_num(r["saldo"]) > 0]
 
-    # Saldo por secretaria (pizza)
-    saldo_sec = db.execute("""
-        SELECT COALESCE(s.secretaria,'Sem Secretaria') AS sec,
-            SUM(
-                (SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=s.matricula)
-                -(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=s.matricula)
-            ) AS tot
-        FROM servidores s WHERE s.arquivado=0
-        GROUP BY COALESCE(s.secretaria,'Sem Secretaria') ORDER BY tot DESC LIMIT 8""").fetchall()
-    saldo_sec = [r for r in saldo_sec if minutos_num(r["tot"]) > 0]
-
     return render_template("dashboard.html",
         meses_labels=json.dumps([m["label"] for m in meses6]),
         lanc_mes=json.dumps(lanc_mes),
@@ -367,8 +356,6 @@ def dashboard():
         top5=top5,
         top5_deptos=top5_deptos,
         servidores_atalho=servidores_atalho,
-        saldo_sec_labels=json.dumps([r["sec"] for r in saldo_sec]),
-        saldo_sec_data=json.dumps([minutos_num(r["tot"])//60 for r in saldo_sec]),
         fmt=minutos_para_horas)
 
 # â”€â”€â”€ Servidores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -379,17 +366,23 @@ def servidores():
     busca = request.args.get("busca","").strip()
     sec   = request.args.get("secretaria","").strip()
     set_  = request.args.get("setor","").strip()
+    apenas_com_saldo = request.args.get("saldo") == "com_saldo"
     f, p  = _filtro_servidores(busca, sec, set_, arquivado=0)
+    saldo_expr = """
+        (SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=s.matricula)
+        -(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=s.matricula)
+    """
     lista = db.execute(f"""
         SELECT s.*,
-            (SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=s.matricula)
-            -(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=s.matricula)
-            AS saldo_minutos
+            {saldo_expr} AS saldo_minutos
         FROM servidores s {f} ORDER BY s.nome""", p).fetchall()
+    if apenas_com_saldo:
+        lista = [s for s in lista if minutos_num(s["saldo_minutos"]) > 0]
     secs, sets = _listas_filtro(db, 0)
     return render_template("servidores.html", servidores=lista, fmt=minutos_para_horas,
-                           secretarias=secs, setores=sets,
-                           busca=busca, secretaria_sel=sec, setor_sel=set_)
+                            secretarias=secs, setores=sets,
+                            busca=busca, secretaria_sel=sec, setor_sel=set_,
+                            saldo_sel="com_saldo" if apenas_com_saldo else "")
 
 @app.route("/api/historico/<matricula>")
 def api_historico(matricula):

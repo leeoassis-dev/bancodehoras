@@ -91,7 +91,7 @@
   </div>
 </div>
 
-<!-- ── Top 5 + Pizza ── -->
+<!-- ── Top 5 ── -->
 <div class="row g-3">
   <div class="col-md-7">
     <div class="card p-3">
@@ -126,15 +126,6 @@
     </div>
   </div>
   <div class="col-md-5">
-    <div class="card p-3">
-      <h6 class="fw-bold mb-3"><i class="bi bi-pie-chart-fill me-1 text-primary"></i>Saldo por Secretaria</h6>
-      <canvas id="chartPie" height="220"></canvas>
-    </div>
-  </div>
-</div>
-
-<div class="row g-3 mt-1">
-  <div class="col-md-7">
     <div class="card p-3">
       <h6 class="fw-bold mb-3"><i class="bi bi-building-fill me-1 text-primary"></i>Top 5 — Departamentos com Maior Saldo</h6>
       {% if top5_deptos %}
@@ -171,8 +162,6 @@ const labels  = {{ meses_labels|safe }};
 const lancData = {{ lanc_mes|safe }};
 const compData = {{ comp_mes|safe }};
 const pagData  = {{ pag_mes|safe }};
-const pieLabels = {{ saldo_sec_labels|safe }};
-const pieData   = {{ saldo_sec_data|safe }};
 
 const servidoresAtalho = [
   {% for s in servidores_atalho %}
@@ -252,15 +241,5 @@ new Chart(document.getElementById('chartPag'), {
     scales:{y:{beginAtZero:true, title:{display:true,text:'Horas'}}} }
 });
 
-// Pizza secretaria
-new Chart(document.getElementById('chartPie'), {
-  type: 'doughnut',
-  data: {
-    labels: pieLabels,
-    datasets: [{ data: pieData,
-      backgroundColor: ['#0d6efd','#198754','#ffc107','#dc3545','#0dcaf0','#6f42c1','#fd7e14','#20c997'] }]
-  },
-  options: { responsive:true, plugins:{legend:{position:'bottom'}} }
-});
 </script>
 {% endblock %}
