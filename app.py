@@ -193,6 +193,22 @@ def _snapshot_servidor_exclusao(db, matricula):
         consumos += _rows_dict(db.execute(f"SELECT * FROM consumos WHERE tipo='pagamento' AND referencia_id IN ({ph})", pag_ids).fetchall())
     return {"lancamentos": lancs, "compensacoes": comps, "pagamentos": pags, "consumos": consumos}
 
+def _snapshot_servidor_cadastro(srv):
+    if not srv:
+        return None
+    return {
+        "matricula": srv["matricula"], "nome": srv["nome"], "cpf": srv["cpf"], "email": srv["email"],
+        "cargo": srv["cargo"], "secretaria": srv["secretaria"], "setor": srv["setor"],
+        "funcao_gratificada": srv["funcao_gratificada"], "arquivado": srv["arquivado"],
+    }
+
+def _valor_csv(row, *nomes):
+    normalizado = {str(k).strip().lower(): (v or "").strip() for k, v in row.items()}
+    for nome in nomes:
+        if nome.lower() in normalizado:
+            return normalizado[nome.lower()]
+    return ""
+
 def registrar_visualizacao():
     if request.method != "GET" or "uid" not in session:
         return
@@ -998,6 +1014,129 @@ def admin_estornar_exclusao_servidor(exclusao_id):
     return redirect(url_for("admin_auditoria"))
 
 # â”€â”€â”€ Relatórios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@app.route("/admin/importacao")
+@master_required
+def admin_importacao():
+    db = get_db()
+    historico = db.execute("SELECT * FROM importacoes ORDER BY criado_em DESC, id DESC LIMIT 50").fetchall()
+    return render_template("admin/importacao.html", historico=historico)
+
+@app.route("/admin/importacao/modelo")
+@master_required
+def admin_importacao_modelo():
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["matricula","nome","cpf","email","cargo","secretaria","setor","funcao_gratificada"])
+    w.writerow(["12345","Nome do Servidor","000.000.000-00","servidor@ibipora.pr.gov.br","Cargo","Secretaria","Departamento",""])
+    w.writerow(["67890","Servidor com FG","111.111.111-11","fg@ibipora.pr.gov.br","Cargo","Secretaria","Departamento","FG-1"])
+    r = make_response("\ufeff" + out.getvalue())
+    r.headers["Content-Type"] = "text/csv; charset=utf-8"
+    r.headers["Content-Disposition"] = "attachment; filename=modelo_importacao_servidores.csv"
+    return r
+
+@app.route("/admin/importacao/servidores", methods=["POST"])
+@master_required
+def admin_importar_servidores():
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        flash("Selecione um arquivo CSV.", "danger")
+        return redirect(url_for("admin_importacao"))
+    conteudo = arquivo.read().decode("utf-8-sig", errors="replace")
+    leitor = csv.DictReader(io.StringIO(conteudo))
+    campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
+    if not {"matricula", "nome"}.issubset(campos):
+        flash("CSV inválido. Campos obrigatórios: matricula e nome.", "danger")
+        return redirect(url_for("admin_importacao"))
+
+    db = get_db()
+    criados = atualizados = erros = total = 0
+    payload = []
+    for row in leitor:
+        total += 1
+        matricula = _valor_csv(row, "matricula", "matrícula")
+        nome = _valor_csv(row, "nome")
+        if not matricula or not nome:
+            erros += 1
+            continue
+        atual = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+        antes = _snapshot_servidor_cadastro(atual)
+        dados = {
+            "matricula": matricula, "nome": nome,
+            "cpf": _valor_csv(row, "cpf"),
+            "email": _valor_csv(row, "email", "e-mail"),
+            "cargo": _valor_csv(row, "cargo"),
+            "secretaria": _valor_csv(row, "secretaria", "secretária"),
+            "setor": _valor_csv(row, "setor", "departamento"),
+            "funcao_gratificada": 1 if _valor_csv(row, "funcao_gratificada", "fg", "função gratificada") else 0,
+            "arquivado": 0,
+        }
+        if atual:
+            db.execute("""UPDATE servidores
+                          SET nome=?,cpf=?,email=?,cargo=?,secretaria=?,setor=?,funcao_gratificada=?,arquivado=0
+                          WHERE matricula=?""",
+                       (dados["nome"], dados["cpf"], dados["email"], dados["cargo"], dados["secretaria"],
+                        dados["setor"], dados["funcao_gratificada"], matricula))
+            atualizados += 1; acao = "atualizado"
+        else:
+            db.execute("""INSERT INTO servidores
+                          (matricula,nome,cpf,email,cargo,secretaria,setor,funcao_gratificada,arquivado)
+                          VALUES (?,?,?,?,?,?,?,?,0)""",
+                       (dados["matricula"], dados["nome"], dados["cpf"], dados["email"], dados["cargo"],
+                        dados["secretaria"], dados["setor"], dados["funcao_gratificada"]))
+            criados += 1; acao = "criado"
+        payload.append({"acao": acao, "antes": antes, "depois": dados})
+
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    imp_id = db.insert("""INSERT INTO importacoes
+        (tipo,arquivo,usuario_id,usuario_nome,usuario_cpf,total_linhas,criados,atualizados,erros,payload,criado_em)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        ("servidores", arquivo.filename, session.get("uid"), session.get("nome"), session.get("cpf"),
+         total, criados, atualizados, erros, json.dumps(payload, ensure_ascii=False), agora))
+    registrar_auditoria(db, "Importou servidores em lote", "importacao", imp_id, None, None,
+                        f"Arquivo {arquivo.filename}; criados {criados}; atualizados {atualizados}; erros {erros}.")
+    db.commit()
+    flash(f"Importação concluída: {criados} criado(s), {atualizados} atualizado(s), {erros} erro(s).", "success")
+    return redirect(url_for("admin_importacao"))
+
+@app.route("/admin/importacao/<int:importacao_id>/estornar", methods=["POST"])
+@master_required
+def admin_estornar_importacao(importacao_id):
+    db = get_db()
+    imp = db.execute("SELECT * FROM importacoes WHERE id=?", (importacao_id,)).fetchone()
+    if not imp:
+        flash("Importação não encontrada.", "danger")
+        return redirect(url_for("admin_importacao"))
+    if imp["estornado"]:
+        flash("Esta importação já foi estornada.", "warning")
+        return redirect(url_for("admin_importacao"))
+    payload = json.loads(imp["payload"] or "[]")
+    restaurados = removidos = 0
+    for item in reversed(payload):
+        acao = item.get("acao")
+        depois = item.get("depois") or {}
+        antes = item.get("antes")
+        matricula = depois.get("matricula") or (antes or {}).get("matricula")
+        if not matricula:
+            continue
+        if acao == "criado":
+            db.execute("DELETE FROM servidores WHERE matricula=?", (matricula,))
+            removidos += 1
+        elif acao == "atualizado" and antes:
+            db.execute("""UPDATE servidores
+                          SET nome=?,cpf=?,email=?,cargo=?,secretaria=?,setor=?,funcao_gratificada=?,arquivado=?
+                          WHERE matricula=?""",
+                       (antes.get("nome"), antes.get("cpf"), antes.get("email"), antes.get("cargo"),
+                        antes.get("secretaria"), antes.get("setor"), antes.get("funcao_gratificada", 0),
+                        antes.get("arquivado", 0), matricula))
+            restaurados += 1
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    db.execute("UPDATE importacoes SET estornado=1, estornado_em=? WHERE id=?", (agora, importacao_id))
+    registrar_auditoria(db, "Estornou importação", "importacao", importacao_id, None, None,
+                        f"Importação {importacao_id}; removidos {removidos}; restaurados {restaurados}.")
+    db.commit()
+    flash(f"Importação estornada: {removidos} removido(s), {restaurados} restaurado(s).", "warning")
+    return redirect(url_for("admin_importacao"))
 
 @app.route("/relatorios")
 def relatorios():

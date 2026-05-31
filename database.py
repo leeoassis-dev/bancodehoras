@@ -254,6 +254,13 @@ _SCHEMA_SQLITE = """
         payload TEXT NOT NULL, criado_em TEXT NOT NULL,
         restaurado INTEGER NOT NULL DEFAULT 0, restaurado_em TEXT
     );
+    CREATE TABLE IF NOT EXISTS importacoes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tipo TEXT NOT NULL, arquivo TEXT, usuario_id INTEGER, usuario_nome TEXT, usuario_cpf TEXT,
+        total_linhas INTEGER NOT NULL DEFAULT 0, criados INTEGER NOT NULL DEFAULT 0, atualizados INTEGER NOT NULL DEFAULT 0,
+        erros INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL, criado_em TEXT NOT NULL,
+        estornado INTEGER NOT NULL DEFAULT 0, estornado_em TEXT
+    );
 """
 
 _SCHEMA_POSTGRES = """
@@ -322,6 +329,13 @@ _SCHEMA_POSTGRES = """
         auditoria_id INTEGER, matricula TEXT NOT NULL, servidor_nome TEXT,
         payload TEXT NOT NULL, criado_em TEXT NOT NULL,
         restaurado INTEGER NOT NULL DEFAULT 0, restaurado_em TEXT
+    );
+    CREATE TABLE IF NOT EXISTS importacoes (
+        id SERIAL PRIMARY KEY,
+        tipo TEXT NOT NULL, arquivo TEXT, usuario_id INTEGER, usuario_nome TEXT, usuario_cpf TEXT,
+        total_linhas INTEGER NOT NULL DEFAULT 0, criados INTEGER NOT NULL DEFAULT 0, atualizados INTEGER NOT NULL DEFAULT 0,
+        erros INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL, criado_em TEXT NOT NULL,
+        estornado INTEGER NOT NULL DEFAULT 0, estornado_em TEXT
     );
 """
 
@@ -462,7 +476,7 @@ def _min_para_hhmm(m):
 
 def _popular_demo_render(db):
     """Popula dados de demonstração uma única vez para o ambiente online."""
-    if os.environ.get("BANCO_HORAS_SKIP_DEMO_SEED", "").lower() in ("1", "true", "sim"):
+    if os.environ.get("BANCO_HORAS_RUN_DEMO_SEED", "").lower() not in ("1", "true", "sim"):
         return
     if db.execute("SELECT valor FROM config WHERE chave='demo_seed_v2'").fetchone():
         return
