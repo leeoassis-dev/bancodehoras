@@ -265,6 +265,14 @@ _SCHEMA_SQLITE = """
         erros INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL, criado_em TEXT NOT NULL,
         estornado INTEGER NOT NULL DEFAULT 0, estornado_em TEXT
     );
+    CREATE TABLE IF NOT EXISTS cadastros_auxiliares (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tipo TEXT NOT NULL,
+        nome TEXT NOT NULL,
+        ativo INTEGER NOT NULL DEFAULT 1,
+        criado_em TEXT DEFAULT (datetime('now','localtime')),
+        UNIQUE(tipo,nome)
+    );
 """
 
 _SCHEMA_POSTGRES = """
@@ -341,6 +349,14 @@ _SCHEMA_POSTGRES = """
         erros INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL, criado_em TEXT NOT NULL,
         estornado INTEGER NOT NULL DEFAULT 0, estornado_em TEXT
     );
+    CREATE TABLE IF NOT EXISTS cadastros_auxiliares (
+        id SERIAL PRIMARY KEY,
+        tipo TEXT NOT NULL,
+        nome TEXT NOT NULL,
+        ativo INTEGER NOT NULL DEFAULT 1,
+        criado_em TEXT DEFAULT TO_CHAR(NOW(),'YYYY-MM-DD HH24:MI:SS'),
+        UNIQUE(tipo,nome)
+    );
 """
 
 # ─── init_db ─────────────────────────────────────────────────────────────────
@@ -371,6 +387,7 @@ def init_db():
 
     # Migra vinculos de colunas únicas para JSON
     _criar_indices(db)
+    _popular_cadastros_auxiliares(db)
     _migrar_vinculos(db)
     _migrar_consumos(db)
     _criar_master_padrao(db)
@@ -393,7 +410,31 @@ def _criar_indices(db):
         CREATE INDEX IF NOT EXISTS idx_usuarios_cpf ON usuarios (cpf);
         CREATE INDEX IF NOT EXISTS idx_usuarios_matricula ON usuarios (matricula);
         CREATE INDEX IF NOT EXISTS idx_pre_autorizacoes_cpf ON pre_autorizacoes (cpf);
+        CREATE INDEX IF NOT EXISTS idx_cadastros_aux_tipo_nome ON cadastros_auxiliares (tipo, ativo, nome);
     """)
+    db.commit()
+
+
+def _popular_cadastros_auxiliares(db):
+    """Alimenta cadastros auxiliares com valores já existentes nos servidores."""
+    origem = {
+        "secretaria": "secretaria",
+        "departamento": "setor",
+        "cargo": "cargo",
+    }
+    for tipo, coluna in origem.items():
+        for row in db.execute(
+            f"SELECT DISTINCT {coluna} AS nome FROM servidores WHERE {coluna} IS NOT NULL AND {coluna}!=''"
+        ).fetchall():
+            nome = (row["nome"] or "").strip()
+            if not nome:
+                continue
+            db.upsert(
+                "INSERT OR IGNORE INTO cadastros_auxiliares (tipo,nome,ativo) VALUES (?,?,1)",
+                """INSERT INTO cadastros_auxiliares (tipo,nome,ativo) VALUES (?,?,1)
+                   ON CONFLICT (tipo,nome) DO NOTHING""",
+                (tipo, nome)
+            )
     db.commit()
 
 

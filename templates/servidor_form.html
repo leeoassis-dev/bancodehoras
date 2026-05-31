@@ -33,20 +33,42 @@
           </div>
           <div class="col-12">
             <label class="form-label fw-semibold">Secretaria</label>
-            <input type="text" name="secretaria" class="form-control"
-                   value="{{ servidor.secretaria if servidor else '' }}"
-                   placeholder="Ex: Secretaria de Administração">
+            <select name="secretaria" class="form-select">
+              <option value="">— Selecione —</option>
+              {% set atual_secretaria = servidor.secretaria if servidor else '' %}
+              {% if atual_secretaria and atual_secretaria not in secretarias %}
+                <option value="{{ atual_secretaria }}" selected>{{ atual_secretaria }} (não cadastrado)</option>
+              {% endif %}
+              {% for item in secretarias %}
+                <option value="{{ item }}" {{ 'selected' if item == atual_secretaria }}>{{ item }}</option>
+              {% endfor %}
+            </select>
           </div>
           <div class="col-md-8">
             <label class="form-label fw-semibold">Departamento / Setor</label>
-            <input type="text" name="setor" class="form-control"
-                   value="{{ servidor.setor if servidor else '' }}"
-                   placeholder="Ex: Departamento de TI">
+            <select name="setor" class="form-select">
+              <option value="">— Selecione —</option>
+              {% set atual_setor = servidor.setor if servidor else '' %}
+              {% if atual_setor and atual_setor not in setores %}
+                <option value="{{ atual_setor }}" selected>{{ atual_setor }} (não cadastrado)</option>
+              {% endif %}
+              {% for item in setores %}
+                <option value="{{ item }}" {{ 'selected' if item == atual_setor }}>{{ item }}</option>
+              {% endfor %}
+            </select>
           </div>
           <div class="col-md-4">
             <label class="form-label fw-semibold">Cargo</label>
-            <input type="text" name="cargo" class="form-control"
-                   value="{{ servidor.cargo if servidor else '' }}">
+            <select name="cargo" class="form-select">
+              <option value="">— Selecione —</option>
+              {% set atual_cargo = servidor.cargo if servidor else '' %}
+              {% if atual_cargo and atual_cargo not in cargos %}
+                <option value="{{ atual_cargo }}" selected>{{ atual_cargo }} (não cadastrado)</option>
+              {% endif %}
+              {% for item in cargos %}
+                <option value="{{ item }}" {{ 'selected' if item == atual_cargo }}>{{ item }}</option>
+              {% endfor %}
+            </select>
           </div>
 
           <!-- Função Gratificada -->

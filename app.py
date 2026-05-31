@@ -460,11 +460,49 @@ def _listas_filtro(db, arquivado=0):
     cached = cache_get(chave)
     if cached is not None:
         return cached
-    secs = [r[0] for r in db.execute(
-        f"SELECT DISTINCT secretaria FROM servidores WHERE secretaria IS NOT NULL AND secretaria!='' AND arquivado={arquivado} ORDER BY secretaria").fetchall()]
-    sets = [r[0] for r in db.execute(
-        f"SELECT DISTINCT setor FROM servidores WHERE setor IS NOT NULL AND setor!='' AND arquivado={arquivado} ORDER BY setor").fetchall()]
+    secs = _cadastros_nomes(db, "secretaria")
+    sets = _cadastros_nomes(db, "departamento")
+    if not secs:
+        secs = [r[0] for r in db.execute(
+            f"SELECT DISTINCT secretaria FROM servidores WHERE secretaria IS NOT NULL AND secretaria!='' AND arquivado={arquivado} ORDER BY secretaria").fetchall()]
+    if not sets:
+        sets = [r[0] for r in db.execute(
+            f"SELECT DISTINCT setor FROM servidores WHERE setor IS NOT NULL AND setor!='' AND arquivado={arquivado} ORDER BY setor").fetchall()]
     return cache_set(chave, (secs, sets), ttl=60)
+
+def _cadastros_nomes(db, tipo, somente_ativos=True):
+    chave = f"cadastros:{tipo}:{1 if somente_ativos else 0}"
+    cached = cache_get(chave)
+    if cached is not None:
+        return cached
+    where = "WHERE tipo=?"
+    params = [tipo]
+    if somente_ativos:
+        where += " AND ativo=1"
+    rows = db.execute(
+        f"SELECT nome FROM cadastros_auxiliares {where} ORDER BY nome",
+        params
+    ).fetchall()
+    return cache_set(chave, [r["nome"] for r in rows], ttl=60)
+
+def _opcoes_servidor_form(db):
+    return {
+        "secretarias": _cadastros_nomes(db, "secretaria"),
+        "setores": _cadastros_nomes(db, "departamento"),
+        "cargos": _cadastros_nomes(db, "cargo"),
+    }
+
+def _garantir_cadastro_auxiliar(db, tipo, nome):
+    nome = (nome or "").strip()
+    if not nome:
+        return
+    db.upsert(
+        "INSERT OR IGNORE INTO cadastros_auxiliares (tipo,nome,ativo) VALUES (?,?,1)",
+        """INSERT INTO cadastros_auxiliares (tipo,nome,ativo) VALUES (?,?,1)
+           ON CONFLICT (tipo,nome) DO NOTHING""",
+        (tipo, nome)
+    )
+    db.execute("UPDATE cadastros_auxiliares SET ativo=1 WHERE tipo=? AND nome=?", (tipo, nome))
 
 def _fg(servidor): return bool(servidor["funcao_gratificada"])
 
@@ -730,22 +768,27 @@ def api_historico(matricula):
 
 @app.route("/servidores/novo", methods=["GET","POST"])
 def novo_servidor():
+    db = get_db()
     if request.method == "POST":
         mat = request.form["matricula"].strip()
-        db  = get_db()
         if db.execute("SELECT 1 FROM servidores WHERE matricula=?", (mat,)).fetchone():
             flash("Matrícula já cadastrada.", "danger")
         else:
             fg = 1 if request.form.get("funcao_gratificada") else 0
+            cargo = request.form["cargo"].strip()
+            setor = request.form["setor"].strip()
+            secretaria = request.form["secretaria"].strip()
+            _garantir_cadastro_auxiliar(db, "cargo", cargo)
+            _garantir_cadastro_auxiliar(db, "departamento", setor)
+            _garantir_cadastro_auxiliar(db, "secretaria", secretaria)
             db.execute(
                 "INSERT INTO servidores (matricula,nome,cpf,email,cargo,setor,secretaria,funcao_gratificada) VALUES (?,?,?,?,?,?,?,?)",
                 (mat, request.form["nome"].strip(), request.form["cpf"].strip(),
-                 request.form["email"].strip(), request.form["cargo"].strip(),
-                 request.form["setor"].strip(), request.form["secretaria"].strip(), fg))
+                 request.form["email"].strip(), cargo, setor, secretaria, fg))
             db.commit()
             flash("Servidor cadastrado!", "success")
             return redirect(url_for("servidores"))
-    return render_template("servidor_form.html", servidor=None)
+    return render_template("servidor_form.html", servidor=None, **_opcoes_servidor_form(db))
 
 @app.route("/servidores/<matricula>/editar", methods=["GET","POST"])
 def editar_servidor(matricula):
@@ -754,14 +797,19 @@ def editar_servidor(matricula):
     if not srv: flash("Não encontrado.", "danger"); return redirect(url_for("servidores"))
     if request.method == "POST":
         fg = 1 if request.form.get("funcao_gratificada") else 0
+        cargo = request.form["cargo"].strip()
+        setor = request.form["setor"].strip()
+        secretaria = request.form["secretaria"].strip()
+        _garantir_cadastro_auxiliar(db, "cargo", cargo)
+        _garantir_cadastro_auxiliar(db, "departamento", setor)
+        _garantir_cadastro_auxiliar(db, "secretaria", secretaria)
         db.execute("UPDATE servidores SET nome=?,cpf=?,email=?,cargo=?,setor=?,secretaria=?,funcao_gratificada=? WHERE matricula=?",
                    (request.form["nome"].strip(), request.form["cpf"].strip(), request.form["email"].strip(),
-                    request.form["cargo"].strip(), request.form["setor"].strip(),
-                    request.form["secretaria"].strip(), fg, matricula))
+                    cargo, setor, secretaria, fg, matricula))
         db.commit()
         flash("Dados atualizados.", "success")
         return redirect(url_for("servidores"))
-    return render_template("servidor_form.html", servidor=srv)
+    return render_template("servidor_form.html", servidor=srv, **_opcoes_servidor_form(db))
 
 @app.route("/servidores/<matricula>/arquivar", methods=["POST"])
 def arquivar_servidor(matricula):
@@ -1168,6 +1216,9 @@ def admin_importar_servidores():
             "funcao_gratificada": 1 if _valor_csv(row, "funcao_gratificada", "fg", "função gratificada") else 0,
             "arquivado": 0,
         }
+        _garantir_cadastro_auxiliar(db, "cargo", dados["cargo"])
+        _garantir_cadastro_auxiliar(db, "secretaria", dados["secretaria"])
+        _garantir_cadastro_auxiliar(db, "departamento", dados["setor"])
         if atual:
             db.execute("""UPDATE servidores
                           SET nome=?,cpf=?,email=?,cargo=?,secretaria=?,setor=?,funcao_gratificada=?,arquivado=0
@@ -1234,6 +1285,134 @@ def admin_estornar_importacao(importacao_id):
     db.commit()
     flash(f"Importação estornada: {removidos} removido(s), {restaurados} restaurado(s).", "warning")
     return redirect(url_for("admin_importacao"))
+
+# ─── Admin: Cadastros auxiliares ─────────────────────────────────────────────
+
+CADASTROS_TIPOS = {
+    "secretaria": {"label": "Secretarias", "icone": "bi-building", "campo_servidor": "secretaria"},
+    "departamento": {"label": "Locais de trabalho / Departamentos", "icone": "bi-diagram-3", "campo_servidor": "setor"},
+    "cargo": {"label": "Cargos", "icone": "bi-briefcase", "campo_servidor": "cargo"},
+}
+
+def _sincronizar_cadastro_auxiliar(db, tipo, antigo, novo):
+    if antigo == novo:
+        return
+    campo = CADASTROS_TIPOS[tipo]["campo_servidor"]
+    db.execute(f"UPDATE servidores SET {campo}=? WHERE {campo}=?", (novo, antigo))
+    if tipo == "secretaria":
+        db.execute("UPDATE usuarios SET secretaria=? WHERE secretaria=?", (novo, antigo))
+        db.execute("UPDATE pre_autorizacoes SET secretaria=? WHERE secretaria=?", (novo, antigo))
+    elif tipo == "departamento":
+        db.execute("UPDATE usuarios SET setor=? WHERE setor=?", (novo, antigo))
+        db.execute("UPDATE pre_autorizacoes SET setor=? WHERE setor=?", (novo, antigo))
+
+    if tipo in ("secretaria", "departamento"):
+        for tabela in ("usuarios", "pre_autorizacoes"):
+            for row in db.execute(f"SELECT id,vinculos FROM {tabela} WHERE vinculos LIKE ?", (f"%{antigo}%",)).fetchall():
+                vinculos = get_vinculos(row)
+                novos = [novo if v == antigo else v for v in vinculos]
+                if novos != vinculos:
+                    db.execute(f"UPDATE {tabela} SET vinculos=? WHERE id=?", (json.dumps(novos, ensure_ascii=False), row["id"]))
+
+def _cadastro_auxiliar_em_uso(db, tipo, nome):
+    campo = CADASTROS_TIPOS[tipo]["campo_servidor"]
+    return bool(db.execute(f"SELECT 1 FROM servidores WHERE {campo}=? LIMIT 1", (nome,)).fetchone())
+
+@app.route("/admin/cadastros")
+@master_required
+def admin_cadastros():
+    db = get_db()
+    dados = {}
+    for tipo in CADASTROS_TIPOS:
+        rows = db.execute(
+            "SELECT * FROM cadastros_auxiliares WHERE tipo=? ORDER BY ativo DESC, nome",
+            (tipo,)
+        ).fetchall()
+        dados[tipo] = rows
+    return render_template("admin/cadastros.html", tipos=CADASTROS_TIPOS, dados=dados)
+
+@app.route("/admin/cadastros/novo", methods=["POST"])
+@master_required
+def admin_cadastro_aux_novo():
+    db = get_db()
+    tipo = request.form.get("tipo", "").strip()
+    nome = request.form.get("nome", "").strip()
+    if tipo not in CADASTROS_TIPOS or not nome:
+        flash("Informe um cadastro válido.", "danger")
+        return redirect(url_for("admin_cadastros"))
+    _garantir_cadastro_auxiliar(db, tipo, nome)
+    registrar_auditoria(db, "Criou cadastro auxiliar", "cadastro_auxiliar", tipo, None, None, nome)
+    db.commit()
+    limpar_cache()
+    flash("Cadastro incluído.", "success")
+    return redirect(url_for("admin_cadastros"))
+
+@app.route("/admin/cadastros/<int:cid>/editar", methods=["POST"])
+@master_required
+def admin_cadastro_aux_editar(cid):
+    db = get_db()
+    row = db.execute("SELECT * FROM cadastros_auxiliares WHERE id=?", (cid,)).fetchone()
+    if not row:
+        flash("Cadastro não encontrado.", "danger")
+        return redirect(url_for("admin_cadastros"))
+    novo = request.form.get("nome", "").strip()
+    if not novo:
+        flash("Nome obrigatório.", "danger")
+        return redirect(url_for("admin_cadastros"))
+    existente = db.execute(
+        "SELECT id FROM cadastros_auxiliares WHERE tipo=? AND nome=? AND id<>?",
+        (row["tipo"], novo, cid)
+    ).fetchone()
+    if existente:
+        flash("Já existe um cadastro com este nome.", "warning")
+        return redirect(url_for("admin_cadastros"))
+    antigo = row["nome"]
+    db.execute("UPDATE cadastros_auxiliares SET nome=?, ativo=1 WHERE id=?", (novo, cid))
+    _sincronizar_cadastro_auxiliar(db, row["tipo"], antigo, novo)
+    registrar_auditoria(db, "Editou cadastro auxiliar", "cadastro_auxiliar", cid, None, None, f"{antigo} -> {novo}")
+    db.commit()
+    limpar_cache()
+    flash("Cadastro atualizado e servidores vinculados sincronizados.", "success")
+    return redirect(url_for("admin_cadastros"))
+
+@app.route("/admin/cadastros/<int:cid>/toggle", methods=["POST"])
+@master_required
+def admin_cadastro_aux_toggle(cid):
+    db = get_db()
+    row = db.execute("SELECT * FROM cadastros_auxiliares WHERE id=?", (cid,)).fetchone()
+    if not row:
+        flash("Cadastro não encontrado.", "danger")
+        return redirect(url_for("admin_cadastros"))
+    novo = 0 if row["ativo"] else 1
+    db.execute("UPDATE cadastros_auxiliares SET ativo=? WHERE id=?", (novo, cid))
+    registrar_auditoria(db, "Alterou status de cadastro auxiliar", "cadastro_auxiliar", cid, None, None,
+                        f"{row['nome']} => {'ativo' if novo else 'inativo'}")
+    db.commit()
+    limpar_cache()
+    flash(f"Cadastro {'ativado' if novo else 'inativado'}.", "success" if novo else "warning")
+    return redirect(url_for("admin_cadastros"))
+
+@app.route("/admin/cadastros/<int:cid>/excluir", methods=["POST"])
+@master_required
+def admin_cadastro_aux_excluir(cid):
+    db = get_db()
+    row = db.execute("SELECT * FROM cadastros_auxiliares WHERE id=?", (cid,)).fetchone()
+    if not row:
+        flash("Cadastro não encontrado.", "danger")
+        return redirect(url_for("admin_cadastros"))
+    if _cadastro_auxiliar_em_uso(db, row["tipo"], row["nome"]):
+        db.execute("UPDATE cadastros_auxiliares SET ativo=0 WHERE id=?", (cid,))
+        msg = "Cadastro está em uso e foi apenas inativado."
+        cat = "warning"
+    else:
+        db.execute("DELETE FROM cadastros_auxiliares WHERE id=?", (cid,))
+        msg = "Cadastro excluído."
+        cat = "success"
+    registrar_auditoria(db, "Excluiu cadastro auxiliar", "cadastro_auxiliar", cid, None, None, row["nome"])
+    db.commit()
+    limpar_cache()
+    flash(msg, cat)
+    return redirect(url_for("admin_cadastros"))
 
 @app.route("/relatorios")
 def relatorios():
@@ -1872,8 +2051,8 @@ def admin_novo_usuario():
             return redirect(url_for('admin_usuarios'))
 
     srvs = db.execute("SELECT matricula,nome FROM servidores WHERE arquivado=0 ORDER BY nome").fetchall()
-    secs = [r[0] for r in db.execute("SELECT DISTINCT secretaria FROM servidores WHERE secretaria IS NOT NULL AND secretaria!='' ORDER BY secretaria").fetchall()]
-    sets = [r[0] for r in db.execute("SELECT DISTINCT setor FROM servidores WHERE setor IS NOT NULL AND setor!='' ORDER BY setor").fetchall()]
+    secs = _cadastros_nomes(db, "secretaria")
+    sets = _cadastros_nomes(db, "departamento")
     return render_template('admin/usuario_form.html', usuario=None,
                            servidores=srvs, secretarias=secs, setores=sets)
 
@@ -1898,8 +2077,8 @@ def admin_editar_usuario(uid):
         flash("Usuário atualizado.", "success")
         return redirect(url_for('admin_usuarios'))
     srvs = db.execute("SELECT matricula,nome FROM servidores WHERE arquivado=0 ORDER BY nome").fetchall()
-    secs = [r[0] for r in db.execute("SELECT DISTINCT secretaria FROM servidores WHERE secretaria IS NOT NULL AND secretaria!='' ORDER BY secretaria").fetchall()]
-    sets = [r[0] for r in db.execute("SELECT DISTINCT setor FROM servidores WHERE setor IS NOT NULL AND setor!='' ORDER BY setor").fetchall()]
+    secs = _cadastros_nomes(db, "secretaria")
+    sets = _cadastros_nomes(db, "departamento")
     d = dict(u)
     d["vinculos_lista"] = get_vinculos(u)
     return render_template('admin/usuario_form.html', usuario=d,
@@ -2162,10 +2341,8 @@ def admin_acessos():
         ORDER BY u.ultimo_acesso DESC LIMIT 10
     """).fetchall()
 
-    secs = [r[0] for r in db.execute(
-        "SELECT DISTINCT secretaria FROM servidores WHERE secretaria IS NOT NULL AND secretaria!='' ORDER BY secretaria").fetchall()]
-    sets = [r[0] for r in db.execute(
-        "SELECT DISTINCT setor FROM servidores WHERE setor IS NOT NULL AND setor!='' ORDER BY setor").fetchall()]
+    secs = _cadastros_nomes(db, "secretaria")
+    sets = _cadastros_nomes(db, "departamento")
     srvs = db.execute("SELECT matricula,nome,cpf FROM servidores WHERE arquivado=0 ORDER BY nome").fetchall()
 
     return render_template('admin/acessos.html',

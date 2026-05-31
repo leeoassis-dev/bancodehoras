@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h3 class="mb-1"><i class="bi bi-folder-check me-2 text-primary"></i>Cadastros</h3>
+    <p class="text-muted mb-0">Padronize secretarias, locais de trabalho e cargos usados nos servidores, relatórios e acessos.</p>
+  </div>
+</div>
+
+<div class="row g-4">
+  {% for tipo, meta in tipos.items() %}
+  <div class="col-xl-4">
+    <div class="card h-100">
+      <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi {{ meta.icone }} me-2 text-primary"></i>{{ meta.label }}</h5>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/cadastros/novo" class="d-flex gap-2 mb-3">
+          <input type="hidden" name="tipo" value="{{ tipo }}">
+          <input type="text" name="nome" class="form-control" placeholder="Novo cadastro" required>
+          <button class="btn btn-primary" type="submit" title="Adicionar">
+            <i class="bi bi-plus-lg"></i>
+          </button>
+        </form>
+
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Nome</th>
+                <th class="text-center">Status</th>
+                <th class="text-center no-sort">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in dados[tipo] %}
+              <tr class="{{ 'table-light text-muted' if not item.ativo }}">
+                <td>
+                  <form method="post" action="/admin/cadastros/{{ item.id }}/editar" class="d-flex gap-2">
+                    <input type="text" name="nome" class="form-control form-control-sm" value="{{ item.nome }}" required>
+                    <button class="btn btn-sm btn-outline-primary" type="submit" title="Salvar alteração">
+                      <i class="bi bi-check-lg"></i>
+                    </button>
+                  </form>
+                </td>
+                <td class="text-center">
+                  <span class="badge {{ 'bg-success' if item.ativo else 'bg-secondary' }}">
+                    {{ 'Ativo' if item.ativo else 'Inativo' }}
+                  </span>
+                </td>
+                <td class="text-center">
+                  <div class="d-inline-flex gap-1">
+                    <form method="post" action="/admin/cadastros/{{ item.id }}/toggle">
+                      <button class="btn btn-sm {{ 'btn-outline-warning' if item.ativo else 'btn-outline-success' }}" type="submit"
+                              title="{{ 'Inativar' if item.ativo else 'Ativar' }}">
+                        <i class="bi {{ 'bi-pause-circle' if item.ativo else 'bi-play-circle' }}"></i>
+                      </button>
+                    </form>
+                    <form method="post" action="/admin/cadastros/{{ item.id }}/excluir"
+                          onsubmit="return confirm('Excluir este cadastro? Se estiver em uso, ele será apenas inativado.');">
+                      <button class="btn btn-sm btn-outline-danger" type="submit" title="Excluir">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="3" class="text-muted text-center py-3">Nenhum cadastro.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
