@@ -426,6 +426,7 @@ def init_db():
     _migrar_consumos(db)
     _criar_master_padrao(db)
     _popular_demo_render(db)
+    _popular_demo_eleicao(db)
     db.close()
 
 
@@ -665,6 +666,78 @@ def _popular_demo_render(db):
         "INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)",
         "INSERT INTO config (chave,valor) VALUES (?,?) ON CONFLICT (chave) DO UPDATE SET valor=EXCLUDED.valor",
         ("demo_seed_v2", date.today().isoformat())
+    )
+    db.commit()
+
+    _popular_demo_eleicao(db)
+
+
+def _popular_demo_eleicao(db):
+    """Seed de dias de eleição para os servidores de demonstração (roda uma vez)."""
+    if db.execute("SELECT 1 FROM config WHERE chave='demo_eleicao_v1'").fetchone():
+        return
+    if not db.execute("SELECT 1 FROM config WHERE chave='demo_seed_v2'").fetchone():
+        return
+
+    _ELEICOES = [
+        ("Eleições Municipais 2020 – 1º Turno",  "2020-11-15"),
+        ("Eleições Municipais 2020 – 2º Turno",  "2020-11-29"),
+        ("Eleições Gerais 2022 – 1º Turno",      "2022-10-02"),
+        ("Eleições Gerais 2022 – 2º Turno",      "2022-10-30"),
+        ("Eleições Municipais 2024 – 1º Turno",  "2024-10-06"),
+        ("Eleições Municipais 2024 – 2º Turno",  "2024-10-27"),
+    ]
+    _FUNCOES = [
+        ("Mesário Titular – Seção {n}", 2),
+        ("Mesário Suplente – Seção {n}", 1),
+        ("Secretário de Seção {n}", 2),
+        ("Fiscal de Partido – Seção {n}", 1),
+        ("Delegado de Partido – Zona {n}", 1),
+    ]
+
+    servidores = db.execute(
+        "SELECT matricula, nome FROM servidores WHERE arquivado=0 ORDER BY matricula"
+    ).fetchall()
+
+    for idx, srv in enumerate(servidores):
+        mat = srv["matricula"]
+
+        # Determina quais eleições este servidor participou (2–5 por servidor)
+        eleicoes_participadas = []
+        for ei, (ref, data_el) in enumerate(_ELEICOES):
+            if (idx + ei) % 3 != 0:          # ~2/3 dos servidores em cada eleição
+                eleicoes_participadas.append((ref, data_el, ei))
+
+        total_dias_creditados = 0
+        for ref, data_el, ei in eleicoes_participadas:
+            funcao_tpl, qtd_dias = _FUNCOES[(idx + ei) % len(_FUNCOES)]
+            secao = 100 + ((idx * 7 + ei * 13) % 200)
+            funcao = funcao_tpl.format(n=secao)
+            db.insert("""
+                INSERT INTO eleicao_creditos
+                    (matricula, referencia_eleicao, quantidade_dias, observacao, criado_por)
+                VALUES (?,?,?,?,?)
+            """, (mat, ref, qtd_dias, funcao, "Sistema – Demonstração"))
+            total_dias_creditados += qtd_dias
+
+        # Baixas: entre 30% e 60% dos dias creditados, de forma variada
+        if total_dias_creditados > 0:
+            qtd_baixas = max(1, (total_dias_creditados * (3 + idx % 4)) // 8)
+            qtd_baixas = min(qtd_baixas, total_dias_creditados)
+            for b in range(qtd_baixas):
+                # Distribui folgas em datas plausíveis após as eleições
+                dia_base = date(2021 + (b % 3) * 2, 3 + (idx + b) % 9, 1 + (idx * 3 + b * 7) % 25)
+                db.insert("""
+                    INSERT INTO eleicao_baixas (matricula, data, observacao, criado_por)
+                    VALUES (?,?,?,?)
+                """, (mat, dia_base.isoformat(),
+                      "Folga compensatória – demonstração",
+                      "Sistema – Demonstração"))
+
+    db.upsert(
+        "INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)",
+        "INSERT INTO config (chave,valor) VALUES (?,?) ON CONFLICT (chave) DO UPDATE SET valor=EXCLUDED.valor",
+        ("demo_eleicao_v1", date.today().isoformat())
     )
     db.commit()
 
