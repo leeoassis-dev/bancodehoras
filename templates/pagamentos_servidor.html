@@ -5,13 +5,23 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
-    <h5 class="mb-0"><i class="bi bi-cash-coin me-2 text-danger"></i>Pagamento — {{ servidor.nome }}</h5>
-    <span class="text-muted small">Matrícula {{ servidor.matricula }}
-      {% if servidor.secretaria %} | {{ servidor.secretaria }}{% endif %}
-      {% if servidor.setor %} | {{ servidor.setor }}{% endif %}
-    </span>
+    <h5 class="mb-0"><i class="bi bi-cash-coin me-2 text-danger"></i>Pagamento em Folha</h5>
   </div>
   <a href="/pagamentos" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+</div>
+
+<!-- Banner de identificação do servidor -->
+<div class="alert mb-4 py-2 px-3 d-flex align-items-center gap-3" style="background:#fff5f5; border:1.5px solid #dc3545; border-radius:.5rem;">
+  <i class="bi bi-person-badge fs-4 text-danger"></i>
+  <div>
+    <div class="fw-bold fs-5 text-danger" style="line-height:1.2">{{ servidor.nome }}</div>
+    <div class="small text-muted">
+      Matrícula <strong>{{ servidor.matricula }}</strong>
+      {% if servidor.cargo %} &nbsp;·&nbsp; {{ servidor.cargo }}{% endif %}
+      {% if servidor.secretaria %} &nbsp;·&nbsp; {{ servidor.secretaria }}{% endif %}
+      {% if servidor.setor %} &nbsp;·&nbsp; {{ servidor.setor }}{% endif %}
+    </div>
+  </div>
 </div>
 
 {% if itens %}

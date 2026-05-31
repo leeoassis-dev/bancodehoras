@@ -2602,17 +2602,51 @@ def admin_revogar_acesso(uid):
 @master_required
 def eleicao_index():
     db = get_db()
-    servidores = db.execute("""
-        SELECT s.matricula, s.nome, s.secretaria, s.setor,
+    busca     = request.args.get('busca', '').strip()
+    sec_sel   = request.args.get('secretaria', '').strip()
+    set_sel   = request.args.get('setor', '').strip()
+    saldo_sel = request.args.get('saldo', '').strip()   # 'com_saldo' | 'zerado' | ''
+
+    filtro = """WHERE s.arquivado=0
+        AND (EXISTS (SELECT 1 FROM eleicao_creditos WHERE matricula=s.matricula)
+             OR EXISTS (SELECT 1 FROM eleicao_baixas WHERE matricula=s.matricula))"""
+    params = []
+    if busca:
+        filtro += " AND (s.matricula LIKE ? OR s.nome LIKE ?)"; params += [f"%{busca}%", f"%{busca}%"]
+    if sec_sel:
+        filtro += " AND s.secretaria=?"; params.append(sec_sel)
+    if set_sel:
+        filtro += " AND s.setor=?"; params.append(set_sel)
+
+    servidores = db.execute(f"""
+        SELECT s.matricula, s.nome, s.secretaria, s.setor, s.cargo,
                COALESCE((SELECT SUM(quantidade_dias) FROM eleicao_creditos WHERE matricula=s.matricula), 0) AS total_creditos,
                (SELECT COUNT(*) FROM eleicao_baixas WHERE matricula=s.matricula) AS total_baixas
-        FROM servidores s
-        WHERE s.arquivado=0
+        FROM servidores s {filtro} ORDER BY s.nome
+    """, params).fetchall()
+
+    if saldo_sel == 'com_saldo':
+        servidores = [s for s in servidores if (int(s['total_creditos'] or 0) - int(s['total_baixas'] or 0)) > 0]
+    elif saldo_sel == 'zerado':
+        servidores = [s for s in servidores if (int(s['total_creditos'] or 0) - int(s['total_baixas'] or 0)) <= 0]
+
+    # Listas para filtros (apenas servidores com lançamentos de eleição)
+    secs = [r[0] for r in db.execute("""
+        SELECT DISTINCT s.secretaria FROM servidores s
+        WHERE s.arquivado=0 AND s.secretaria IS NOT NULL AND s.secretaria!=''
           AND (EXISTS (SELECT 1 FROM eleicao_creditos WHERE matricula=s.matricula)
                OR EXISTS (SELECT 1 FROM eleicao_baixas WHERE matricula=s.matricula))
-        ORDER BY s.nome
-    """).fetchall()
-    return render_template('eleicao_index.html', servidores=servidores)
+        ORDER BY s.secretaria""").fetchall()]
+    sets_ = [r[0] for r in db.execute("""
+        SELECT DISTINCT s.setor FROM servidores s
+        WHERE s.arquivado=0 AND s.setor IS NOT NULL AND s.setor!=''
+          AND (EXISTS (SELECT 1 FROM eleicao_creditos WHERE matricula=s.matricula)
+               OR EXISTS (SELECT 1 FROM eleicao_baixas WHERE matricula=s.matricula))
+        ORDER BY s.setor""").fetchall()]
+
+    return render_template('eleicao_index.html', servidores=servidores,
+                           busca=busca, sec_sel=sec_sel, set_sel=set_sel, saldo_sel=saldo_sel,
+                           secretarias=secs, setores=sets_)
 
 
 @app.route('/eleicao/<matricula>', methods=['GET', 'POST'])
@@ -2709,6 +2743,180 @@ def eleicao_excluir_credito(matricula, cid):
                         detalhe=f"{total_dias} dia(s) – {credito['referencia_eleicao']}")
     db.commit()
     flash("Crédito de eleição excluído.", "warning")
+    return redirect(url_for('eleicao_servidor', matricula=matricula))
+
+
+@app.route('/eleicao/<matricula>/exportar/<fmt>')
+@master_required
+def eleicao_exportar(matricula, fmt):
+    db  = get_db()
+    srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    if not srv:
+        flash("Servidor não encontrado.", "danger")
+        return redirect(url_for('eleicao_index'))
+
+    creditos = db.execute(
+        "SELECT referencia_eleicao, quantidade_dias, observacao, criado_por, criado_em "
+        "FROM eleicao_creditos WHERE matricula=? ORDER BY criado_em", (matricula,)).fetchall()
+    baixas = db.execute(
+        "SELECT data, observacao, criado_por, criado_em "
+        "FROM eleicao_baixas WHERE matricula=? ORDER BY data", (matricula,)).fetchall()
+
+    saldo = calcular_saldo_eleicao(db, matricula)
+    total_cred = sum(int(c['quantidade_dias'] or 0) for c in creditos)
+    total_baixas = len(baixas)
+
+    title = (f"Banco de Dias de Eleição\n"
+             f"{srv['nome']} – Matrícula {srv['matricula']}\n"
+             f"Saldo: {saldo} dia(s)")
+    filename = f"dias_eleicao_{matricula}"
+
+    h_cred = ["Eleição / Referência", "Dias Creditados", "Trabalho Realizado", "Lançado por", "Data Lançamento"]
+    rows_cred = [
+        [c['referencia_eleicao'], c['quantidade_dias'], c['observacao'] or '', c['criado_por'] or '', (c['criado_em'] or '')[:10]]
+        for c in creditos
+    ]
+    rows_cred.append(["TOTAL CRÉDITOS", total_cred, "", "", ""])
+
+    h_baixas = ["Data da Folga", "Observação", "Registrado por", "Data Registro"]
+    rows_baixas = [
+        [b['data'], b['observacao'] or '', b['criado_por'] or '', (b['criado_em'] or '')[:10]]
+        for b in baixas
+    ]
+    rows_baixas.append(["TOTAL FOLGAS", total_baixas, "", ""])
+
+    if fmt == 'excel':
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+
+        wb = Workbook()
+        AMBER  = "78350F"
+        AMBER2 = "D97706"
+        LIGHT  = "FEF3C7"
+
+        def _sheet(ws, titulo, headers, rows, totals_row=True):
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+            c = ws.cell(1, 1, titulo)
+            c.font = Font(bold=True, color="FFFFFF", size=13)
+            c.fill = PatternFill("solid", fgColor=AMBER)
+            c.alignment = Alignment(horizontal="center")
+            ws.append([])
+            ws.append(headers)
+            for col_c in ws[3]:
+                col_c.font = Font(bold=True, color="FFFFFF")
+                col_c.fill = PatternFill("solid", fgColor=AMBER2)
+                col_c.alignment = Alignment(horizontal="center")
+            for row in rows:
+                ws.append(row)
+                label = str(row[0]) if row else ""
+                if label.startswith("TOTAL"):
+                    for col_c in ws[ws.max_row]:
+                        col_c.font = Font(bold=True)
+                        col_c.fill = PatternFill("solid", fgColor=LIGHT)
+            for col in range(1, len(headers) + 1):
+                mx = max(len(str(ws.cell(r, col).value or "")) for r in range(1, ws.max_row + 1))
+                ws.column_dimensions[get_column_letter(col)].width = min(max(mx + 2, 12), 50)
+
+        ws1 = wb.active
+        ws1.title = "Créditos"
+        _sheet(ws1, f"Créditos de Eleição — {srv['nome']} ({matricula})", h_cred, rows_cred)
+        ws2 = wb.create_sheet("Folgas Tiradas")
+        _sheet(ws2, f"Folgas Tiradas — {srv['nome']} ({matricula})", h_baixas, rows_baixas)
+        ws3 = wb.create_sheet("Resumo")
+        ws3.append(["Servidor", srv['nome']])
+        ws3.append(["Matrícula", srv['matricula']])
+        ws3.append(["Secretaria", srv.get('secretaria') or ''])
+        ws3.append(["Departamento", srv.get('setor') or ''])
+        ws3.append(["Total dias creditados", total_cred])
+        ws3.append(["Total folgas tiradas", total_baixas])
+        ws3.append(["Saldo atual (dias)", saldo])
+        for r in ws3.iter_rows():
+            r[0].font = Font(bold=True)
+
+        buf = io.BytesIO()
+        wb.save(buf); buf.seek(0)
+        resp = make_response(buf.getvalue())
+        resp.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        resp.headers["Content-Disposition"] = f"attachment; filename={filename}.xlsx"
+        return resp
+
+    elif fmt == 'pdf':
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
+        from xml.sax.saxutils import escape
+
+        AMBER_RL = colors.HexColor("#78350F")
+        AMBER2_RL = colors.HexColor("#D97706")
+        LIGHT_RL  = colors.HexColor("#FEF3C7")
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                                rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
+        styles = getSampleStyleSheet()
+        title_style  = ParagraphStyle("T", parent=styles["Title"], fontSize=15, leading=18, alignment=1, textColor=AMBER_RL)
+        sub_style    = ParagraphStyle("S", parent=styles["Normal"], fontSize=9, leading=12, alignment=1, textColor=colors.HexColor("#6B7280"))
+        section_style= ParagraphStyle("Sec", parent=styles["Heading2"], fontSize=10, leading=13, textColor=AMBER_RL)
+        cell_s = ParagraphStyle("C", parent=styles["BodyText"], fontSize=7, leading=9, wordWrap="CJK")
+        hdr_s  = ParagraphStyle("H", parent=cell_s, fontName="Helvetica-Bold", textColor=colors.white, alignment=1)
+
+        def make_table(headers, rows, col_ratios=None):
+            def pcell(v, s=cell_s): return Paragraph(escape(str(v or "")), s)
+            data = [[pcell(h, hdr_s) for h in headers]] + [[pcell(v) for v in row] for row in rows]
+            if not col_ratios:
+                col_ratios = [1] * len(headers)
+            total_r = sum(col_ratios)
+            col_w = [doc.width * r / total_r for r in col_ratios]
+            t = Table(data, colWidths=col_w, repeatRows=1)
+            estilo = [
+                ("BACKGROUND", (0, 0), (-1, 0), AMBER2_RL),
+                ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
+                ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("GRID",       (0, 0), (-1, -1), 0.25, colors.HexColor("#D0D7DE")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FFFBEB")]),
+                ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING",(0, 0), (-1, -1), 4),
+                ("TOPPADDING",  (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING",(0, 0), (-1, -1), 3),
+            ]
+            for i, row in enumerate(rows, 1):
+                if str(row[0]).startswith("TOTAL"):
+                    estilo += [("BACKGROUND", (0, i), (-1, i), LIGHT_RL),
+                               ("FONTNAME",   (0, i), (-1, i), "Helvetica-Bold")]
+            t.setStyle(TableStyle(estilo))
+            return t
+
+        story = [
+            Paragraph("Banco de Dias de Eleição", title_style),
+            Paragraph(f"{escape(srv['nome'])} — Matrícula {srv['matricula']}"
+                      + (f" | {escape(srv['secretaria'])}" if srv.get('secretaria') else "")
+                      + (f" | {escape(srv['setor'])}" if srv.get('setor') else ""), sub_style),
+            Spacer(1, 4),
+            Paragraph(f"Saldo atual: <b>{saldo} dia(s)</b> &nbsp;|&nbsp; "
+                      f"Creditados: <b>{total_cred}</b> &nbsp;|&nbsp; "
+                      f"Folgas: <b>{total_baixas}</b>", sub_style),
+            Spacer(1, 10),
+            HRFlowable(color=AMBER_RL, thickness=1, width="100%"),
+            Spacer(1, 8),
+            Paragraph("Créditos de Eleição", section_style),
+            Spacer(1, 4),
+            make_table(h_cred, rows_cred, col_ratios=[4, 1, 4, 2, 2]),
+            Spacer(1, 14),
+            Paragraph("Folgas Tiradas", section_style),
+            Spacer(1, 4),
+            make_table(h_baixas, rows_baixas, col_ratios=[2, 4, 2, 2]),
+        ]
+        doc.build(story)
+        buf.seek(0)
+        resp = make_response(buf.getvalue())
+        resp.headers["Content-Type"] = "application/pdf"
+        resp.headers["Content-Disposition"] = f"attachment; filename={filename}.pdf"
+        return resp
+
+    flash("Formato inválido.", "danger")
     return redirect(url_for('eleicao_servidor', matricula=matricula))
 
 

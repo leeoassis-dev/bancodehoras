@@ -1,62 +1,118 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <h4 class="mb-0"><i class="bi bi-calendar2-check me-2" style="color:#b45309"></i>Banco de Dias de Eleição</h4>
     <span class="text-muted small">Servidores com saldo de dias por trabalho eleitoral</span>
   </div>
 </div>
 
+<!-- Filtros -->
+<form method="get" class="card p-3 mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Buscar por matrícula ou nome</label>
+      <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" name="busca" class="form-control" placeholder="Digite..." value="{{ busca }}">
+      </div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Secretaria</label>
+      <select name="secretaria" class="form-select">
+        <option value="">Todas</option>
+        {% for s in secretarias %}<option value="{{ s }}" {{ 'selected' if s==sec_sel }}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold mb-1">Departamento</label>
+      <select name="setor" class="form-select">
+        <option value="">Todos</option>
+        {% for s in setores %}<option value="{{ s }}" {{ 'selected' if s==set_sel }}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold mb-1">Saldo</label>
+      <select name="saldo" class="form-select">
+        <option value="" {{ 'selected' if not saldo_sel }}>Todos</option>
+        <option value="com_saldo" {{ 'selected' if saldo_sel=='com_saldo' }}>Com saldo disponível</option>
+        <option value="zerado" {{ 'selected' if saldo_sel=='zerado' }}>Saldo zerado</option>
+      </select>
+    </div>
+    <div class="col-md-2 d-flex gap-2">
+      <button type="submit" class="btn flex-fill text-white" style="background:#b45309">
+        <i class="bi bi-funnel me-1"></i>Filtrar
+      </button>
+      {% if busca or sec_sel or set_sel or saldo_sel %}
+      <a href="{{ url_for('eleicao_index') }}" class="btn btn-outline-secondary" title="Limpar filtros">
+        <i class="bi bi-x-lg"></i>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</form>
+
 {% if servidores %}
 <div class="card">
-  <div class="card-header bg-white d-flex align-items-center gap-2">
-    <i class="bi bi-people" style="color:#b45309"></i>
-    <span class="small text-muted">{{ servidores|length }} servidor(es) com lançamentos de eleição</span>
+  <div class="card-header bg-white d-flex align-items-center justify-content-between">
+    <span class="small text-muted">
+      <i class="bi bi-people" style="color:#b45309"></i>
+      {{ servidores|length }} servidor(es) encontrado(s)
+    </span>
+    <span class="small text-muted">
+      Total saldo: <strong style="color:#b45309">
+        {{ servidores | map(attribute='total_creditos') | map('int') | sum -
+           servidores | map(attribute='total_baixas') | map('int') | sum }} dia(s)
+      </strong>
+    </span>
   </div>
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
       <thead style="background:#78350f; color:#fff;">
         <tr>
-          <th>Matrícula</th>
-          <th>Nome</th>
-          <th>Secretaria</th>
-          <th>Departamento</th>
-          <th class="text-center">Dias Creditados</th>
-          <th class="text-center">Folgas Tiradas</th>
-          <th class="text-center">Saldo</th>
-          <th class="text-center">Gerenciar</th>
+          <th class="sortable-header">Matrícula <span class="sort-indicator"></span></th>
+          <th class="sortable-header">Nome <span class="sort-indicator"></span></th>
+          <th class="sortable-header">Secretaria <span class="sort-indicator"></span></th>
+          <th class="sortable-header">Departamento <span class="sort-indicator"></span></th>
+          <th class="text-center sortable-header">Creditados <span class="sort-indicator"></span></th>
+          <th class="text-center sortable-header">Folgas <span class="sort-indicator"></span></th>
+          <th class="text-center sortable-header">Saldo <span class="sort-indicator"></span></th>
+          <th class="text-center">Detalhe</th>
         </tr>
       </thead>
       <tbody>
         {% for s in servidores %}
-        {% set saldo = s.total_creditos - s.total_baixas %}
+        {% set saldo = s.total_creditos|int - s.total_baixas|int %}
         <tr>
           <td><span class="badge bg-secondary">{{ s.matricula }}</span></td>
           <td class="fw-semibold">{{ s.nome }}</td>
           <td class="small text-muted">{{ s.secretaria or '–' }}</td>
           <td class="small text-muted">{{ s.setor or '–' }}</td>
           <td class="text-center">
-            <span class="badge" style="background:#d97706; color:#fff;">{{ s.total_creditos }} dia{{ 's' if s.total_creditos != 1 }}</span>
+            <span class="badge" style="background:#d97706; color:#fff;">
+              {{ s.total_creditos }} dia{{ 's' if s.total_creditos|int != 1 }}
+            </span>
           </td>
           <td class="text-center">
-            {% if s.total_baixas > 0 %}
-            <span class="badge bg-secondary">{{ s.total_baixas }} folga{{ 's' if s.total_baixas != 1 }}</span>
+            {% if s.total_baixas|int > 0 %}
+            <span class="badge bg-secondary">{{ s.total_baixas }} folga{{ 's' if s.total_baixas|int != 1 }}</span>
             {% else %}
             <span class="text-muted">–</span>
             {% endif %}
           </td>
-          <td class="text-center">
+          <td class="text-center" data-sort-value="{{ saldo }}">
             {% if saldo > 0 %}
               <span class="fw-bold" style="color:#b45309;">{{ saldo }} dia{{ 's' if saldo != 1 }}</span>
             {% elif saldo == 0 %}
               <span class="badge bg-secondary">Zerado</span>
             {% else %}
-              <span class="fw-bold text-danger">{{ saldo }} dia{{ 's' if saldo != 1 }}</span>
+              <span class="fw-bold text-danger">{{ saldo }}</span>
             {% endif %}
           </td>
           <td class="text-center">
-            <a href="{{ url_for('eleicao_servidor', matricula=s.matricula) }}" class="btn btn-sm" style="background:#78350f; color:#fff;">
+            <a href="{{ url_for('eleicao_servidor', matricula=s.matricula) }}"
+               class="btn btn-sm text-white" style="background:#78350f;">
               <i class="bi bi-calendar2-check me-1"></i>Detalhe
             </a>
           </td>
@@ -70,8 +126,13 @@
 <div class="card">
   <div class="card-body text-center py-5 text-muted">
     <i class="bi bi-calendar2-x" style="font-size:3rem; color:#d97706"></i>
+    {% if busca or sec_sel or set_sel or saldo_sel %}
+    <p class="mt-3 mb-1 fw-semibold">Nenhum servidor encontrado para os filtros informados.</p>
+    <a href="{{ url_for('eleicao_index') }}" class="btn btn-outline-secondary btn-sm mt-2">Limpar filtros</a>
+    {% else %}
     <p class="mt-3 mb-1 fw-semibold">Nenhum servidor com lançamentos de eleição.</p>
     <p class="small">Para registrar dias, acesse o servidor via <a href="{{ url_for('servidores') }}">Servidores</a> e clique em "Dias de Eleição".</p>
+    {% endif %}
   </div>
 </div>
 {% endif %}

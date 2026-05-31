@@ -2,7 +2,7 @@
 {% block content %}
 
 <!-- Cabeçalho -->
-<div class="row mb-4 align-items-center">
+<div class="row mb-3 align-items-center">
   <div class="col">
     <nav aria-label="breadcrumb">
       <ol class="breadcrumb mb-1 small">
@@ -13,23 +13,39 @@
     <h4 class="mb-0">
       <i class="bi bi-calendar2-check me-2" style="color:#b45309"></i>Dias de Eleição
     </h4>
-    <span class="text-muted">{{ servidor.nome }} — Matrícula {{ servidor.matricula }}</span>
-    {% if servidor.secretaria %}<span class="ms-2 text-muted small">| {{ servidor.secretaria }}</span>{% endif %}
-    {% if servidor.setor %}<span class="ms-2 text-muted small">| {{ servidor.setor }}</span>{% endif %}
   </div>
-  <div class="col-auto d-flex gap-3 align-items-center">
-    <!-- Card saldo de eleição -->
-    <div class="card px-4 py-2 text-center border-start border-4"
-         style="border-color:#d97706 !important;">
-      <div class="small text-muted">Saldo de dias</div>
-      <div class="fs-3 fw-bold" style="color:{{ '#b45309' if saldo > 0 else ('#6c757d' if saldo == 0 else '#dc3545') }}">
-        {{ saldo }}
-      </div>
-      <div class="small text-muted">{{ 'disponível' if saldo == 1 else 'disponíveis' }}</div>
-    </div>
-    <a href="{{ url_for('lancamentos', matricula=servidor.matricula) }}" class="btn btn-outline-secondary btn-sm">
+  <div class="col-auto d-flex gap-2 align-items-center">
+    <a href="{{ url_for('eleicao_exportar', matricula=servidor.matricula, fmt='pdf') }}"
+       class="btn btn-sm btn-outline-danger" title="Exportar PDF">
+      <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+    </a>
+    <a href="{{ url_for('eleicao_exportar', matricula=servidor.matricula, fmt='excel') }}"
+       class="btn btn-sm btn-outline-success" title="Exportar Excel">
+      <i class="bi bi-file-earmark-excel me-1"></i>Excel
+    </a>
+    <a href="{{ url_for('compensacoes', matricula=servidor.matricula) }}" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-clock-history me-1"></i>Banco de Horas
     </a>
+  </div>
+</div>
+
+<!-- Banner de identificação do servidor -->
+<div class="alert mb-4 py-2 px-3 d-flex align-items-center gap-3" style="background:#fef3c7; border:1.5px solid #d97706; border-radius:.5rem;">
+  <i class="bi bi-person-badge fs-4" style="color:#b45309"></i>
+  <div>
+    <div class="fw-bold fs-5" style="color:#78350f; line-height:1.2">{{ servidor.nome }}</div>
+    <div class="small text-muted">
+      Matrícula <strong>{{ servidor.matricula }}</strong>
+      {% if servidor.cargo %} &nbsp;·&nbsp; {{ servidor.cargo }}{% endif %}
+      {% if servidor.secretaria %} &nbsp;·&nbsp; {{ servidor.secretaria }}{% endif %}
+      {% if servidor.setor %} &nbsp;·&nbsp; {{ servidor.setor }}{% endif %}
+    </div>
+  </div>
+  <div class="ms-auto text-end">
+    <div class="small text-muted">Saldo de dias</div>
+    <div class="fw-bold fs-4" style="color:{{ '#b45309' if saldo > 0 else ('#6c757d' if saldo == 0 else '#dc3545') }}">
+      {{ saldo }} <span class="fs-6">dia{{ 's' if saldo != 1 }}</span>
+    </div>
   </div>
 </div>
 

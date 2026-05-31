@@ -4,13 +4,26 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <h5 class="mb-0"><i class="bi bi-plus-circle-fill me-2 text-success"></i>Lançamento de Horas</h5>
-    <span class="text-muted">{{ servidor.nome }} — Matrícula {{ servidor.matricula }}</span>
   </div>
   <div class="d-flex gap-2">
     <a href="{{ url_for('eleicao_servidor', matricula=servidor.matricula) }}" class="btn btn-sm" style="background:#d97706; color:#fff;" title="Gerenciar dias de eleição deste servidor">
       <i class="bi bi-calendar2-check me-1"></i>Dias de Eleição
     </a>
     <a href="/servidores" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+  </div>
+</div>
+
+<!-- Banner de identificação do servidor -->
+<div class="alert mb-4 py-2 px-3 d-flex align-items-center gap-3" style="background:#f0fdf4; border:1.5px solid #198754; border-radius:.5rem;">
+  <i class="bi bi-person-badge fs-4 text-success"></i>
+  <div>
+    <div class="fw-bold fs-5 text-success" style="line-height:1.2">{{ servidor.nome }}</div>
+    <div class="small text-muted">
+      Matrícula <strong>{{ servidor.matricula }}</strong>
+      {% if servidor.cargo %} &nbsp;·&nbsp; {{ servidor.cargo }}{% endif %}
+      {% if servidor.secretaria %} &nbsp;·&nbsp; {{ servidor.secretaria }}{% endif %}
+      {% if servidor.setor %} &nbsp;·&nbsp; {{ servidor.setor }}{% endif %}
+    </div>
   </div>
 </div>
 
