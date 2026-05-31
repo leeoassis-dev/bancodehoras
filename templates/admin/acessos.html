@@ -11,6 +11,34 @@
   </button>
 </div>
 
+<form method="get" class="card p-3 mb-4">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label small fw-semibold mb-1">Buscar usuário ou servidor</label>
+      <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" name="busca" class="form-control" value="{{ busca }}" placeholder="Nome, CPF, e-mail ou matrícula">
+      </div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Nível</label>
+      <select name="nivel" class="form-select">
+        {% for nv, label in [('','Todos'),('master','Master'),('secretario','Secretário'),('chefia','Chefia'),('servidor','Servidor')] %}
+        <option value="{{ nv }}" {{ 'selected' if filtro_nivel==nv }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Departamento</label>
+      <input type="text" name="departamento" class="form-control" value="{{ departamento }}" placeholder="Filtrar por departamento">
+    </div>
+    <div class="col-md-2 d-flex gap-2">
+      <button class="btn btn-primary flex-fill"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+      {% if busca or filtro_nivel or departamento %}<a href="/admin/acessos" class="btn btn-outline-secondary">Limpar</a>{% endif %}
+    </div>
+  </div>
+</form>
+
 <!-- KPIs de segurança -->
 <div class="row g-3 mb-4">
   {% set cores = {'master':'danger','secretario':'primary','chefia':'info','servidor':'secondary'} %}
@@ -92,25 +120,25 @@
                 <td class="text-center">
                   <div class="d-flex gap-1 justify-content-center">
                     <!-- Alterar nível -->
-                    <button class="btn btn-sm btn-outline-primary"
+                    <button class="btn btn-sm btn-outline-primary px-2"
                             onclick='abrirModalNivel({{ u.id }}, {{ u.nivel|tojson }}, {{ u.vinculos_lista|tojson }}, {{ (u.matricula or "")|tojson }})'
-                            title="Alterar nível">
-                      <i class="bi bi-arrow-up-down"></i>
+                            title="Alterar nível e vínculos">
+                      <i class="bi bi-person-gear"></i>
                     </button>
                     <!-- Revogar -->
                     {% if u.ativo %}
                     <form method="post" action="/admin/acessos/usuario/{{ u.id }}/revogar"
                           onsubmit="return confirm('Revogar acesso de {{ u.nome }}?')">
-                      <button class="btn btn-sm btn-outline-danger" title="Revogar acesso">
-                        <i class="bi bi-x-circle"></i>
+                      <button class="btn btn-sm btn-outline-danger px-2" title="Revogar acesso">
+                        <i class="bi bi-person-x"></i>
                       </button>
                     </form>
                     {% endif %}
                     <!-- Reset senha -->
                     <form method="post" action="/admin/usuarios/{{ u.id }}/reset-senha"
                           onsubmit="return confirm('Redefinir senha de {{ u.nome }}?')">
-                      <button class="btn btn-sm btn-outline-warning" title="Redefinir senha">
-                        <i class="bi bi-key"></i>
+                      <button class="btn btn-sm btn-outline-warning px-2" title="Redefinir senha">
+                        <i class="bi bi-key-fill"></i>
                       </button>
                     </form>
                   </div>
@@ -251,9 +279,10 @@
           <div id="modalSetDiv" class="mb-3" style="display:none">
             <label class="form-label fw-semibold">Departamento(s) vinculado(s) <small class="text-muted">(selecione um ou mais)</small></label>
             <div class="form-text mb-1">Para chefia, marque todos os departamentos que essa pessoa poderá consultar.</div>
+            <input type="text" class="form-control form-control-sm mb-2 filtro-departamento" placeholder="Buscar departamento...">
             <div class="border rounded p-2" style="max-height:160px;overflow-y:auto">
               {% for s in setores %}
-              <div class="form-check">
+              <div class="form-check item-departamento">
                 <input class="form-check-input" type="checkbox" name="vinculos" value="{{ s }}" id="mset_{{ loop.index }}">
                 <label class="form-check-label small" for="mset_{{ loop.index }}">{{ s }}</label>
               </div>
@@ -315,9 +344,10 @@
           <div id="nvSetDiv" class="mb-3" style="display:none">
             <label class="form-label fw-semibold">Departamento(s) <small class="text-muted">(um ou mais)</small></label>
             <div class="form-text mb-1">A chefia poderá consultar servidores de todos os departamentos selecionados.</div>
+            <input type="text" class="form-control form-control-sm mb-2 filtro-departamento" placeholder="Buscar departamento...">
             <div class="border rounded p-2" style="max-height:160px;overflow-y:auto" id="nvSetChecks">
               {% for s in setores %}
-              <div class="form-check">
+              <div class="form-check item-departamento">
                 <input class="form-check-input nv-vinculos" type="checkbox" name="vinculos" value="{{ s }}" id="nvset_{{ loop.index }}">
                 <label class="form-check-label small" for="nvset_{{ loop.index }}">{{ s }}</label>
               </div>
@@ -363,6 +393,16 @@ function ajustarModal() {
   document.querySelectorAll('#modalSetDiv input[name="vinculos"]').forEach(cb => cb.disabled = nv !== 'chefia');
 }
 ajustarModal();
+
+document.querySelectorAll('.filtro-departamento').forEach(input => {
+  input.addEventListener('input', () => {
+    const termo = input.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    input.parentElement.querySelectorAll('.item-departamento').forEach(item => {
+      const txt = item.textContent.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      item.style.display = txt.includes(termo) ? '' : 'none';
+    });
+  });
+});
 
 document.querySelector('#modalPreAuth form')?.addEventListener('submit', function(e) {
   const nv = document.getElementById('nivelModal').value;

@@ -10,16 +10,30 @@
 
 <form method="get" class="card p-3 mb-3">
   <div class="row g-2 align-items-end">
-    <div class="col-md-6">
+    <div class="col-md-4">
       <label class="form-label small fw-semibold mb-1">Buscar por matrícula ou nome</label>
       <div class="input-group">
         <span class="input-group-text"><i class="bi bi-search"></i></span>
         <input type="text" name="busca" class="form-control" placeholder="Digite matrícula ou nome..." value="{{ busca }}">
       </div>
     </div>
-    <div class="col-md-3 d-flex gap-2">
-      <button type="submit" class="btn btn-primary flex-fill">Buscar</button>
-      {% if busca %}<a href="/consulta" class="btn btn-outline-secondary">✕</a>{% endif %}
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Secretaria</label>
+      <select name="secretaria" class="form-select">
+        <option value="">Todas</option>
+        {% for s in secretarias %}<option value="{{ s }}" {{ 'selected' if s==secretaria_sel }}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Departamento</label>
+      <select name="setor" class="form-select">
+        <option value="">Todos</option>
+        {% for s in setores %}<option value="{{ s }}" {{ 'selected' if s==setor_sel }}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2 d-flex gap-2">
+      <button type="submit" class="btn btn-primary flex-fill"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+      {% if busca or secretaria_sel or setor_sel %}<a href="/consulta" class="btn btn-outline-secondary">Limpar</a>{% endif %}
     </div>
   </div>
 </form>

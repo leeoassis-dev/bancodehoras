@@ -246,6 +246,12 @@ _SCHEMA_SQLITE = """
         endpoint TEXT, caminho TEXT, titulo TEXT,
         criado_em TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS exclusoes_servidores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        auditoria_id INTEGER, matricula TEXT NOT NULL, servidor_nome TEXT,
+        payload TEXT NOT NULL, criado_em TEXT NOT NULL,
+        restaurado INTEGER NOT NULL DEFAULT 0, restaurado_em TEXT
+    );
 """
 
 _SCHEMA_POSTGRES = """
@@ -308,6 +314,12 @@ _SCHEMA_POSTGRES = """
         usuario_id INTEGER, usuario_nome TEXT, usuario_cpf TEXT,
         endpoint TEXT, caminho TEXT, titulo TEXT,
         criado_em TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS exclusoes_servidores (
+        id SERIAL PRIMARY KEY,
+        auditoria_id INTEGER, matricula TEXT NOT NULL, servidor_nome TEXT,
+        payload TEXT NOT NULL, criado_em TEXT NOT NULL,
+        restaurado INTEGER NOT NULL DEFAULT 0, restaurado_em TEXT
     );
 """
 

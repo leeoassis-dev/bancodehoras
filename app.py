@@ -161,7 +161,7 @@ def minutos_num(m):
     return int(m or 0)
 
 def registrar_auditoria(db, acao, entidade, entidade_id=None, matricula=None, servidor_nome=None, detalhe=""):
-    db.execute("""
+    return db.insert("""
         INSERT INTO auditoria
             (criado_em, usuario_id, usuario_nome, usuario_cpf, acao, entidade, entidade_id, matricula, servidor_nome, detalhe)
         VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -170,6 +170,28 @@ def registrar_auditoria(db, acao, entidade, entidade_id=None, matricula=None, se
         session.get("uid"), session.get("nome"), session.get("cpf"),
         acao, entidade, str(entidade_id or ""), matricula, servidor_nome, detalhe
     ))
+
+def _rows_dict(rows):
+    return [dict(r) for r in rows]
+
+def _snapshot_servidor_exclusao(db, matricula):
+    lancs = _rows_dict(db.execute("SELECT * FROM lancamentos WHERE matricula=? ORDER BY id", (matricula,)).fetchall())
+    comps = _rows_dict(db.execute("SELECT * FROM compensacoes WHERE matricula=? ORDER BY id", (matricula,)).fetchall())
+    pags = _rows_dict(db.execute("SELECT * FROM pagamentos WHERE matricula=? ORDER BY id", (matricula,)).fetchall())
+    lanc_ids = [l["id"] for l in lancs]
+    comp_ids = [c["id"] for c in comps]
+    pag_ids = [p["id"] for p in pags]
+    consumos = []
+    if lanc_ids:
+        ph = ",".join("?" * len(lanc_ids))
+        consumos += _rows_dict(db.execute(f"SELECT * FROM consumos WHERE lancamento_id IN ({ph})", lanc_ids).fetchall())
+    if comp_ids:
+        ph = ",".join("?" * len(comp_ids))
+        consumos += _rows_dict(db.execute(f"SELECT * FROM consumos WHERE tipo='compensacao' AND referencia_id IN ({ph})", comp_ids).fetchall())
+    if pag_ids:
+        ph = ",".join("?" * len(pag_ids))
+        consumos += _rows_dict(db.execute(f"SELECT * FROM consumos WHERE tipo='pagamento' AND referencia_id IN ({ph})", pag_ids).fetchall())
+    return {"lancamentos": lancs, "compensacoes": comps, "pagamentos": pags, "consumos": consumos}
 
 def registrar_visualizacao():
     if request.method != "GET" or "uid" not in session:
@@ -257,24 +279,46 @@ def _xlsx_response(filename, title, headers, rows):
 
 def _pdf_response(filename, title, headers, rows):
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.pagesizes import A3, A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from xml.sax.saxutils import escape
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=18, leftMargin=18, topMargin=18, bottomMargin=18)
+    page_size = landscape(A3 if len(headers) >= 10 else A4)
+    doc = SimpleDocTemplate(buf, pagesize=page_size, rightMargin=14, leftMargin=14, topMargin=18, bottomMargin=18)
     styles = getSampleStyleSheet()
-    story = [Paragraph(f"<b>{title}</b>", styles["Title"]), Spacer(1, 10)]
-    table_data = [headers] + [[str(v or "") for v in row] for row in rows]
-    table = Table(table_data, repeatRows=1)
+    cell_font = 6 if len(headers) >= 10 else 7
+    header_font = 6 if len(headers) >= 10 else 7
+    cell_style = ParagraphStyle("CellWrap", parent=styles["BodyText"], fontSize=cell_font, leading=cell_font + 2, wordWrap="CJK")
+    header_style = ParagraphStyle("HeaderWrap", parent=cell_style, fontName="Helvetica-Bold", textColor=colors.white, alignment=1)
+    title_style = ParagraphStyle("TitleBlue", parent=styles["Title"], fontSize=16, leading=19, alignment=1)
+    story = [Paragraph(f"<b>{escape(title)}</b>", title_style), Spacer(1, 10)]
+
+    def pcell(value, style=cell_style):
+        return Paragraph(escape(str(value or "")), style)
+
+    table_data = [[pcell(h, header_style) for h in headers]] + [[pcell(v) for v in row] for row in rows]
+    weights = []
+    for idx, h in enumerate(headers):
+        sample = max([len(str(h))] + [len(str(row[idx] if idx < len(row) else "")) for row in rows[:80]])
+        weights.append(max(7, min(sample, 24)))
+    total_weight = sum(weights) or 1
+    col_widths = [doc.width * w / total_weight for w in weights]
+    table = Table(table_data, repeatRows=1, colWidths=col_widths)
     estilos = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1A3A6B")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTSIZE", (0, 0), (-1, 0), header_font),
+        ("FONTSIZE", (0, 1), (-1, -1), cell_font),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D0D7DE")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F6F9")]),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]
     for idx, row in enumerate(rows, start=1):
         label = str(row[0] if row else "")
@@ -644,10 +688,17 @@ def excluir_servidor(matricula):
     if not srv:
         flash("Servidor não encontrado.", "danger")
         return redirect(url_for("servidores"))
-    registrar_auditoria(
+    payload = _snapshot_servidor_exclusao(db, matricula)
+    payload["servidor"] = dict(srv)
+    criado_em = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    auditoria_id = registrar_auditoria(
         db, "Excluiu cadastro de servidor", "servidor", matricula, matricula, srv["nome"],
         f"Cadastro e movimentações removidos definitivamente; secretaria {srv['secretaria'] or '-'}; departamento {srv['setor'] or '-'}"
     )
+    db.insert("""
+        INSERT INTO exclusoes_servidores (auditoria_id,matricula,servidor_nome,payload,criado_em,restaurado)
+        VALUES (?,?,?,?,?,0)
+    """, (auditoria_id, matricula, srv["nome"], json.dumps(payload, default=str), criado_em))
     db.execute("DELETE FROM consumos WHERE lancamento_id IN (SELECT id FROM lancamentos WHERE matricula=?)", (matricula,))
     db.execute("DELETE FROM consumos WHERE tipo='compensacao' AND referencia_id IN (SELECT id FROM compensacoes WHERE matricula=?)", (matricula,))
     db.execute("DELETE FROM consumos WHERE tipo='pagamento' AND referencia_id IN (SELECT id FROM pagamentos WHERE matricula=?)", (matricula,))
@@ -878,12 +929,73 @@ def admin_auditoria():
     db = get_db()
     desde = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
     eventos = db.execute("""
-        SELECT *
-        FROM auditoria
-        WHERE criado_em >= ?
-        ORDER BY criado_em ASC, id ASC
+        SELECT a.*, ex.id AS exclusao_id, ex.restaurado, ex.criado_em AS exclusao_criada
+        FROM auditoria a
+        LEFT JOIN exclusoes_servidores ex ON ex.auditoria_id=a.id
+        WHERE a.criado_em >= ?
+        ORDER BY a.criado_em ASC, a.id ASC
     """, (desde,)).fetchall()
     return render_template("admin/auditoria.html", eventos=eventos, desde=desde)
+
+@app.route("/admin/auditoria/exclusao/<int:exclusao_id>/estornar", methods=["POST"])
+@master_required
+def admin_estornar_exclusao_servidor(exclusao_id):
+    db = get_db()
+    ex = db.execute("SELECT * FROM exclusoes_servidores WHERE id=?", (exclusao_id,)).fetchone()
+    if not ex:
+        flash("Registro de exclusão não encontrado.", "danger")
+        return redirect(url_for("admin_auditoria"))
+    if ex["restaurado"]:
+        flash("Esta exclusão já foi estornada.", "warning")
+        return redirect(url_for("admin_auditoria"))
+    if ex["criado_em"] < (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S"):
+        flash("Prazo de 30 dias para estorno expirado.", "danger")
+        return redirect(url_for("admin_auditoria"))
+    if db.execute("SELECT 1 FROM servidores WHERE matricula=?", (ex["matricula"],)).fetchone():
+        flash("Não foi possível estornar: já existe servidor com esta matrícula.", "danger")
+        return redirect(url_for("admin_auditoria"))
+
+    payload = json.loads(ex["payload"])
+    srv = payload.get("servidor", {})
+    db.execute("""
+        INSERT INTO servidores (matricula,nome,cargo,setor,secretaria,cpf,funcao_gratificada,email,arquivado)
+        VALUES (?,?,?,?,?,?,?,?,?)
+    """, (
+        srv.get("matricula"), srv.get("nome"), srv.get("cargo"), srv.get("setor"),
+        srv.get("secretaria"), srv.get("cpf"), srv.get("funcao_gratificada", 0),
+        srv.get("email"), srv.get("arquivado", 0)
+    ))
+    for l in payload.get("lancamentos", []):
+        db.execute("""INSERT INTO lancamentos
+            (id,matricula,data,horas_base,minutos_base,percentual,minutos_creditados,descricao,criado_em)
+            VALUES (?,?,?,?,?,?,?,?,?)""",
+            (l.get("id"), l.get("matricula"), l.get("data"), l.get("horas_base"), l.get("minutos_base"),
+             l.get("percentual"), l.get("minutos_creditados"), l.get("descricao"), l.get("criado_em")))
+    for c in payload.get("compensacoes", []):
+        db.execute("""INSERT INTO compensacoes
+            (id,matricula,data,tipo,minutos_compensados,descricao,criado_em)
+            VALUES (?,?,?,?,?,?,?)""",
+            (c.get("id"), c.get("matricula"), c.get("data"), c.get("tipo"), c.get("minutos_compensados"), c.get("descricao"), c.get("criado_em")))
+    for p in payload.get("pagamentos", []):
+        db.execute("""INSERT INTO pagamentos
+            (id,matricula,data_pagamento,descricao,criado_em)
+            VALUES (?,?,?,?,?)""",
+            (p.get("id"), p.get("matricula"), p.get("data_pagamento"), p.get("descricao"), p.get("criado_em")))
+    vistos = set()
+    for c in payload.get("consumos", []):
+        if c.get("id") in vistos:
+            continue
+        vistos.add(c.get("id"))
+        db.execute("""INSERT INTO consumos
+            (id,lancamento_id,tipo,referencia_id,minutos,criado_em)
+            VALUES (?,?,?,?,?,?)""",
+            (c.get("id"), c.get("lancamento_id"), c.get("tipo"), c.get("referencia_id"), c.get("minutos"), c.get("criado_em")))
+    db.execute("UPDATE exclusoes_servidores SET restaurado=1, restaurado_em=? WHERE id=?",
+               (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), exclusao_id))
+    registrar_auditoria(db, "Estornou exclusão de servidor", "servidor", ex["matricula"], ex["matricula"], ex["servidor_nome"], "Cadastro restaurado pela auditoria.")
+    db.commit()
+    flash("Exclusão estornada. Cadastro e movimentações foram restaurados.", "success")
+    return redirect(url_for("admin_auditoria"))
 
 # â”€â”€â”€ Relatórios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -1401,6 +1513,8 @@ def consulta():
     db    = get_db()
     nivel = session.get('nivel')
     busca = request.args.get('busca','').strip()
+    sec = request.args.get('secretaria','').strip()
+    set_ = request.args.get('setor','').strip()
 
     vinculos = session.get('vinculos', [])
     filtro = "WHERE s.arquivado=0"
@@ -1418,6 +1532,10 @@ def consulta():
 
     if busca:
         filtro += " AND (s.matricula LIKE ? OR s.nome LIKE ?)"; params += [f"%{busca}%",f"%{busca}%"]
+    if sec:
+        filtro += " AND s.secretaria=?"; params.append(sec)
+    if set_:
+        filtro += " AND s.setor=?"; params.append(set_)
 
     lista = db.execute(f"""
         SELECT s.*,
@@ -1425,10 +1543,23 @@ def consulta():
             -(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=s.matricula)
             AS saldo_minutos
         FROM servidores s {filtro} ORDER BY s.nome""", params).fetchall()
+    filtro_base = "WHERE s.arquivado=0"
+    params_base = []
+    if vinculos:
+        ph = ','.join('?' * len(vinculos))
+        if nivel == 'secretario':
+            filtro_base += f" AND s.secretaria IN ({ph})"; params_base.extend(vinculos)
+        elif nivel == 'chefia':
+            filtro_base += f" AND s.setor IN ({ph})"; params_base.extend(vinculos)
+    else:
+        filtro_base += " AND 1=0"
+    secretarias = [r[0] for r in db.execute(f"SELECT DISTINCT s.secretaria FROM servidores s {filtro_base} AND s.secretaria IS NOT NULL AND s.secretaria!='' ORDER BY s.secretaria", params_base).fetchall()]
+    setores = [r[0] for r in db.execute(f"SELECT DISTINCT s.setor FROM servidores s {filtro_base} AND s.setor IS NOT NULL AND s.setor!='' ORDER BY s.setor", params_base).fetchall()]
 
     titulo_vinculos = ' | '.join(vinculos) if vinculos else '(sem vínculo)'
     return render_template('consulta.html', servidores=lista, fmt=minutos_para_horas,
-                           busca=busca, nivel=nivel,
+                           busca=busca, nivel=nivel, secretarias=secretarias, setores=setores,
+                           secretaria_sel=sec, setor_sel=set_,
                            titulo=f"Secretaria(s): {titulo_vinculos}" if nivel=='secretario'
                                   else f"Departamento(s): {titulo_vinculos}")
 
@@ -1704,12 +1835,28 @@ def criar_conta():
 @master_required
 def admin_acessos():
     db = get_db()
+    filtro_nivel = request.args.get('nivel','').strip()
+    busca = request.args.get('busca','').strip()
+    departamento = request.args.get('departamento','').strip()
 
     # Usuários por nível
-    usuarios_rows = db.execute("""
-        SELECT u.*, COUNT(u.id) OVER () AS total
-        FROM usuarios u ORDER BY u.nivel, u.nome
-    """).fetchall()
+    q = "WHERE 1=1"
+    params = []
+    if filtro_nivel:
+        q += " AND u.nivel=?"; params.append(filtro_nivel)
+    if busca:
+        q += " AND (u.nome LIKE ? OR u.cpf LIKE ? OR u.email LIKE ? OR u.matricula LIKE ? OR s.nome LIKE ?)"
+        like = f"%{busca}%"; params.extend([like, like, like, like, like])
+    if departamento:
+        q += " AND (u.setor LIKE ? OR u.vinculos LIKE ? OR s.setor LIKE ?)"
+        like_dep = f"%{departamento}%"; params.extend([like_dep, like_dep, like_dep])
+    usuarios_rows = db.execute(f"""
+        SELECT u.*, s.nome AS servidor_nome
+        FROM usuarios u
+        LEFT JOIN servidores s ON s.matricula=u.matricula
+        {q}
+        ORDER BY u.nivel, u.nome
+    """, params).fetchall()
     usuarios = []
     for u in usuarios_rows:
         d = dict(u)
@@ -1722,13 +1869,23 @@ def admin_acessos():
         "SELECT nivel, COUNT(*) AS qtd FROM usuarios WHERE ativo=1 GROUP BY nivel").fetchall()}
 
     # Pré-autorizações pendentes (não cadastradas ainda)
-    pre_rows = db.execute("""
+    pre_where = "WHERE p.cpf NOT IN (SELECT cpf FROM usuarios)"
+    pre_params = []
+    if filtro_nivel:
+        pre_where += " AND p.nivel=?"; pre_params.append(filtro_nivel)
+    if busca:
+        pre_where += " AND (p.cpf LIKE ? OR COALESCE((SELECT nome FROM servidores WHERE cpf=p.cpf LIMIT 1),'') LIKE ?)"
+        like = f"%{busca}%"; pre_params.extend([like, like])
+    if departamento:
+        pre_where += " AND (p.setor LIKE ? OR p.vinculos LIKE ?)"
+        like_dep = f"%{departamento}%"; pre_params.extend([like_dep, like_dep])
+    pre_rows = db.execute(f"""
         SELECT p.*,
                (SELECT nome FROM servidores WHERE cpf=p.cpf LIMIT 1) AS nome_servidor
         FROM pre_autorizacoes p
-        WHERE p.cpf NOT IN (SELECT cpf FROM usuarios)
+        {pre_where}
         ORDER BY p.criado_em DESC
-    """).fetchall()
+    """, pre_params).fetchall()
     pre = []
     for p in pre_rows:
         d = dict(p)
@@ -1748,9 +1905,10 @@ def admin_acessos():
     srvs = db.execute("SELECT matricula,nome,cpf FROM servidores WHERE arquivado=0 ORDER BY nome").fetchall()
 
     return render_template('admin/acessos.html',
-                           usuarios=usuarios, contadores=contadores,
-                           pre_autorizacoes=pre, ultimos=ultimos,
-                           secretarias=secs, setores=sets, servidores=srvs)
+                            usuarios=usuarios, contadores=contadores,
+                            pre_autorizacoes=pre, ultimos=ultimos,
+                            secretarias=secs, setores=sets, servidores=srvs,
+                            busca=busca, filtro_nivel=filtro_nivel, departamento=departamento)
 
 
 @app.route('/admin/acessos/pre/novo', methods=['POST'])

@@ -12,7 +12,7 @@
 <div class="card">
   <div class="card-header bg-white d-flex justify-content-between align-items-center">
     <span class="small text-muted">Desde {{ desde }}</span>
-    <span class="small text-muted">Somente usuários master visualizam esta tela.</span>
+    <span class="small text-muted">Exclusões de servidor podem ser estornadas por 30 dias.</span>
   </div>
   {% if eventos %}
   <div class="table-responsive">
@@ -24,6 +24,7 @@
           <th>Servidor Alterado</th>
           <th>Usuário que Alterou</th>
           <th>Detalhes</th>
+          <th class="text-center">Estorno</th>
         </tr>
       </thead>
       <tbody>
@@ -48,6 +49,22 @@
             <div class="text-muted small">CPF {{ e.usuario_cpf or '-' }}</div>
           </td>
           <td class="small">{{ e.detalhe or '-' }}</td>
+          <td class="text-center">
+            {% if e.exclusao_id %}
+              {% if e.restaurado %}
+                <span class="badge bg-success">Estornado</span>
+              {% else %}
+                <form method="post" action="/admin/auditoria/exclusao/{{ e.exclusao_id }}/estornar"
+                      onsubmit="return confirm('Estornar a exclusão de {{ e.servidor_nome }}? O cadastro e as movimentações salvas serão restaurados.')">
+                  <button class="btn btn-sm btn-outline-success" title="Estornar exclusão">
+                    <i class="bi bi-arrow-counterclockwise"></i>
+                  </button>
+                </form>
+              {% endif %}
+            {% else %}
+              <span class="text-muted">-</span>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
