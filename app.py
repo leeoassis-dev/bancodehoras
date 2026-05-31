@@ -159,6 +159,17 @@ def minutos_para_horas(m):
 def minutos_num(m):
     return int(m or 0)
 
+def registrar_auditoria(db, acao, entidade, entidade_id=None, matricula=None, servidor_nome=None, detalhe=""):
+    db.execute("""
+        INSERT INTO auditoria
+            (criado_em, usuario_id, usuario_nome, usuario_cpf, acao, entidade, entidade_id, matricula, servidor_nome, detalhe)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    """, (
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        session.get("uid"), session.get("nome"), session.get("cpf"),
+        acao, entidade, str(entidade_id or ""), matricula, servidor_nome, detalhe
+    ))
+
 def calcular_saldo(db, matricula):
     c = db.execute("SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=?", (matricula,)).fetchone()[0]
     u = db.execute("""SELECT COALESCE(SUM(c.minutos),0) FROM consumos c
@@ -493,8 +504,12 @@ def lancamentos(matricula):
         if mb <= 0: flash("Formato HH:MM inválido.","danger")
         else:
             mc = mb + mb*pct//100
-            db.execute("INSERT INTO lancamentos (matricula,data,horas_base,minutos_base,percentual,minutos_creditados,descricao) VALUES (?,?,?,?,?,?,?)",
-                       (matricula, data, hrs, mb, pct, mc, desc))
+            lid = db.insert("INSERT INTO lancamentos (matricula,data,horas_base,minutos_base,percentual,minutos_creditados,descricao) VALUES (?,?,?,?,?,?,?)",
+                            (matricula, data, hrs, mb, pct, mc, desc))
+            registrar_auditoria(
+                db, "Criou lançamento", "lancamento", lid, matricula, srv["nome"],
+                f"Data {data}; horas base {hrs}; adicional {pct}%; crédito {minutos_para_horas(mc)}; descrição: {desc or '-'}"
+            )
             db.commit()
             flash(f"Lançamento: {hrs} + {pct}% = {minutos_para_horas(mc)}","success")
             return redirect(url_for("lancamentos", matricula=matricula))
@@ -507,8 +522,15 @@ def lancamentos(matricula):
 @app.route("/lancamentos/<int:id>/excluir", methods=["POST"])
 def excluir_lancamento(id):
     db = get_db()
-    r  = db.execute("SELECT matricula FROM lancamentos WHERE id=?", (id,)).fetchone()
+    r  = db.execute("""
+        SELECT l.*, s.nome AS servidor_nome FROM lancamentos l
+        LEFT JOIN servidores s ON s.matricula=l.matricula WHERE l.id=?
+    """, (id,)).fetchone()
     if r:
+        registrar_auditoria(
+            db, "Excluiu lançamento", "lancamento", id, r["matricula"], r["servidor_nome"],
+            f"Data {r['data']}; horas base {r['horas_base']}; adicional {r['percentual']}%; crédito {minutos_para_horas(r['minutos_creditados'])}; descrição: {r['descricao'] or '-'}"
+        )
         db.execute("DELETE FROM consumos WHERE lancamento_id=?", (id,))
         db.execute("DELETE FROM lancamentos WHERE id=?", (id,))
         db.commit(); flash("Lançamento excluído.","warning")
@@ -531,6 +553,10 @@ def compensacoes(matricula):
             cid = db.insert("INSERT INTO compensacoes (matricula,data,tipo,minutos_compensados,descricao) VALUES (?,?,?,?,?)",
                             (matricula, data, tipo, mc, desc))
             _consumir_fifo_raw(db, matricula, mc, "compensacao", cid)
+            registrar_auditoria(
+                db, "Criou compensação", "compensacao", cid, matricula, srv["nome"],
+                f"Data {data}; tipo {tipo}; compensado {minutos_para_horas(mc)}; saldo anterior {minutos_para_horas(saldo)}; descrição: {desc or '-'}"
+            )
             db.commit()
             novo_saldo = saldo - mc
             if novo_saldo < 0:
@@ -545,8 +571,15 @@ def compensacoes(matricula):
 @app.route("/compensacoes/<int:id>/excluir", methods=["POST"])
 def excluir_compensacao(id):
     db = get_db()
-    r  = db.execute("SELECT matricula FROM compensacoes WHERE id=?", (id,)).fetchone()
+    r  = db.execute("""
+        SELECT c.*, s.nome AS servidor_nome FROM compensacoes c
+        LEFT JOIN servidores s ON s.matricula=c.matricula WHERE c.id=?
+    """, (id,)).fetchone()
     if r:
+        registrar_auditoria(
+            db, "Excluiu compensação", "compensacao", id, r["matricula"], r["servidor_nome"],
+            f"Data {r['data']}; tipo {r['tipo']}; compensado {minutos_para_horas(r['minutos_compensados'])}; descrição: {r['descricao'] or '-'}"
+        )
         db.execute("DELETE FROM consumos WHERE tipo='compensacao' AND referencia_id=?", (id,))
         db.execute("DELETE FROM compensacoes WHERE id=?", (id,))
         db.commit(); flash("Compensação excluída.","warning")
@@ -589,6 +622,7 @@ def pagamentos_servidor(matricula):
 @app.route("/pagamentos/<matricula>/registrar", methods=["POST"])
 def registrar_pagamento(matricula):
     db = get_db()
+    srv = db.execute("SELECT nome FROM servidores WHERE matricula=?", (matricula,)).fetchone()
     data_pag = request.form["data_pagamento"]
     descricao = request.form.get("descricao","").strip()
     just      = request.form.get("justificativa","").strip()
@@ -617,6 +651,10 @@ def registrar_pagamento(matricula):
     pid = db.insert("INSERT INTO pagamentos (matricula,data_pagamento,descricao) VALUES (?,?,?)", (matricula,data_pag,desc_final))
     for lid, mins in pag_itens:
         db.execute("INSERT INTO consumos (lancamento_id,tipo,referencia_id,minutos) VALUES (?,?,?,?)", (lid,"pagamento",pid,mins))
+    registrar_auditoria(
+        db, "Criou pagamento", "pagamento", pid, matricula, srv["nome"] if srv else "",
+        f"Data {data_pag}; horas base para folha {minutos_para_horas(total_base)}; itens pagos {len(pag_itens)}; descrição: {desc_final or '-'}"
+    )
     db.commit()
     aviso = f" ⚠️ Total {minutos_para_horas(total_base)} ultrapassa 45h." if total_base>LIMITE_PAGAMENTO_MINUTOS else ""
     flash(f"Pagamento registrado! Horas base: {minutos_para_horas(total_base)}.{aviso}","success")
@@ -625,13 +663,39 @@ def registrar_pagamento(matricula):
 @app.route("/pagamentos/<int:id>/estornar", methods=["POST"])
 def estornar_pagamento(id):
     db = get_db()
-    r  = db.execute("SELECT matricula FROM pagamentos WHERE id=?", (id,)).fetchone()
+    r  = db.execute("""
+        SELECT p.*, s.nome AS servidor_nome,
+               COALESCE(SUM(ROUND(c.minutos*l.minutos_base*1.0/l.minutos_creditados)),0) AS base_paga
+        FROM pagamentos p
+        LEFT JOIN servidores s ON s.matricula=p.matricula
+        LEFT JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
+        LEFT JOIN lancamentos l ON l.id=c.lancamento_id
+        WHERE p.id=?
+        GROUP BY p.id,p.matricula,p.data_pagamento,p.descricao,p.criado_em,s.nome
+    """, (id,)).fetchone()
     if r:
+        registrar_auditoria(
+            db, "Estornou pagamento", "pagamento", id, r["matricula"], r["servidor_nome"],
+            f"Data {r['data_pagamento']}; horas base {minutos_para_horas(r['base_paga'])}; descrição: {r['descricao'] or '-'}"
+        )
         db.execute("DELETE FROM consumos WHERE tipo='pagamento' AND referencia_id=?", (id,))
         db.execute("DELETE FROM pagamentos WHERE id=?", (id,))
         db.commit(); flash("Pagamento estornado.","warning")
         return redirect(url_for("pagamentos_servidor", matricula=r["matricula"]))
     return redirect(url_for("pagamentos_index"))
+
+@app.route("/admin/auditoria")
+@master_required
+def admin_auditoria():
+    db = get_db()
+    desde = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+    eventos = db.execute("""
+        SELECT *
+        FROM auditoria
+        WHERE criado_em >= ?
+        ORDER BY criado_em ASC, id ASC
+    """, (desde,)).fetchall()
+    return render_template("admin/auditoria.html", eventos=eventos, desde=desde)
 
 # â”€â”€â”€ Relatórios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

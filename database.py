@@ -233,6 +233,13 @@ _SCHEMA_SQLITE = """
         vinculos TEXT DEFAULT '[]',
         criado_em TEXT DEFAULT (datetime('now','localtime'))
     );
+    CREATE TABLE IF NOT EXISTS auditoria (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        criado_em TEXT NOT NULL,
+        usuario_id INTEGER, usuario_nome TEXT, usuario_cpf TEXT,
+        acao TEXT NOT NULL, entidade TEXT NOT NULL, entidade_id TEXT,
+        matricula TEXT, servidor_nome TEXT, detalhe TEXT
+    );
 """
 
 _SCHEMA_POSTGRES = """
@@ -282,6 +289,13 @@ _SCHEMA_POSTGRES = """
         secretaria TEXT, setor TEXT, matricula TEXT, obs TEXT,
         vinculos TEXT DEFAULT '[]',
         criado_em TEXT DEFAULT TO_CHAR(NOW(),'YYYY-MM-DD HH24:MI:SS')
+    );
+    CREATE TABLE IF NOT EXISTS auditoria (
+        id SERIAL PRIMARY KEY,
+        criado_em TEXT NOT NULL,
+        usuario_id INTEGER, usuario_nome TEXT, usuario_cpf TEXT,
+        acao TEXT NOT NULL, entidade TEXT NOT NULL, entidade_id TEXT,
+        matricula TEXT, servidor_nome TEXT, detalhe TEXT
     );
 """
 
