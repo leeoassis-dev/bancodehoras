@@ -84,6 +84,10 @@ class _Cur:
     def lastrowid(self):
         return self._c.lastrowid  # SQLite only
 
+    @property
+    def rowcount(self):
+        return self._c.rowcount
+
 # ─── Conexão wrapper ──────────────────────────────────────────────────────────
 
 class DbConn:

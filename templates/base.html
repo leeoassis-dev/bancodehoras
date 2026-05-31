@@ -15,6 +15,15 @@
     .badge-50  { background:#fd7e14; }
     .badge-100 { background:#dc3545; }
     th { white-space:nowrap; }
+    th.sortable-header { cursor:pointer; user-select:none; }
+    th.sortable-header:hover { filter:brightness(.95); }
+    th.sortable-header .sort-indicator {
+      display:inline-block;
+      min-width:1rem;
+      margin-left:.35rem;
+      opacity:.85;
+      font-size:.8rem;
+    }
   </style>
 </head>
 <body>
@@ -71,6 +80,106 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const parseSortValue = (cell) => {
+    const raw = (cell.dataset.sortValue || cell.innerText || '').trim();
+    const text = raw.replace(/\s+/g, ' ');
+    if (!text || text === '–' || text === '-') return { type: 'empty', value: '' };
+
+    const hour = text.match(/^(-?\d{1,6}):([0-5]\d)$/);
+    if (hour) {
+      return { type: 'number', value: (parseInt(hour[1], 10) * 60) + parseInt(hour[2], 10) };
+    }
+
+    const dateText = text.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2})(?::\d{2})?)?/);
+    if (dateText) {
+      const timestamp = Date.parse(`${dateText[1]}T${dateText[2] || '00:00'}`);
+      if (!Number.isNaN(timestamp)) return { type: 'number', value: timestamp };
+    }
+
+    const brDate = text.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}:\d{2}))?/);
+    if (brDate) {
+      const timestamp = Date.parse(`${brDate[3]}-${brDate[2]}-${brDate[1]}T${brDate[4] || '00:00'}`);
+      if (!Number.isNaN(timestamp)) return { type: 'number', value: timestamp };
+    }
+
+    const numericOnly = text.replace(/[^\d,-]/g, '').replace(',', '.');
+    if (/^-?\d+(\.\d+)?$/.test(numericOnly) && /\d/.test(text)) {
+      return { type: 'number', value: Number(numericOnly) };
+    }
+
+    return { type: 'text', value: text.toLocaleLowerCase('pt-BR') };
+  };
+
+  const compareCells = (a, b, column, direction) => {
+    const av = parseSortValue(a.cells[column]);
+    const bv = parseSortValue(b.cells[column]);
+    let result;
+    if (av.type === 'number' && bv.type === 'number') {
+      result = av.value - bv.value;
+    } else {
+      result = String(av.value).localeCompare(String(bv.value), 'pt-BR', {
+        numeric: true,
+        sensitivity: 'base'
+      });
+    }
+    return direction === 'asc' ? result : -result;
+  };
+
+  document.querySelectorAll('table').forEach((table) => {
+    if (table.dataset.noSort === 'true') return;
+    const thead = table.tHead;
+    const tbody = table.tBodies[0];
+    if (!thead || !tbody) return;
+    if (tbody.querySelector('tr.table-primary, tr.table-secondary')) return;
+    const headers = Array.from(thead.rows[thead.rows.length - 1].cells);
+    if (!headers.length) return;
+
+    headers.forEach((th, index) => {
+      if (th.classList.contains('no-sort') || th.colSpan > 1) return;
+      th.classList.add('sortable-header');
+      th.setAttribute('role', 'button');
+      th.setAttribute('tabindex', '0');
+      if (!th.querySelector('.sort-indicator')) {
+        const indicator = document.createElement('span');
+        indicator.className = 'sort-indicator';
+        indicator.setAttribute('aria-hidden', 'true');
+        th.appendChild(indicator);
+      }
+
+      const sort = () => {
+        const currentColumn = Number(table.dataset.sortColumn ?? -1);
+        const nextDirection = currentColumn === index && table.dataset.sortDirection === 'asc' ? 'desc' : 'asc';
+        const rows = Array.from(tbody.rows);
+        const sortableRows = rows.filter((row) => row.cells.length === headers.length);
+        const fixedRows = rows.filter((row) => row.cells.length !== headers.length);
+
+        sortableRows.sort((a, b) => compareCells(a, b, index, nextDirection));
+        sortableRows.concat(fixedRows).forEach((row) => tbody.appendChild(row));
+
+        table.dataset.sortColumn = String(index);
+        table.dataset.sortDirection = nextDirection;
+        headers.forEach((h) => {
+          h.classList.remove('table-sort-asc', 'table-sort-desc');
+          const marker = h.querySelector('.sort-indicator');
+          if (marker) marker.textContent = '';
+        });
+        th.classList.add(nextDirection === 'asc' ? 'table-sort-asc' : 'table-sort-desc');
+        th.querySelector('.sort-indicator').textContent = nextDirection === 'asc' ? '↑' : '↓';
+      };
+
+      th.addEventListener('click', sort);
+      th.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          sort();
+        }
+      });
+    });
+  });
+});
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

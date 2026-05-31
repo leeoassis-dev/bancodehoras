@@ -464,13 +464,62 @@ def get_vinculos(obj):
     v = (valor('secretaria') or valor('setor') or '').strip()
     return [v] if v else []
 
+def _usuario_tem_servidor_ativo(db, usuario):
+    """Usuários não-master só ficam ativos nas telas comuns se o servidor vinculado existir e estiver ativo."""
+    if not usuario:
+        return False
+    try:
+        nivel = usuario["nivel"]
+        cpf = (usuario["cpf"] or "").strip()
+        matricula = (usuario["matricula"] or "").strip()
+    except Exception:
+        nivel = usuario.get("nivel")
+        cpf = (usuario.get("cpf") or "").strip()
+        matricula = (usuario.get("matricula") or "").strip()
+
+    if nivel == "master":
+        return True
+    if not cpf and not matricula:
+        return False
+    return bool(db.execute("""
+        SELECT 1
+        FROM servidores
+        WHERE arquivado=0
+          AND ((?<>'' AND cpf=?) OR (?<>'' AND matricula=?))
+        LIMIT 1
+    """, (cpf, cpf, matricula, matricula)).fetchone())
+
+def _inativar_vinculos_servidor(db, servidor):
+    """Inativa contas e liberações administrativas associadas a um servidor arquivado/excluído."""
+    if not servidor:
+        return 0
+    matricula = (servidor["matricula"] or "").strip()
+    cpf = (servidor["cpf"] or "").strip()
+    params = [matricula, matricula, cpf, cpf]
+    cur = db.execute("""
+        UPDATE usuarios
+        SET ativo=0
+        WHERE ((?<>'' AND matricula=?) OR (?<>'' AND cpf=?))
+          AND nivel<>'master'
+    """, params)
+    db.execute("""
+        DELETE FROM pre_autorizacoes
+        WHERE (?<>'' AND matricula=?) OR (?<>'' AND cpf=?)
+    """, params)
+    return cur.rowcount or 0
+
 def usuario_pode_ver_matricula(db, matricula):
     """Valida acesso de leitura ao histórico conforme nível e vínculos da sessão."""
     nivel = session.get('nivel')
     if nivel == 'master':
         return True
     if nivel == 'servidor':
-        return session.get('matricula') == matricula
+        if session.get('matricula') != matricula:
+            return False
+        return bool(db.execute(
+            "SELECT 1 FROM servidores WHERE matricula=? AND arquivado=0",
+            (matricula,)
+        ).fetchone())
     if nivel in ('secretario', 'chefia'):
         vinculos = session.get('vinculos') or []
         if not vinculos:
@@ -681,9 +730,15 @@ def editar_servidor(matricula):
 @app.route("/servidores/<matricula>/arquivar", methods=["POST"])
 def arquivar_servidor(matricula):
     db = get_db()
+    srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    if not srv:
+        flash("Servidor não encontrado.", "danger")
+        return redirect(url_for("servidores"))
     db.execute("UPDATE servidores SET arquivado=1 WHERE matricula=?", (matricula,))
+    inativados = _inativar_vinculos_servidor(db, srv)
     db.commit()
-    flash("Servidor arquivado. Dados preservados para consulta.", "warning")
+    extra = f" {inativados} acesso(s) vinculado(s) foram inativados." if inativados else ""
+    flash(f"Servidor arquivado. Dados preservados para consulta.{extra}", "warning")
     return redirect(url_for("servidores"))
 
 @app.route("/servidores/<matricula>/restaurar", methods=["POST"])
@@ -691,7 +746,7 @@ def restaurar_servidor(matricula):
     db = get_db()
     db.execute("UPDATE servidores SET arquivado=0 WHERE matricula=?", (matricula,))
     db.commit()
-    flash("Servidor restaurado com sucesso.", "success")
+    flash("Servidor restaurado com sucesso. Acessos permanecem inativos até reativação pelo RH.", "success")
     return redirect(url_for("arquivados"))
 
 # â”€â”€â”€ Arquivados â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -721,7 +776,13 @@ def excluir_servidor(matricula):
     db.execute("DELETE FROM pagamentos WHERE matricula=?", (matricula,))
     db.execute("DELETE FROM compensacoes WHERE matricula=?", (matricula,))
     db.execute("DELETE FROM lancamentos WHERE matricula=?", (matricula,))
-    db.execute("UPDATE usuarios SET ativo=0, matricula=NULL WHERE matricula=?", (matricula,))
+    _inativar_vinculos_servidor(db, srv)
+    db.execute("""
+        UPDATE usuarios
+        SET matricula=NULL, vinculos='[]'
+        WHERE ((?<>'' AND matricula=?) OR (?<>'' AND cpf=?))
+          AND nivel<>'master'
+    """, (matricula, matricula, (srv["cpf"] or "").strip(), (srv["cpf"] or "").strip()))
     db.execute("DELETE FROM servidores WHERE matricula=?", (matricula,))
     db.commit()
     flash("Cadastro do servidor excluído definitivamente.", "warning")
@@ -1436,6 +1497,9 @@ def login():
         if not u or not check_password_hash(u['senha_hash'], senha):
             flash("CPF ou senha inválidos.", "danger")
             return render_template('login.html')
+        if not _usuario_tem_servidor_ativo(db, u):
+            flash("Acesso inativo ou sem servidor ativo vinculado. Contate o RH.", "warning")
+            return render_template('login.html')
 
         # Registra último acesso
         db.execute("UPDATE usuarios SET ultimo_acesso=? WHERE id=?",
@@ -1621,7 +1685,7 @@ def meu_banco():
         flash("Matrícula não vinculada ao seu usuário. Contate o RH.", "danger")
         return redirect(url_for('login'))
     db  = get_db()
-    srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (mat,)).fetchone()
+    srv = db.execute("SELECT * FROM servidores WHERE matricula=? AND arquivado=0", (mat,)).fetchone()
     if not srv:
         flash("Servidor não encontrado.", "danger")
         return redirect(url_for('login'))
@@ -1711,8 +1775,10 @@ def admin_usuarios():
     db   = get_db()
     page = request.args.get('nivel','')
     busca = request.args.get('busca','').strip()
-    q    = f"WHERE 1=1{' AND u.nivel=?' if page else ''}"
+    q    = "WHERE u.ativo=1 AND (u.nivel='master' OR s.matricula IS NOT NULL)"
     p    = [page] if page else []
+    if page:
+        q += " AND u.nivel=?"
     if busca:
         q += " AND (u.nome LIKE ? OR u.cpf LIKE ? OR u.matricula LIKE ? OR s.nome LIKE ?)"
         like = f"%{busca}%"
@@ -1720,7 +1786,9 @@ def admin_usuarios():
     rows = db.execute(f"""
         SELECT u.*, s.nome AS servidor_nome
         FROM usuarios u
-        LEFT JOIN servidores s ON s.matricula=u.matricula
+        LEFT JOIN servidores s ON s.arquivado=0
+          AND ((u.matricula IS NOT NULL AND u.matricula!='' AND s.matricula=u.matricula)
+               OR (u.cpf IS NOT NULL AND u.cpf!='' AND s.cpf=u.cpf))
         {q}
         ORDER BY u.nivel,u.nome
     """, p).fetchall()
@@ -1806,9 +1874,12 @@ def admin_editar_usuario(uid):
 @master_required
 def admin_toggle_usuario(uid):
     db = get_db()
-    u  = db.execute("SELECT ativo FROM usuarios WHERE id=?", (uid,)).fetchone()
+    u  = db.execute("SELECT * FROM usuarios WHERE id=?", (uid,)).fetchone()
     if u:
         novo = 0 if u['ativo'] else 1
+        if novo and not _usuario_tem_servidor_ativo(db, u):
+            flash("Não é possível ativar este usuário sem servidor ativo vinculado.", "danger")
+            return redirect(url_for('admin_usuarios'))
         db.execute("UPDATE usuarios SET ativo=? WHERE id=?", (novo, uid))
         db.commit()
         flash(f"Usuário {'ativado' if novo else 'desativado'}.", "success")
@@ -1979,7 +2050,7 @@ def admin_acessos():
     departamento = request.args.get('departamento','').strip()
 
     # Usuários por nível
-    q = "WHERE 1=1"
+    q = "WHERE u.ativo=1 AND (u.nivel='master' OR s.matricula IS NOT NULL)"
     params = []
     if filtro_nivel:
         q += " AND u.nivel=?"; params.append(filtro_nivel)
@@ -1992,7 +2063,9 @@ def admin_acessos():
     usuarios_rows = db.execute(f"""
         SELECT u.*, s.nome AS servidor_nome
         FROM usuarios u
-        LEFT JOIN servidores s ON s.matricula=u.matricula
+        LEFT JOIN servidores s ON s.arquivado=0
+          AND ((u.matricula IS NOT NULL AND u.matricula!='' AND s.matricula=u.matricula)
+               OR (u.cpf IS NOT NULL AND u.cpf!='' AND s.cpf=u.cpf))
         {q}
         ORDER BY u.nivel, u.nome
     """, params).fetchall()
@@ -2004,23 +2077,31 @@ def admin_acessos():
         usuarios.append(d)
 
     # Contadores por nível
-    contadores = {r['nivel']: r['qtd'] for r in db.execute(
-        "SELECT nivel, COUNT(*) AS qtd FROM usuarios WHERE ativo=1 GROUP BY nivel").fetchall()}
+    contadores = {r['nivel']: r['qtd'] for r in db.execute("""
+        SELECT u.nivel, COUNT(DISTINCT u.id) AS qtd
+        FROM usuarios u
+        LEFT JOIN servidores s ON s.arquivado=0
+          AND ((u.matricula IS NOT NULL AND u.matricula!='' AND s.matricula=u.matricula)
+               OR (u.cpf IS NOT NULL AND u.cpf!='' AND s.cpf=u.cpf))
+        WHERE u.ativo=1 AND (u.nivel='master' OR s.matricula IS NOT NULL)
+        GROUP BY u.nivel
+    """).fetchall()}
 
     # Pré-autorizações pendentes (não cadastradas ainda)
-    pre_where = "WHERE p.cpf NOT IN (SELECT cpf FROM usuarios)"
+    pre_where = """WHERE p.cpf NOT IN (SELECT cpf FROM usuarios)
+                   AND EXISTS (SELECT 1 FROM servidores sx WHERE sx.arquivado=0 AND sx.cpf=p.cpf)"""
     pre_params = []
     if filtro_nivel:
         pre_where += " AND p.nivel=?"; pre_params.append(filtro_nivel)
     if busca:
-        pre_where += " AND (p.cpf LIKE ? OR COALESCE((SELECT nome FROM servidores WHERE cpf=p.cpf LIMIT 1),'') LIKE ?)"
+        pre_where += " AND (p.cpf LIKE ? OR COALESCE((SELECT nome FROM servidores WHERE arquivado=0 AND cpf=p.cpf LIMIT 1),'') LIKE ?)"
         like = f"%{busca}%"; pre_params.extend([like, like])
     if departamento:
         pre_where += " AND (p.setor LIKE ? OR p.vinculos LIKE ?)"
         like_dep = f"%{departamento}%"; pre_params.extend([like_dep, like_dep])
     pre_rows = db.execute(f"""
         SELECT p.*,
-               (SELECT nome FROM servidores WHERE cpf=p.cpf LIMIT 1) AS nome_servidor
+               (SELECT nome FROM servidores WHERE arquivado=0 AND cpf=p.cpf LIMIT 1) AS nome_servidor
         FROM pre_autorizacoes p
         {pre_where}
         ORDER BY p.criado_em DESC
@@ -2033,9 +2114,17 @@ def admin_acessos():
         pre.append(d)
 
     # Log de últimos acessos
-    ultimos = db.execute(
-        "SELECT nome,cpf,nivel,ultimo_acesso FROM usuarios WHERE ultimo_acesso IS NOT NULL "
-        "ORDER BY ultimo_acesso DESC LIMIT 10").fetchall()
+    ultimos = db.execute("""
+        SELECT u.nome,u.cpf,u.nivel,u.ultimo_acesso
+        FROM usuarios u
+        LEFT JOIN servidores s ON s.arquivado=0
+          AND ((u.matricula IS NOT NULL AND u.matricula!='' AND s.matricula=u.matricula)
+               OR (u.cpf IS NOT NULL AND u.cpf!='' AND s.cpf=u.cpf))
+        WHERE u.ultimo_acesso IS NOT NULL
+          AND u.ativo=1
+          AND (u.nivel='master' OR s.matricula IS NOT NULL)
+        ORDER BY u.ultimo_acesso DESC LIMIT 10
+    """).fetchall()
 
     secs = [r[0] for r in db.execute(
         "SELECT DISTINCT secretaria FROM servidores WHERE secretaria IS NOT NULL AND secretaria!='' ORDER BY secretaria").fetchall()]
