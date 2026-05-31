@@ -44,21 +44,19 @@
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
       <h6 class="fw-bold mb-1"><i class="bi bi-lightning-charge-fill me-1 text-primary"></i>Atalhos de Lançamento</h6>
-      <span class="text-muted small">Escolha a matrícula e abra diretamente a tela de lançamento, compensação ou pagamento.</span>
+      <span class="text-muted small">Digite a matrícula ou o nome e abra diretamente a tela de lançamento, compensação ou pagamento.</span>
     </div>
   </div>
   <div class="row g-2 align-items-end">
     <div class="col-lg-7">
       <label class="form-label small fw-semibold mb-1">Servidor / Matrícula</label>
-      <select id="atalhoMatricula" class="form-select">
-        <option value="">— Selecione o servidor —</option>
+      <input id="atalhoServidor" class="form-control" list="atalhoServidores"
+             placeholder="Digite a matrícula ou o nome do servidor" autocomplete="off">
+      <datalist id="atalhoServidores">
         {% for s in servidores_atalho %}
-        <option value="{{ s.matricula }}"
-                data-info="{{ s.secretaria or 'Sem secretaria' }} | {{ s.setor or 'Sem departamento' }}">
-          {{ s.matricula }} — {{ s.nome }}
-        </option>
+        <option value="{{ s.matricula }} - {{ s.nome }}">
         {% endfor %}
-      </select>
+      </datalist>
       <div id="atalhoInfo" class="form-text">As informações do servidor serão carregadas da base de dados.</div>
     </div>
     <div class="col-lg-5">
@@ -176,19 +174,57 @@ const pagData  = {{ pag_mes|safe }};
 const pieLabels = {{ saldo_sec_labels|safe }};
 const pieData   = {{ saldo_sec_data|safe }};
 
-const selectAtalho = document.getElementById('atalhoMatricula');
-selectAtalho?.addEventListener('change', () => {
-  const opt = selectAtalho.options[selectAtalho.selectedIndex];
-  document.getElementById('atalhoInfo').textContent = opt?.dataset?.info || 'As informações do servidor serão carregadas da base de dados.';
+const servidoresAtalho = [
+  {% for s in servidores_atalho %}
+  {
+    matricula: {{ s.matricula|tojson }},
+    nome: {{ s.nome|tojson }},
+    info: {{ ((s.secretaria or 'Sem secretaria') ~ ' | ' ~ (s.setor or 'Sem departamento'))|tojson }}
+  }{{ "," if not loop.last }}
+  {% endfor %}
+];
+
+const inputAtalho = document.getElementById('atalhoServidor');
+const infoAtalho = document.getElementById('atalhoInfo');
+
+function normalizarBusca(valor) {
+  return (valor || '').toString().trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function encontrarServidorAtalho() {
+  const bruto = inputAtalho?.value || '';
+  const busca = normalizarBusca(bruto);
+  const matriculaInicial = bruto.trim().match(/^\d+/)?.[0];
+
+  if (!busca) return null;
+
+  let servidor = servidoresAtalho.find(s => s.matricula === matriculaInicial);
+  if (servidor) return servidor;
+
+  servidor = servidoresAtalho.find(s =>
+    normalizarBusca(s.matricula) === busca || normalizarBusca(s.nome) === busca
+  );
+  if (servidor) return servidor;
+
+  const encontrados = servidoresAtalho.filter(s =>
+    normalizarBusca(s.matricula).includes(busca) || normalizarBusca(s.nome).includes(busca)
+  );
+  return encontrados.length === 1 ? encontrados[0] : null;
+}
+
+inputAtalho?.addEventListener('input', () => {
+  const servidor = encontrarServidorAtalho();
+  infoAtalho.textContent = servidor?.info || 'Digite a matrícula ou o nome e selecione um servidor válido.';
 });
 
 function abrirAtalho(tipo) {
-  const matricula = document.getElementById('atalhoMatricula').value;
-  if (!matricula) {
-    alert('Selecione uma matrícula antes de abrir o lançamento.');
+  const servidor = encontrarServidorAtalho();
+  if (!servidor) {
+    alert('Digite a matrícula ou escolha um servidor válido antes de abrir o lançamento.');
     return;
   }
-  window.location.href = `/${tipo}/${encodeURIComponent(matricula)}`;
+  window.location.href = `/${tipo}/${encodeURIComponent(servidor.matricula)}`;
 }
 
 // Gráfico lançamentos x compensações
