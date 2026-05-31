@@ -240,6 +240,12 @@ _SCHEMA_SQLITE = """
         acao TEXT NOT NULL, entidade TEXT NOT NULL, entidade_id TEXT,
         matricula TEXT, servidor_nome TEXT, detalhe TEXT
     );
+    CREATE TABLE IF NOT EXISTS visualizacoes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER, usuario_nome TEXT, usuario_cpf TEXT,
+        endpoint TEXT, caminho TEXT, titulo TEXT,
+        criado_em TEXT NOT NULL
+    );
 """
 
 _SCHEMA_POSTGRES = """
@@ -296,6 +302,12 @@ _SCHEMA_POSTGRES = """
         usuario_id INTEGER, usuario_nome TEXT, usuario_cpf TEXT,
         acao TEXT NOT NULL, entidade TEXT NOT NULL, entidade_id TEXT,
         matricula TEXT, servidor_nome TEXT, detalhe TEXT
+    );
+    CREATE TABLE IF NOT EXISTS visualizacoes (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER, usuario_nome TEXT, usuario_cpf TEXT,
+        endpoint TEXT, caminho TEXT, titulo TEXT,
+        criado_em TEXT NOT NULL
     );
 """
 

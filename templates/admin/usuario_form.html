@@ -39,24 +39,31 @@
 
           <!-- Secretaria (para secretário) -->
           <div class="col-md-8" id="campoSecretaria" style="display:none">
-            <label class="form-label fw-semibold">Secretaria vinculada</label>
-            <select name="secretaria" class="form-select">
-              <option value="">— Selecione —</option>
+            <label class="form-label fw-semibold">Secretaria(s) vinculada(s)</label>
+            <div class="border rounded p-2" style="max-height:180px;overflow-y:auto">
               {% for s in secretarias %}
-              <option value="{{ s }}" {{ 'selected' if usuario and usuario.secretaria==s }}>{{ s }}</option>
+              <div class="form-check">
+                <input class="form-check-input vinculo-secretaria" type="checkbox" name="vinculos" value="{{ s }}" id="sec_{{ loop.index }}"
+                       {{ 'checked' if usuario and s in usuario.vinculos_lista }}>
+                <label class="form-check-label small" for="sec_{{ loop.index }}">{{ s }}</label>
+              </div>
               {% endfor %}
-            </select>
+            </div>
           </div>
 
           <!-- Setor (para chefia) -->
           <div class="col-md-8" id="campoSetor" style="display:none">
-            <label class="form-label fw-semibold">Departamento vinculado</label>
-            <select name="setor" class="form-select">
-              <option value="">— Selecione —</option>
+            <label class="form-label fw-semibold">Departamento(s) vinculado(s)</label>
+            <div class="form-text mb-1">Marque todos os departamentos que a chefia poderá consultar.</div>
+            <div class="border rounded p-2" style="max-height:180px;overflow-y:auto">
               {% for s in setores %}
-              <option value="{{ s }}" {{ 'selected' if usuario and usuario.setor==s }}>{{ s }}</option>
+              <div class="form-check">
+                <input class="form-check-input vinculo-setor" type="checkbox" name="vinculos" value="{{ s }}" id="set_{{ loop.index }}"
+                       {{ 'checked' if usuario and s in usuario.vinculos_lista }}>
+                <label class="form-check-label small" for="set_{{ loop.index }}">{{ s }}</label>
+              </div>
               {% endfor %}
-            </select>
+            </div>
           </div>
 
           <!-- Matrícula (para servidor) -->
@@ -100,6 +107,8 @@ function ajustarCampos() {
   document.getElementById('campoSecretaria').style.display = nivel==='secretario' ? '' : 'none';
   document.getElementById('campoSetor').style.display      = nivel==='chefia'     ? '' : 'none';
   document.getElementById('campoMatricula').style.display  = nivel==='servidor'   ? '' : 'none';
+  document.querySelectorAll('.vinculo-secretaria').forEach(cb => cb.disabled = nivel !== 'secretario');
+  document.querySelectorAll('.vinculo-setor').forEach(cb => cb.disabled = nivel !== 'chefia');
 }
 ajustarCampos();
 

@@ -359,6 +359,8 @@ function ajustarModal() {
   document.getElementById('modalSecDiv').style.display = nv==='secretario' ? '' : 'none';
   document.getElementById('modalSetDiv').style.display = nv==='chefia'     ? '' : 'none';
   document.getElementById('modalMatDiv').style.display = nv==='servidor'   ? '' : 'none';
+  document.querySelectorAll('#modalSecDiv input[name="vinculos"]').forEach(cb => cb.disabled = nv !== 'secretario');
+  document.querySelectorAll('#modalSetDiv input[name="vinculos"]').forEach(cb => cb.disabled = nv !== 'chefia');
 }
 ajustarModal();
 
@@ -379,6 +381,8 @@ function ajustarModalNivel() {
   document.getElementById('nvSecDiv').style.display = nv==='secretario' ? '' : 'none';
   document.getElementById('nvSetDiv').style.display = nv==='chefia'     ? '' : 'none';
   document.getElementById('nvMatDiv').style.display = nv==='servidor'   ? '' : 'none';
+  document.querySelectorAll('#nvSecDiv input[name="vinculos"]').forEach(cb => cb.disabled = nv !== 'secretario');
+  document.querySelectorAll('#nvSetDiv input[name="vinculos"]').forEach(cb => cb.disabled = nv !== 'chefia');
 }
 
 function abrirModalNivel(uid, nivel, vinculosJson, mat) {

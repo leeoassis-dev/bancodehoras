@@ -115,6 +115,12 @@
           <button type="submit" name="fmt" value="csv" class="btn btn-outline-success btn-sm">
             <i class="bi bi-download"></i> CSV
           </button>
+          <button type="submit" name="fmt" value="xlsx" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-file-earmark-spreadsheet"></i> Excel
+          </button>
+          <button type="submit" name="fmt" value="pdf" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-file-earmark-pdf"></i> PDF
+          </button>
           {% if filtros.matricula or filtros.secretaria or filtros.setor or filtros.data_ini or filtros.data_fim %}
           <a href="/relatorios?aba={{ aba }}" class="btn btn-outline-secondary btn-sm">✕</a>
           {% endif %}

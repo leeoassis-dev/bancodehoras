@@ -143,6 +143,7 @@ def verificar_acesso():
 
     # Master: bloqueia apenas se tentar acessar rota de outro nível
     # (master tem acesso total, nada a bloquear)
+    registrar_visualizacao()
 
 # â”€â”€â”€ Utilitários â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -169,6 +170,120 @@ def registrar_auditoria(db, acao, entidade, entidade_id=None, matricula=None, se
         session.get("uid"), session.get("nome"), session.get("cpf"),
         acao, entidade, str(entidade_id or ""), matricula, servidor_nome, detalhe
     ))
+
+def registrar_visualizacao():
+    if request.method != "GET" or "uid" not in session:
+        return
+    if request.endpoint in ROTAS_PUBLICAS or request.endpoint == "static":
+        return
+    if (request.path or "").startswith("/api/"):
+        return
+    titulos = {
+        "dashboard": "Dashboard",
+        "servidores": "Servidores",
+        "arquivados": "Arquivados",
+        "pagamentos_index": "Pagamentos",
+        "relatorios": "Relatórios",
+        "admin_usuarios": "Usuários",
+        "admin_acessos": "Permissões",
+        "admin_auditoria": "Auditoria",
+        "consulta": "Consulta",
+        "meu_banco": "Meu Banco",
+    }
+    try:
+        db = get_db()
+        db.execute("""
+            INSERT INTO visualizacoes (usuario_id,usuario_nome,usuario_cpf,endpoint,caminho,titulo,criado_em)
+            VALUES (?,?,?,?,?,?,?)
+        """, (
+            session.get("uid"), session.get("nome"), session.get("cpf"),
+            request.endpoint or "", request.full_path.rstrip("?"),
+            titulos.get(request.endpoint, request.path),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ))
+        db.commit()
+    except Exception:
+        pass
+
+def _csv_response(filename, headers, rows):
+    out = io.StringIO()
+    w = csv.writer(out, delimiter=";")
+    w.writerow(headers)
+    w.writerows(rows)
+    r = make_response("\ufeff" + out.getvalue())
+    r.headers["Content-Type"] = "text/csv; charset=utf-8"
+    r.headers["Content-Disposition"] = f"attachment; filename={filename}.csv"
+    return r
+
+def _xlsx_response(filename, title, headers, rows):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Relatório"
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(1, len(headers)))
+    cell = ws.cell(1, 1, title)
+    cell.font = Font(bold=True, color="FFFFFF", size=14)
+    cell.fill = PatternFill("solid", fgColor="1A3A6B")
+    cell.alignment = Alignment(horizontal="center")
+    ws.append([])
+    ws.append(headers)
+    for c in ws[3]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="1A3A6B")
+        c.alignment = Alignment(horizontal="center")
+    for row in rows:
+        ws.append(row)
+    for col in range(1, len(headers) + 1):
+        max_len = max(len(str(ws.cell(r, col).value or "")) for r in range(1, ws.max_row + 1))
+        ws.column_dimensions[get_column_letter(col)].width = min(max(max_len + 2, 12), 45)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    r = make_response(buf.getvalue())
+    r.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    r.headers["Content-Disposition"] = f"attachment; filename={filename}.xlsx"
+    return r
+
+def _pdf_response(filename, title, headers, rows):
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=18, leftMargin=18, topMargin=18, bottomMargin=18)
+    styles = getSampleStyleSheet()
+    story = [Paragraph(f"<b>{title}</b>", styles["Title"]), Spacer(1, 10)]
+    table_data = [headers] + [[str(v or "") for v in row] for row in rows]
+    table = Table(table_data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1A3A6B")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D0D7DE")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F6F9")]),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    story.append(table)
+    doc.build(story)
+    buf.seek(0)
+    r = make_response(buf.getvalue())
+    r.headers["Content-Type"] = "application/pdf"
+    r.headers["Content-Disposition"] = f"attachment; filename={filename}.pdf"
+    return r
+
+def _export_response(fmt_out, filename, title, headers, rows):
+    if fmt_out == "csv":
+        return _csv_response(filename, headers, rows)
+    if fmt_out == "xlsx":
+        return _xlsx_response(filename, title, headers, rows)
+    if fmt_out == "pdf":
+        return _pdf_response(filename, title, headers, rows)
+    return None
 
 def calcular_saldo(db, matricula):
     c = db.execute("SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=?", (matricula,)).fetchone()[0]
@@ -472,6 +587,30 @@ def restaurar_servidor(matricula):
 
 # â”€â”€â”€ Arquivados â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+@app.route("/servidores/<matricula>/excluir", methods=["POST"])
+@master_required
+def excluir_servidor(matricula):
+    db = get_db()
+    srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    if not srv:
+        flash("Servidor não encontrado.", "danger")
+        return redirect(url_for("servidores"))
+    registrar_auditoria(
+        db, "Excluiu cadastro de servidor", "servidor", matricula, matricula, srv["nome"],
+        f"Cadastro e movimentações removidos definitivamente; secretaria {srv['secretaria'] or '-'}; departamento {srv['setor'] or '-'}"
+    )
+    db.execute("DELETE FROM consumos WHERE lancamento_id IN (SELECT id FROM lancamentos WHERE matricula=?)", (matricula,))
+    db.execute("DELETE FROM consumos WHERE tipo='compensacao' AND referencia_id IN (SELECT id FROM compensacoes WHERE matricula=?)", (matricula,))
+    db.execute("DELETE FROM consumos WHERE tipo='pagamento' AND referencia_id IN (SELECT id FROM pagamentos WHERE matricula=?)", (matricula,))
+    db.execute("DELETE FROM pagamentos WHERE matricula=?", (matricula,))
+    db.execute("DELETE FROM compensacoes WHERE matricula=?", (matricula,))
+    db.execute("DELETE FROM lancamentos WHERE matricula=?", (matricula,))
+    db.execute("UPDATE usuarios SET ativo=0, matricula=NULL WHERE matricula=?", (matricula,))
+    db.execute("DELETE FROM servidores WHERE matricula=?", (matricula,))
+    db.commit()
+    flash("Cadastro do servidor excluído definitivamente.", "warning")
+    return redirect(url_for("servidores"))
+
 @app.route("/arquivados")
 def arquivados():
     db    = get_db()
@@ -731,15 +870,13 @@ def relatorios():
                 (SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=s.matricula)
                 -(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=s.matricula) AS saldo
             FROM servidores s {filt_srv} ORDER BY s.nome""", params_srv).fetchall()
-        if fmt_out=="csv":
-            out=io.StringIO(); w=csv.writer(out,delimiter=";")
-            w.writerow(["Matrícula","Nome","CPF","Email","Secretaria","Departamento","Cargo","Total Creditado","Total Compensado","Total Pago","Saldo","FG"])
-            for s in data["servidores"]:
-                w.writerow([s["matricula"],s["nome"],s["cpf"] or "",s["email"] or "",s["secretaria"] or "",s["setor"] or "",s["cargo"] or "",
-                            minutos_para_horas(s["total_credito"]),minutos_para_horas(s["total_compensado"]),
-                            minutos_para_horas(s["total_pago"]),minutos_para_horas(s["saldo"]),"Sim" if s["funcao_gratificada"] else "Não"])
-            r=make_response("ï»¿"+out.getvalue()); r.headers["Content-Type"]="text/csv; charset=utf-8"
-            r.headers["Content-Disposition"]="attachment; filename=saldos.csv"; return r
+        if fmt_out in ("csv", "xlsx", "pdf"):
+            headers = ["Matrícula","Nome","CPF","Email","Secretaria","Departamento","Cargo","Total Creditado","Total Compensado","Total Pago","Saldo","FG"]
+            rows = [[s["matricula"],s["nome"],s["cpf"] or "",s["email"] or "",s["secretaria"] or "",s["setor"] or "",s["cargo"] or "",
+                     minutos_para_horas(s["total_credito"]),minutos_para_horas(s["total_compensado"]),
+                     minutos_para_horas(s["total_pago"]),minutos_para_horas(s["saldo"]),"Sim" if s["funcao_gratificada"] else "Não"]
+                    for s in data["servidores"]]
+            return _export_response(fmt_out, "saldos", "Relatório de Saldos em Banco de Horas", headers, rows)
 
     elif aba == "historico":
         mats=[r["matricula"] for r in db.execute(f"SELECT s.matricula FROM servidores s {filt_srv}",params_srv).fetchall()]
@@ -768,19 +905,18 @@ def relatorios():
                 ORDER BY p.data_pagamento DESC""",pp).fetchall():
                 ev.append({**dict(r),"tipo_evento":"pagamento","data_ord":r["data_pagamento"]})
             ev.sort(key=lambda x:x["data_ord"],reverse=True); data["eventos"]=ev
-        if fmt_out=="csv":
-            out=io.StringIO(); w=csv.writer(out,delimiter=";")
-            w.writerow(["Data","Matrícula","Servidor","Secretaria","FG","Tipo","Detalhes","Horas"])
+        if fmt_out in ("csv", "xlsx", "pdf"):
+            headers = ["Data","Matrícula","Servidor","Secretaria","FG","Tipo","Detalhes","Horas"]
+            rows = []
             for e in data["eventos"]:
                 fg_s="Sim" if e.get("funcao_gratificada") else "Não"
                 if e["tipo_evento"]=="lancamento":
-                    w.writerow([e["data"],e["matricula"],e["nome"],e.get("secretaria",""),fg_s,"Lançamento",f"{e['horas_base']} + {e['percentual']}%",minutos_para_horas(e["minutos_creditados"])])
+                    rows.append([e["data"],e["matricula"],e["nome"],e.get("secretaria",""),fg_s,"Lançamento",f"{e['horas_base']} + {e['percentual']}%",minutos_para_horas(e["minutos_creditados"])])
                 elif e["tipo_evento"]=="compensacao":
-                    w.writerow([e["data"],e["matricula"],e["nome"],e.get("secretaria",""),fg_s,"Compensação","Dia inteiro" if e["tipo"]=="dia_inteiro" else "Parcial",minutos_para_horas(e["minutos_compensados"])])
+                    rows.append([e["data"],e["matricula"],e["nome"],e.get("secretaria",""),fg_s,"Compensação","Dia inteiro" if e["tipo"]=="dia_inteiro" else "Parcial",minutos_para_horas(e["minutos_compensados"])])
                 else:
-                    w.writerow([e["data_pagamento"],e["matricula"],e["nome"],e.get("secretaria",""),fg_s,"Pagamento Folha",e.get("descricao",""),minutos_para_horas(int(e["base_paga"]))])
-            r=make_response("ï»¿"+out.getvalue()); r.headers["Content-Type"]="text/csv; charset=utf-8"
-            r.headers["Content-Disposition"]="attachment; filename=historico.csv"; return r
+                    rows.append([e["data_pagamento"],e["matricula"],e["nome"],e.get("secretaria",""),fg_s,"Pagamento Folha",e.get("descricao",""),minutos_para_horas(int(e["base_paga"]))])
+            return _export_response(fmt_out, "historico", "Relatório de Histórico Completo", headers, rows)
 
     elif aba == "pagamentos":
         fp=f"WHERE p.matricula IN (SELECT matricula FROM servidores s {filt_srv})"; pp=list(params_srv)
@@ -801,15 +937,14 @@ def relatorios():
             FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id
             WHERE c.tipo='pagamento' AND c.referencia_id=? ORDER BY l.data ASC""",(p["id"],)).fetchall() for p in pags}
         data["pagamentos"]=pags; data["detalhes"]=dets
-        if fmt_out=="csv":
-            out=io.StringIO(); w=csv.writer(out,delimiter=";")
-            w.writerow(["Pag.ID","Matrícula","Servidor","Secretaria","Departamento","FG","Data Pagamento","Referência","Data Realização","H.Base Realizadas","%","H.Base Pagas"])
+        if fmt_out in ("csv", "xlsx", "pdf"):
+            headers = ["Pag.ID","Matrícula","Servidor","Secretaria","Departamento","FG","Data Pagamento","Referência","Data Realização","H.Base Realizadas","%","H.Base Pagas"]
+            rows = []
             for p in pags:
                 fg_s="Sim" if p.get("funcao_gratificada") else "Não"
                 for d in dets[p["id"]]:
-                    w.writerow([p["id"],p["matricula"],p["nome"],p.get("secretaria",""),p.get("setor",""),fg_s,p["data_pagamento"],p.get("descricao",""),d["data_hora"],d["horas_base"],f"{d['percentual']}%",minutos_para_horas(int(d["base_paga"] or 0))])
-            r=make_response("ï»¿"+out.getvalue()); r.headers["Content-Type"]="text/csv; charset=utf-8"
-            r.headers["Content-Disposition"]="attachment; filename=pagamentos.csv"; return r
+                    rows.append([p["id"],p["matricula"],p["nome"],p.get("secretaria",""),p.get("setor",""),fg_s,p["data_pagamento"],p.get("descricao",""),d["data_hora"],d["horas_base"],f"{d['percentual']}%",minutos_para_horas(int(d["base_paga"] or 0))])
+            return _export_response(fmt_out, "pagamentos", "Relatório de Pagamentos Realizados", headers, rows)
 
     elif aba == "competencia":
         data.update({"grupos":{},"mes":mes,"ano":ano,"agrupar":agr,"meses":MESES_FULL})
@@ -826,14 +961,13 @@ def relatorios():
                     chave=(r["secretaria"] or "Sem Secretaria") if agr=="secretaria" else (r["setor"] or "Sem Departamento") if agr=="departamento" else f"{r['nome']} ({r['mat']})"
                     grps.setdefault(chave,[]).append(dict(r))
                 data["grupos"]=grps
-        if fmt_out=="csv" and data["grupos"]:
-            out=io.StringIO(); w=csv.writer(out,delimiter=";")
-            w.writerow(["Grupo","Matrícula","Servidor","Data","H.Base","%","H.Creditadas","Descrição"])
+        if fmt_out in ("csv", "xlsx", "pdf") and data["grupos"]:
+            headers = ["Grupo","Matrícula","Servidor","Data","H.Base","%","H.Creditadas","Descrição"]
+            rows = []
             for g,its in data["grupos"].items():
                 for r in its:
-                    w.writerow([g,r["matricula"],r["nome"],r["data"],r["horas_base"],f"{r['percentual']}%",minutos_para_horas(r["minutos_creditados"]),r["descricao"] or ""])
-            resp=make_response("ï»¿"+out.getvalue()); resp.headers["Content-Type"]="text/csv; charset=utf-8"
-            resp.headers["Content-Disposition"]=f"attachment; filename=competencia_{mes}_{ano}.csv"; return resp
+                    rows.append([g,r["matricula"],r["nome"],r["data"],r["horas_base"],f"{r['percentual']}%",minutos_para_horas(r["minutos_creditados"]),r["descricao"] or ""])
+            return _export_response(fmt_out, f"competencia_{mes}_{ano}", f"Relatório de Horas por Competência {mes}/{ano}", headers, rows)
 
     return render_template("relatorios.html", aba=aba, data=data, fmt=minutos_para_horas,
                            secretarias=secs, setores=sets, servidores_lista=srvs_lista,
@@ -1135,10 +1269,32 @@ def consulta():
 def admin_usuarios():
     db   = get_db()
     page = request.args.get('nivel','')
-    q    = f"WHERE 1=1{' AND nivel=?' if page else ''}"
+    busca = request.args.get('busca','').strip()
+    q    = f"WHERE 1=1{' AND u.nivel=?' if page else ''}"
     p    = [page] if page else []
-    usrs = db.execute(f"SELECT * FROM usuarios {q} ORDER BY nivel,nome", p).fetchall()
-    return render_template('admin/usuarios.html', usuarios=usrs, filtro_nivel=page)
+    if busca:
+        q += " AND (u.nome LIKE ? OR u.cpf LIKE ? OR u.matricula LIKE ? OR s.nome LIKE ?)"
+        like = f"%{busca}%"
+        p.extend([like, like, like, like])
+    rows = db.execute(f"""
+        SELECT u.*, s.nome AS servidor_nome
+        FROM usuarios u
+        LEFT JOIN servidores s ON s.matricula=u.matricula
+        {q}
+        ORDER BY u.nivel,u.nome
+    """, p).fetchall()
+    usrs = []
+    for u in rows:
+        d = dict(u)
+        d["vinculos_lista"] = get_vinculos(u)
+        d["ultimas_visualizacoes"] = db.execute("""
+            SELECT titulo,caminho,criado_em FROM visualizacoes
+            WHERE usuario_id=?
+            ORDER BY criado_em DESC, id DESC
+            LIMIT 3
+        """, (u["id"],)).fetchall()
+        usrs.append(d)
+    return render_template('admin/usuarios.html', usuarios=usrs, filtro_nivel=page, busca=busca)
 
 
 @app.route('/admin/usuarios/novo', methods=['GET','POST'])
@@ -1150,17 +1306,18 @@ def admin_novo_usuario():
         nome  = request.form['nome'].strip()
         email = request.form['email'].strip()
         nivel = request.form['nivel']
-        sec   = request.form.get('secretaria','').strip()
-        set_  = request.form.get('setor','').strip()
+        vinculos = request.form.getlist('vinculos')
+        sec   = vinculos[0] if nivel == 'secretario' and vinculos else request.form.get('secretaria','').strip()
+        set_  = vinculos[0] if nivel == 'chefia' and vinculos else request.form.get('setor','').strip()
         mat   = request.form.get('matricula','').strip()
 
         if db.execute("SELECT 1 FROM usuarios WHERE cpf=?", (cpf,)).fetchone():
             flash("CPF já cadastrado.", "danger")
         else:
             senha_temp = gerar_senha_temp()
-            db.execute("""INSERT INTO usuarios (cpf,nome,email,senha_hash,nivel,secretaria,setor,matricula,ativo,senha_temporaria)
-                          VALUES (?,?,?,?,?,?,?,?,1,1)""",
-                       (cpf, nome, email, generate_password_hash(senha_temp), nivel, sec, set_, mat))
+            db.execute("""INSERT INTO usuarios (cpf,nome,email,senha_hash,nivel,secretaria,setor,matricula,vinculos,ativo,senha_temporaria)
+                          VALUES (?,?,?,?,?,?,?,?,?,1,1)""",
+                       (cpf, nome, email, generate_password_hash(senha_temp), nivel, sec, set_, mat, json.dumps(vinculos)))
             db.commit()
             flash(f"Usuário criado! Senha temporária: {senha_temp}", "success")
             if email:
@@ -1186,18 +1343,21 @@ def admin_editar_usuario(uid):
         nome  = request.form['nome'].strip()
         email = request.form['email'].strip()
         nivel = request.form['nivel']
-        sec   = request.form.get('secretaria','').strip()
-        set_  = request.form.get('setor','').strip()
+        vinculos = request.form.getlist('vinculos')
+        sec   = vinculos[0] if nivel == 'secretario' and vinculos else request.form.get('secretaria','').strip()
+        set_  = vinculos[0] if nivel == 'chefia' and vinculos else request.form.get('setor','').strip()
         mat   = request.form.get('matricula','').strip()
-        db.execute("UPDATE usuarios SET nome=?,email=?,nivel=?,secretaria=?,setor=?,matricula=? WHERE id=?",
-                   (nome, email, nivel, sec, set_, mat, uid))
+        db.execute("UPDATE usuarios SET nome=?,email=?,nivel=?,secretaria=?,setor=?,matricula=?,vinculos=? WHERE id=?",
+                   (nome, email, nivel, sec, set_, mat, json.dumps(vinculos), uid))
         db.commit()
         flash("Usuário atualizado.", "success")
         return redirect(url_for('admin_usuarios'))
     srvs = db.execute("SELECT matricula,nome FROM servidores WHERE arquivado=0 ORDER BY nome").fetchall()
     secs = [r[0] for r in db.execute("SELECT DISTINCT secretaria FROM servidores WHERE secretaria IS NOT NULL AND secretaria!='' ORDER BY secretaria").fetchall()]
     sets = [r[0] for r in db.execute("SELECT DISTINCT setor FROM servidores WHERE setor IS NOT NULL AND setor!='' ORDER BY setor").fetchall()]
-    return render_template('admin/usuario_form.html', usuario=u,
+    d = dict(u)
+    d["vinculos_lista"] = get_vinculos(u)
+    return render_template('admin/usuario_form.html', usuario=d,
                            servidores=srvs, secretarias=secs, setores=sets)
 
 

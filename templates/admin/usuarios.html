@@ -8,13 +8,29 @@
   </div>
 </div>
 
-<!-- Filtro por nível -->
-<div class="mb-3 d-flex gap-2 flex-wrap">
-  {% for nv, label in [('','Todos'),('master','Master'),('secretario','Secretário'),('chefia','Chefia'),('servidor','Servidor')] %}
-  <a href="/admin/usuarios{% if nv %}?nivel={{ nv }}{% endif %}"
-     class="btn btn-sm {{ 'btn-primary' if filtro_nivel==nv else 'btn-outline-secondary' }}">{{ label }}</a>
-  {% endfor %}
-</div>
+<form method="get" class="card p-3 mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-5">
+      <label class="form-label small fw-semibold mb-1">Buscar usuário ou servidor</label>
+      <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" name="busca" class="form-control" value="{{ busca }}" placeholder="Nome, CPF, matrícula ou servidor vinculado">
+      </div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Nível</label>
+      <select name="nivel" class="form-select">
+        {% for nv, label in [('','Todos'),('master','Master'),('secretario','Secretário'),('chefia','Chefia'),('servidor','Servidor')] %}
+        <option value="{{ nv }}" {{ 'selected' if filtro_nivel==nv }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4 d-flex gap-2">
+      <button class="btn btn-primary"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+      {% if busca or filtro_nivel %}<a href="/admin/usuarios" class="btn btn-outline-secondary">Limpar</a>{% endif %}
+    </div>
+  </div>
+</form>
 
 <div class="card">
   {% if usuarios %}
@@ -23,7 +39,7 @@
       <thead class="table-dark">
         <tr>
           <th>Nome</th><th>CPF</th><th>E-mail</th><th>Nível</th><th>Vínculo</th>
-          <th class="text-center">Ativo</th><th>Último Acesso</th><th class="text-center">Ações</th>
+          <th>Últimas 3 visualizações</th><th class="text-center">Ativo</th><th>Último Acesso</th><th class="text-center">Ações</th>
         </tr>
       </thead>
       <tbody>
@@ -41,10 +57,20 @@
             </span>
           </td>
           <td class="text-muted">
-            {% if u.nivel=='secretario' %}{{ u.secretaria or '–' }}
-            {% elif u.nivel=='chefia' %}{{ u.setor or '–' }}
+            {% if u.nivel in ('secretario','chefia') and u.vinculos_lista %}
+              {% for v in u.vinculos_lista[:3] %}<span class="badge bg-light text-dark border me-1">{{ v }}</span>{% endfor %}
+              {% if u.vinculos_lista|length > 3 %}<span class="badge bg-secondary">+{{ u.vinculos_lista|length - 3 }}</span>{% endif %}
             {% elif u.nivel=='servidor' %}Mat. {{ u.matricula or '–' }}
             {% else %}—{% endif %}
+          </td>
+          <td class="small">
+            {% if u.ultimas_visualizacoes %}
+              {% for v in u.ultimas_visualizacoes %}
+              <div><span class="fw-semibold">{{ v.titulo }}</span> <span class="text-muted">{{ v.criado_em }}</span></div>
+              {% endfor %}
+            {% else %}
+              <span class="text-muted">Sem visualizações registradas</span>
+            {% endif %}
           </td>
           <td class="text-center">
             <form method="post" action="/admin/usuarios/{{ u.id }}/toggle">

@@ -82,6 +82,10 @@
                     onsubmit="return confirm('Arquivar {{ s.nome }}? O servidor sairá da lista mas seus dados serão preservados.')">
                 <button class="btn btn-sm btn-outline-dark" title="Arquivar servidor"><i class="bi bi-archive"></i></button>
               </form>
+              <form method="post" action="/servidores/{{ s.matricula }}/excluir"
+                    onsubmit="return confirm('Excluir definitivamente {{ s.nome }}? Esta ação remove cadastro, lançamentos, compensações e pagamentos do servidor.')">
+                <button class="btn btn-sm btn-outline-danger" title="Excluir cadastro"><i class="bi bi-trash"></i></button>
+              </form>
             </div>
           </td>
         </tr>
