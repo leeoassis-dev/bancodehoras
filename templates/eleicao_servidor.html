@@ -148,7 +148,7 @@
                 </td>
                 <td class="text-muted">{{ c.observacao or '–' }}</td>
                 <td class="text-muted" style="white-space:nowrap;">
-                  {{ c.criado_em[:10] if c.criado_em else '–' }}
+                  {{ c.criado_em|fmt_data }}
                   {% if c.criado_por %}<br><span style="font-size:.7rem">por {{ c.criado_por }}</span>{% endif %}
                 </td>
                 {% if nivel == 'master' %}
@@ -245,17 +245,17 @@
             <tbody>
               {% for b in baixas %}
               <tr>
-                <td class="fw-semibold">{{ b.data }}</td>
+                <td class="fw-semibold">{{ b.data|fmt_data }}</td>
                 <td class="text-muted">{{ b.observacao or '–' }}</td>
                 <td class="text-muted" style="white-space:nowrap;">
-                  {{ b.criado_em[:10] if b.criado_em else '–' }}
+                  {{ b.criado_em|fmt_data }}
                   {% if b.criado_por %}<br><span style="font-size:.7rem">por {{ b.criado_por }}</span>{% endif %}
                 </td>
                 {% if nivel == 'master' %}
                 <td class="text-end">
                   <form method="post"
                         action="{{ url_for('eleicao_excluir_baixa', matricula=servidor.matricula, bid=b.id) }}"
-                        onsubmit="return confirm('Estornar esta folga de {{ b.data }}?')">
+                        onsubmit="return confirm('Estornar esta folga de {{ b.data|fmt_data }}?')">
                     <button type="submit" class="btn btn-sm btn-outline-danger" title="Estornar">
                       <i class="bi bi-arrow-counterclockwise"></i>
                     </button>

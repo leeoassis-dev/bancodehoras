@@ -29,7 +29,7 @@
         </div>
         <div class="col-md-6">
           <label class="form-label small fw-semibold mb-1">Último acesso</label>
-          <input type="text" class="form-control bg-light" value="{{ usuario.ultimo_acesso or 'Nunca registrado' }}" readonly>
+          <input type="text" class="form-control bg-light" value="{{ usuario.ultimo_acesso|fmt_datetime if usuario.ultimo_acesso else 'Nunca registrado' }}" readonly>
         </div>
       </div>
 

@@ -46,7 +46,7 @@
     <div>
       <span class="fw-bold">{{ pag.nome }}</span>
       <span class="badge bg-secondary ms-2">{{ pag.matricula }}</span>
-      <span class="ms-3 text-muted small">Folha: <strong>{{ pag.data_pagamento }}</strong></span>
+      <span class="ms-3 text-muted small">Folha: <strong>{{ pag.data_pagamento|fmt_data }}</strong></span>
       {% if pag.descricao %}
       <span class="ms-2 text-muted small">| {{ pag.descricao }}</span>
       {% endif %}
@@ -68,7 +68,7 @@
       <tbody>
         {% for d in detalhes[pag.id] %}
         <tr>
-          <td>{{ d.data_hora }}</td>
+          <td>{{ d.data_hora|fmt_data }}</td>
           <td class="text-center">{{ d.horas_base }}</td>
           <td class="text-center">
             <span class="badge {{ 'badge-50' if d.percentual==50 else 'badge-100' }}">{{ d.percentual }}%</span>

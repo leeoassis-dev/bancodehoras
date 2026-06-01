@@ -36,7 +36,7 @@
       <tbody>
         {% for l in lancamentos %}
         <tr>
-          <td>{{ l.data }}</td>
+          <td>{{ l.data|fmt_data }}</td>
           <td><span class="badge bg-secondary">{{ l.matricula }}</span></td>
           <td>{{ l.nome }}</td>
           <td>{{ l.horas_base }}</td>
@@ -72,7 +72,7 @@
       <tbody>
         {% for c in compensacoes %}
         <tr>
-          <td>{{ c.data }}</td>
+          <td>{{ c.data|fmt_data }}</td>
           <td><span class="badge bg-secondary">{{ c.matricula }}</span></td>
           <td>{{ c.nome }}</td>
           <td>

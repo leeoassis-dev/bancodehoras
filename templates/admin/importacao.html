@@ -78,7 +78,7 @@
       <tbody>
         {% for imp in historico %}
         <tr>
-          <td class="small text-nowrap">{{ imp.criado_em }}</td>
+          <td class="small text-nowrap">{{ imp.criado_em|fmt_datetime }}</td>
           <td class="fw-semibold">{{ imp.arquivo or '-' }}</td>
           <td>
             <div>{{ imp.usuario_nome or '-' }}</div>

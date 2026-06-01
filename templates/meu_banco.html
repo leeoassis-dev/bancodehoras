@@ -77,7 +77,7 @@
               <tbody>
                 {% for b in el_baixas %}
                 <tr>
-                  <td class="fw-semibold">{{ b.data }}</td>
+                  <td class="fw-semibold">{{ b.data|fmt_data }}</td>
                   <td class="text-muted">{{ b.observacao or '–' }}</td>
                 </tr>
                 {% endfor %}
@@ -118,7 +118,7 @@
             {% for l in lancamentos %}
             {% set sl = l.minutos_creditados - l.consumido %}
             <tr>
-              <td>{{ l.data }}</td>
+              <td>{{ l.data|fmt_data }}</td>
               <td>{{ l.horas_base }}</td>
               <td><span class="badge {{ 'badge-50' if l.percentual==50 else 'badge-100' }}">{{ l.percentual }}%</span></td>
               <td class="text-success fw-semibold">{{ fmt(l.minutos_creditados) }}</td>
@@ -147,7 +147,7 @@
           <tbody>
             {% for c in compensacoes %}
             <tr>
-              <td>{{ c.data }}</td>
+              <td>{{ c.data|fmt_data }}</td>
               <td>{% if c.tipo=='dia_inteiro' %}<span class="badge bg-primary">Dia inteiro</span>{% else %}<span class="badge bg-secondary">Parcial</span>{% endif %}</td>
               <td class="text-warning fw-semibold">{{ fmt(c.minutos_compensados) }}</td>
               <td class="text-muted">{{ c.descricao or '–' }}</td>
@@ -172,7 +172,7 @@
           <tbody>
             {% for p in pagamentos %}
             <tr>
-              <td>{{ p.data_pagamento }}</td>
+              <td>{{ p.data_pagamento|fmt_data }}</td>
               <td class="text-danger fw-bold">{{ fmt(p.base_paga|int) }}</td>
               <td class="text-muted">{{ p.descricao or '–' }}</td>
             </tr>

@@ -66,7 +66,7 @@
           <td class="small">
             {% if u.ultimas_visualizacoes %}
               {% for v in u.ultimas_visualizacoes %}
-              <div><span class="fw-semibold">{{ v.titulo }}</span> <span class="text-muted">{{ v.criado_em }}</span></div>
+              <div><span class="fw-semibold">{{ v.titulo }}</span> <span class="text-muted">{{ v.criado_em|fmt_datetime }}</span></div>
               {% endfor %}
             {% else %}
               <span class="text-muted">Sem visualizações registradas</span>
@@ -79,7 +79,7 @@
               </button>
             </form>
           </td>
-          <td class="text-muted">{{ u.ultimo_acesso or 'Nunca' }}</td>
+          <td class="text-muted">{{ u.ultimo_acesso|fmt_datetime if u.ultimo_acesso else 'Nunca' }}</td>
           <td class="text-center">
             <div class="d-flex gap-1 justify-content-center">
               <a href="/admin/usuarios/{{ u.id }}/editar" class="btn btn-sm btn-outline-primary" title="Editar"><i class="bi bi-pencil"></i></a>

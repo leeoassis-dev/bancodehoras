@@ -93,7 +93,7 @@
           <tbody>
             {% for c in historico %}
             <tr>
-              <td>{{ c.data }}</td>
+              <td>{{ c.data|fmt_data }}</td>
               <td>
                 {% if c.tipo == 'dia_inteiro' %}
                   <span class="badge bg-primary">Dia inteiro</span>

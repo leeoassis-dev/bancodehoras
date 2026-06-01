@@ -238,8 +238,8 @@
             {% for e in eventos %}
             <tr>
               <td class="text-nowrap">
-                {% if e.tipo_evento == 'pagamento' %}{{ e.data_pagamento }}
-                {% else %}{{ e.data }}{% endif %}
+                {% if e.tipo_evento == 'pagamento' %}{{ e.data_pagamento|fmt_data }}
+                {% else %}{{ e.data|fmt_data }}{% endif %}
               </td>
               <td>
                 {% if e.tipo_evento == 'lancamento' %}
@@ -323,7 +323,7 @@
           <span class="fw-bold">{{ pag.nome }}</span>
           <span class="badge bg-secondary ms-2">{{ pag.matricula }}</span>
           {% if pag.secretaria %}<span class="ms-2 text-muted small">{{ pag.secretaria }}</span>{% endif %}
-          <span class="ms-3 text-muted small">Folha: <strong>{{ pag.data_pagamento }}</strong></span>
+          <span class="ms-3 text-muted small">Folha: <strong>{{ pag.data_pagamento|fmt_data }}</strong></span>
           {% if pag.descricao %}<span class="ms-2 text-muted small">| {{ pag.descricao }}</span>{% endif %}
         </div>
         <div class="fw-bold text-danger">
@@ -343,7 +343,7 @@
           <tbody>
             {% for d in data.detalhes[pag.id] %}
             <tr>
-              <td>{{ d.data_hora }}</td>
+              <td>{{ d.data_hora|fmt_data }}</td>
               <td class="text-center">{{ d.horas_base }}</td>
               <td class="text-center">
                 <span class="badge {{ 'badge-50' if d.percentual==50 else 'badge-100' }}">{{ d.percentual }}%</span>
@@ -396,7 +396,7 @@
               {% for r in itens %}
               <tr>
                 <td class="fw-semibold">{{ r.vencimento }}</td>
-                <td>{{ r.data }}</td>
+                <td>{{ r.data|fmt_data }}</td>
                 <td>{{ r.nome }} <span class="text-muted small">({{ r.matricula }})</span></td>
                 <td class="small text-muted">{{ r.secretaria or '–' }}</td>
                 <td class="small text-muted">{{ r.setor or '–' }}</td>
@@ -464,7 +464,7 @@
             <tbody>
               {% for r in itens %}
               <tr>
-                <td>{{ r.data }}</td>
+                <td>{{ r.data|fmt_data }}</td>
                 <td class="fw-semibold">{{ r.nome }} <span class="text-muted small">({{ r.matricula }})</span>
                   {% if r.funcao_gratificada %}<span class="badge bg-warning text-dark ms-1 small">FG</span>{% endif %}
                 </td>

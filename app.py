@@ -188,6 +188,30 @@ def minutos_para_horas(m):
 def minutos_num(m):
     return int(m or 0)
 
+@app.template_filter('fmt_data')
+def fmt_data(valor):
+    """YYYY-MM-DD → dd/mm/aaaa para exibição."""
+    if not valor:
+        return '–'
+    s = str(valor).strip()[:10]
+    try:
+        return date.fromisoformat(s).strftime('%d/%m/%Y')
+    except Exception:
+        return s
+
+@app.template_filter('fmt_datetime')
+def fmt_datetime(valor):
+    """YYYY-MM-DD HH:MM[:SS] → dd/mm/aaaa HH:MM para exibição."""
+    if not valor:
+        return '–'
+    s = str(valor).strip()
+    try:
+        if len(s) >= 16:
+            return datetime.strptime(s[:16], '%Y-%m-%d %H:%M').strftime('%d/%m/%Y %H:%M')
+        return date.fromisoformat(s[:10]).strftime('%d/%m/%Y')
+    except Exception:
+        return s
+
 def calcular_saldo_eleicao(db, matricula):
     creditos = db.execute(
         "SELECT COALESCE(SUM(quantidade_dias),0) FROM eleicao_creditos WHERE matricula=?",

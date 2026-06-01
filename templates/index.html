@@ -157,7 +157,7 @@ function verHistorico(matricula, nome) {
           const bc = l.percentual == 50 ? 'badge-50' : 'badge-100';
           const saldoZero = l.saldo_fmt === '00:00';
           html += `<tr class="${saldoZero ? 'table-secondary text-muted' : ''}">
-            <td>${l.data}</td><td>${l.horas_base}</td>
+            <td>${fmtDataBR(l.data)}</td><td>${l.horas_base}</td>
             <td><span class="badge ${bc}">${l.percentual}%</span></td>
             <td class="fw-semibold text-success">${l.minutos_fmt}</td>
             <td class="${saldoZero ? '' : 'fw-semibold text-primary'}">${saldoZero ? '<span class="badge bg-secondary">Zerado</span>' : l.saldo_fmt}</td>
@@ -174,7 +174,7 @@ function verHistorico(matricula, nome) {
         html += '<thead class="table-light"><tr><th>Data</th><th>Tipo</th><th>Compensado</th><th>Descrição</th></tr></thead><tbody>';
         data.compensacoes.forEach(c => {
           const tipo = c.tipo === 'dia_inteiro' ? '<span class="badge bg-primary">Dia inteiro</span>' : '<span class="badge bg-secondary">Parcial</span>';
-          html += `<tr><td>${c.data}</td><td>${tipo}</td><td class="fw-semibold text-warning">${c.minutos_fmt}</td><td class="text-muted">${c.descricao || '–'}</td></tr>`;
+          html += `<tr><td>${fmtDataBR(c.data)}</td><td>${tipo}</td><td class="fw-semibold text-warning">${c.minutos_fmt}</td><td class="text-muted">${c.descricao || '–'}</td></tr>`;
         });
         html += '</tbody></table></div>';
       } else html += '<p class="text-muted small">Nenhuma compensação registrada.</p>';
@@ -186,7 +186,7 @@ function verHistorico(matricula, nome) {
         html += '<thead class="table-light"><tr><th>Data Folha</th><th>H. Base Pagas</th><th>Saldo Banco Baixado</th><th>Referência</th></tr></thead><tbody>';
         data.pagamentos.forEach(p => {
           html += `<tr>
-            <td>${p.data}</td>
+            <td>${fmtDataBR(p.data)}</td>
             <td class="fw-bold text-danger">${p.base_fmt}</td>
             <td class="text-muted">${p.banco_fmt}</td>
             <td class="text-muted">${p.descricao || '–'}</td>

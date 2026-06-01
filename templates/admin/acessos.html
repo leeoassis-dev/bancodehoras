@@ -109,7 +109,7 @@
                   {% if u.ativo %}<span class="badge bg-success">Ativo</span>
                   {% else %}<span class="badge bg-secondary">Inativo</span>{% endif %}
                 </td>
-                <td class="small text-muted">{{ u.ultimo_acesso or 'Nunca' }}</td>
+                <td class="small text-muted">{{ u.ultimo_acesso|fmt_datetime if u.ultimo_acesso else 'Nunca' }}</td>
                 <td class="text-center">
                   {% if u.senha_temporaria %}
                   <span class="badge bg-warning text-dark">Temporária</span>
@@ -183,7 +183,7 @@
                 {% else %}—{% endif %}
               </td>
               <td class="small text-muted">{{ p.obs or '–' }}</td>
-              <td class="small text-muted">{{ p.criado_em[:10] }}</td>
+              <td class="small text-muted">{{ p.criado_em|fmt_data }}</td>
               <td class="text-center">
                 <form method="post" action="/admin/acessos/pre/{{ p.id }}/excluir"
                       onsubmit="return confirm('Remover pré-autorização do CPF {{ p.cpf }}?')">
@@ -222,7 +222,7 @@
               <td class="fw-semibold">{{ u.nome }}</td>
               <td class="text-muted small">{{ u.cpf }}</td>
               <td><span class="badge bg-{{ cores.get(u.nivel,'secondary') }}">{{ labels.get(u.nivel,u.nivel) }}</span></td>
-              <td>{{ u.ultimo_acesso }}</td>
+              <td>{{ u.ultimo_acesso|fmt_datetime if u.ultimo_acesso else 'Nunca' }}</td>
             </tr>
             {% endfor %}
           </tbody>

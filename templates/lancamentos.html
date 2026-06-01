@@ -93,7 +93,7 @@
             {% for l in historico %}
             {% set saldo_l = l.minutos_creditados - l.consumido %}
             <tr>
-              <td>{{ l.data }}</td>
+              <td>{{ l.data|fmt_data }}</td>
               <td>{{ l.horas_base }}</td>
               <td>
                 <span class="badge {{ 'badge-50' if l.percentual == 50 else 'badge-100' }}">

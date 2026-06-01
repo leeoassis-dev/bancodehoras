@@ -83,7 +83,7 @@
         <tbody>
           {% for i in itens %}
           <tr class="{{ '' if i.vencido else 'table-info bg-opacity-25' }}">
-            <td>{{ i.data }}</td>
+            <td>{{ i.data|fmt_data }}</td>
             <td>
               {% if i.vencido %}
               <span class="badge bg-danger">Vencida</span>
@@ -139,7 +139,7 @@
       <tbody>
         {% for p in historico %}
         <tr>
-          <td>{{ p.data_pagamento }}</td>
+          <td>{{ p.data_pagamento|fmt_data }}</td>
           <td>{{ p.descricao or '–' }}</td>
           <td class="text-center">
             <form method="post" action="/pagamentos/{{ p.id }}/estornar"

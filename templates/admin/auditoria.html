@@ -30,7 +30,7 @@
       <tbody>
         {% for e in eventos %}
         <tr>
-          <td class="small text-nowrap">{{ e.criado_em }}</td>
+          <td class="small text-nowrap">{{ e.criado_em|fmt_datetime }}</td>
           <td>
             <span class="badge
               {% if 'Excluiu' in e.acao or 'Estornou' in e.acao %}bg-danger
