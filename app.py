@@ -408,7 +408,7 @@ def _sucesso_importacao(sucessos, linha, identificador, detalhe):
 
 def _xlsx_response(filename, title, headers, rows):
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 
     wb = Workbook()
@@ -1777,6 +1777,11 @@ def admin_backup_excel():
     wb = Workbook()
     azul = "1A3A6B"
     claro = "D9EAF7"
+    verde = "E7F5EE"
+    amarelo = "FFF4D6"
+    vermelho = "FDE2E1"
+    cinza = "F8FAFC"
+    borda = Side(style="thin", color="D0D7DE")
 
     def v(row, key, default=""):
         try:
@@ -1790,19 +1795,40 @@ def admin_backup_excel():
     def add_sheet(nome, headers, rows):
         ws = wb.active if len(wb.sheetnames) == 1 and wb.active.max_row == 1 and wb.active["A1"].value is None else wb.create_sheet()
         ws.title = nome[:31]
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(1, len(headers)))
+        title = ws.cell(1, 1, nome)
+        title.font = Font(bold=True, color="FFFFFF", size=14)
+        title.fill = PatternFill("solid", fgColor=azul)
+        title.alignment = Alignment(horizontal="center")
+        ws.append([])
         ws.append(headers)
-        for c in ws[1]:
+        for c in ws[3]:
             c.font = Font(bold=True, color="FFFFFF")
             c.fill = PatternFill("solid", fgColor=azul)
             c.alignment = Alignment(horizontal="center")
+            c.border = Border(top=borda, left=borda, right=borda, bottom=borda)
         for row in rows:
             ws.append([_safe_excel(v) for v in row])
-        if ws.max_row > 1:
-            for c in ws[ws.max_row]:
+            row_idx = ws.max_row
+            tipo = str(row[2] if len(row) > 2 else "")
+            fill = None
+            if tipo == "Lançamento" or tipo == "Crédito":
+                fill = verde
+            elif tipo in ("Compensação", "Pagamento", "Baixa"):
+                fill = amarelo if tipo != "Pagamento" else vermelho
+            elif row_idx % 2 == 0:
+                fill = cinza
+            for c in ws[row_idx]:
+                c.border = Border(top=borda, left=borda, right=borda, bottom=borda)
+                c.alignment = Alignment(vertical="top", wrap_text=True)
+                if fill:
+                    c.fill = PatternFill("solid", fgColor=fill)
                 if str(c.value or "").startswith("TOTAL"):
                     c.font = Font(bold=True)
                     c.fill = PatternFill("solid", fgColor=claro)
-        ws.freeze_panes = "A2"
+        ws.freeze_panes = "A4"
+        if ws.max_row >= 3 and headers:
+            ws.auto_filter.ref = f"A3:{get_column_letter(len(headers))}{ws.max_row}"
         for col in range(1, len(headers) + 1):
             mx = max(len(str(ws.cell(r, col).value or "")) for r in range(1, ws.max_row + 1))
             ws.column_dimensions[get_column_letter(col)].width = min(max(mx + 2, 12), 55)
@@ -1840,18 +1866,26 @@ def admin_backup_excel():
     for r in db.execute("""SELECT l.*,s.nome,s.secretaria,s.setor,s.arquivado FROM lancamentos l
                            LEFT JOIN servidores s ON s.matricula=l.matricula ORDER BY l.data,l.id""").fetchall():
         hist_bh.append([r["matricula"], v(r, "nome"), "Lançamento", r["data"], r["horas_base"], r["percentual"],
-                        minutos_para_horas(r["minutos_creditados"]), "", v(r, "descricao"), v(r, "criado_em"),
+                        minutos_para_horas(r["minutos_creditados"]), "", "", v(r, "descricao"), v(r, "criado_em"),
                         "Arquivado" if v(r, "arquivado", 0) else "Ativo"])
     for r in db.execute("""SELECT c.*,s.nome,s.secretaria,s.setor,s.arquivado FROM compensacoes c
                            LEFT JOIN servidores s ON s.matricula=c.matricula ORDER BY c.data,c.id""").fetchall():
         hist_bh.append([r["matricula"], v(r, "nome"), "Compensação", r["data"], "", "",
-                        "", minutos_para_horas(r["minutos_compensados"]), v(r, "descricao"), v(r, "criado_em"),
+                        "", minutos_para_horas(r["minutos_compensados"]), "", v(r, "descricao"), v(r, "criado_em"),
                         "Arquivado" if v(r, "arquivado", 0) else "Ativo"])
-    for r in db.execute("""SELECT p.*,s.nome,s.arquivado FROM pagamentos p
-                           LEFT JOIN servidores s ON s.matricula=p.matricula ORDER BY p.data_pagamento,p.id""").fetchall():
+    for r in db.execute("""SELECT p.*,s.nome,s.arquivado,
+                                  COALESCE(SUM(c.minutos),0) AS minutos_banco,
+                                  COALESCE(SUM(ROUND(c.minutos*l.minutos_base*1.0/l.minutos_creditados)),0) AS base_paga
+                           FROM pagamentos p
+                           LEFT JOIN servidores s ON s.matricula=p.matricula
+                           LEFT JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
+                           LEFT JOIN lancamentos l ON l.id=c.lancamento_id
+                           GROUP BY p.id,p.matricula,p.data_pagamento,p.descricao,p.criado_em,s.nome,s.arquivado
+                           ORDER BY p.data_pagamento,p.id""").fetchall():
         hist_bh.append([r["matricula"], v(r, "nome"), "Pagamento", r["data_pagamento"], "", "",
-                        "", "", v(r, "descricao"), v(r, "criado_em"), "Arquivado" if v(r, "arquivado", 0) else "Ativo"])
-    add_sheet("Histórico Banco de Horas", ["Matrícula","Servidor","Tipo","Data","H.Base","%","Crédito","Débito","Justificativa/Descrição","Criado em","Status"], hist_bh)
+                        "", minutos_para_horas(r["minutos_banco"] or 0), minutos_para_horas(r["base_paga"] or 0),
+                        v(r, "descricao"), v(r, "criado_em"), "Arquivado" if v(r, "arquivado", 0) else "Ativo"])
+    add_sheet("Histórico Banco de Horas", ["Matrícula","Servidor","Tipo","Data","H.Base","%","Crédito no Banco","Débito no Banco","H.Base Pagas","Justificativa/Descrição","Criado em","Status"], hist_bh)
 
     eleicao_saldo = []
     for s in db.execute("SELECT * FROM servidores ORDER BY arquivado,nome").fetchall():
