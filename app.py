@@ -1079,7 +1079,22 @@ def pagamentos_index():
                      "qtd_vencidas":len(itens_v),"qtd_total":len(itens_t),
                      "acima_limite":tb_t>LIMITE_PAGAMENTO_MINUTOS})
     return render_template("pagamentos_index.html", pendentes=pend,
-                           fmt=minutos_para_horas, limite_fmt=minutos_para_horas(LIMITE_PAGAMENTO_MINUTOS))
+                           fmt=minutos_para_horas,
+                           limite=LIMITE_PAGAMENTO_MINUTOS,
+                           limite_fmt=minutos_para_horas(LIMITE_PAGAMENTO_MINUTOS))
+
+@app.route("/api/pagamentos-itens/<matricula>")
+@master_required
+def api_pagamentos_itens(matricula):
+    db = get_db()
+    itens_v = lancamentos_com_saldo(db, matricula, apenas_vencidos=True)
+    itens_t = lancamentos_com_saldo(db, matricula, apenas_vencidos=False)
+    return jsonify({
+        "vencidos": [dict(i) for i in itens_v],
+        "todos":    [dict(i) for i in itens_t],
+        "limite":   LIMITE_PAGAMENTO_MINUTOS,
+    })
+
 
 @app.route("/pagamentos/<matricula>")
 def pagamentos_servidor(matricula):
@@ -1131,6 +1146,9 @@ def registrar_pagamento(matricula):
     db.commit()
     aviso = f" ⚠️ Total {minutos_para_horas(total_base)} ultrapassa 45h." if total_base>LIMITE_PAGAMENTO_MINUTOS else ""
     flash(f"Pagamento registrado! Horas base: {minutos_para_horas(total_base)}.{aviso}","success")
+    source = request.form.get('_source', 'servidor')
+    if source == 'index':
+        return redirect(url_for("pagamentos_index"))
     return redirect(url_for("pagamentos_servidor", matricula=matricula))
 
 @app.route("/pagamentos/<int:id>/estornar", methods=["POST"])

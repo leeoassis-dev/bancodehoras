@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
@@ -60,20 +60,17 @@
           <td class="text-center fw-bold text-primary">
             {{ fmt(p.total_base_todos) }}
             {% if p.acima_limite %}
-            <br><span class="badge bg-warning text-dark small" title="Acima do limite legal de 45h">⚠️ +45h — Mat. {{ p.matricula }}</span>
+            <br><span class="badge bg-warning text-dark small" title="Acima do limite legal de 45h">⚠️ +45h</span>
             {% endif %}
           </td>
           <td class="text-center fw-bold {{ 'text-danger' if p.qtd_vencidas > 0 else 'text-muted' }}">
-            {% if p.qtd_vencidas > 0 %}
-              {{ fmt(p.total_base_vencidas) }}
-            {% else %}
-              –
-            {% endif %}
+            {% if p.qtd_vencidas > 0 %}{{ fmt(p.total_base_vencidas) }}{% else %}–{% endif %}
           </td>
           <td class="text-center">
-            <a href="/pagamentos/{{ p.matricula }}" class="btn btn-sm btn-danger">
+            <button class="btn btn-sm btn-danger"
+                    onclick="abrirPagamento('{{ p.matricula }}','{{ p.nome|e }}','{{ (p.secretaria or '')|e }}','{{ (p.setor or '')|e }}')">
               <i class="bi bi-cash-coin me-1"></i>Registrar
-            </a>
+            </button>
           </td>
         </tr>
         {% endfor %}
@@ -88,4 +85,301 @@
   <p class="mt-3 fs-5">Nenhum servidor possui saldo disponível no momento.</p>
 </div>
 {% endif %}
+
+
+<!-- ═══ Modal Pagamento Rápido ════════════════════════════════════════════════ -->
+<div class="modal fade" id="modalPagRapido" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header bg-danger text-white py-2">
+        <h5 class="modal-title">
+          <i class="bi bi-cash-coin me-2"></i>Registrar Pagamento — <span id="mp_titulo"></span>
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body pb-2">
+
+        <!-- Banner servidor -->
+        <div class="alert py-2 px-3 mb-3 d-flex align-items-center gap-3"
+             style="background:#fff5f5; border:1.5px solid #dc3545; border-radius:.5rem;">
+          <i class="bi bi-person-badge fs-4 text-danger"></i>
+          <div>
+            <div class="fw-bold fs-5 text-danger" id="mp_banner_nome" style="line-height:1.2"></div>
+            <div class="small text-muted" id="mp_banner_info"></div>
+          </div>
+        </div>
+
+        <!-- Alertas dinâmicos -->
+        <div id="mp_alerta_limite" class="alert alert-warning d-none small mb-2">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          <strong>Total acima de 45:00 — justificativa obrigatória.</strong>
+        </div>
+        <div id="mp_alerta_naovenc" class="alert alert-info d-none small mb-2">
+          <i class="bi bi-info-circle-fill me-1"></i>
+          Horas <strong>não vencidas</strong> incluídas — <strong>justificativa obrigatória.</strong>
+        </div>
+
+        <!-- Botões de modo -->
+        <div class="d-flex gap-2 mb-3 flex-wrap">
+          <button id="btn_modo_vencidas" class="btn btn-danger btn-sm"
+                  onclick="aplicarModo('vencidas')">
+            <i class="bi bi-exclamation-circle me-1"></i>Somente horas vencidas
+          </button>
+          <button id="btn_modo_todas" class="btn btn-outline-primary btn-sm"
+                  onclick="aplicarModo('todas')">
+            <i class="bi bi-list-check me-1"></i>Incluir todas as horas
+          </button>
+          <button class="btn btn-outline-secondary btn-sm ms-auto"
+                  onclick="limparTudo()" title="Zerar todos os campos">
+            <i class="bi bi-eraser me-1"></i>Limpar
+          </button>
+          <a id="btn_ir_servidor" href="#" class="btn btn-outline-secondary btn-sm"
+             title="Abrir página de detalhes do servidor">
+            <i class="bi bi-box-arrow-up-right me-1"></i>Ver detalhes
+          </a>
+        </div>
+
+        <!-- Total -->
+        <div class="alert alert-danger py-2 mb-3 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-calculator me-1"></i>Total de horas base para a folha:</span>
+          <span class="fs-4 fw-bold" id="mp_total">00:00</span>
+          <span class="small text-muted">(limite legal: {{ limite_fmt }})</span>
+        </div>
+
+        <!-- Tabela -->
+        <div id="mp_tabela_container">
+          <div class="text-center py-4">
+            <div class="spinner-border text-danger"></div>
+            <p class="mt-2 text-muted small">Carregando lançamentos...</p>
+          </div>
+        </div>
+
+        <!-- Dados do pagamento -->
+        <div class="row g-3 mt-1">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Data de competência da folha <span class="text-danger">*</span></label>
+            <input type="date" id="mp_data" class="form-control" required>
+          </div>
+          <div class="col-md-8">
+            <label class="form-label fw-semibold small">Referência / Competência</label>
+            <input type="text" id="mp_desc" class="form-control"
+                   placeholder="Ex: Folha 06/2026 – competência maio/2026">
+          </div>
+        </div>
+        <div class="mt-3">
+          <label class="form-label fw-semibold small">
+            Justificativa <span class="text-danger" id="mp_star_just"></span>
+            <span class="text-muted fw-normal" id="mp_just_hint">(obrigatória para horas não vencidas ou acima de 45h)</span>
+          </label>
+          <textarea id="mp_just" class="form-control form-control-sm" rows="2"
+                    placeholder="Descreva o motivo do pagamento de horas não vencidas ou acima do limite..."></textarea>
+        </div>
+
+      </div><!-- /modal-body -->
+
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="mp_btn_confirmar">
+          <i class="bi bi-check2-circle me-1"></i>Confirmar Pagamento
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Form oculto para submissão POST -->
+<form id="formPagRapido" method="post" action="" style="display:none">
+  <input type="hidden" name="_source" value="index">
+  <input type="hidden" name="data_pagamento" id="mp_hid_data">
+  <input type="hidden" name="descricao" id="mp_hid_desc">
+  <input type="hidden" name="justificativa" id="mp_hid_just">
+  <div id="mp_hid_horas"></div>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const LIMITE_MIN = {{ limite }};
+let _mp_itens_todos = [];
+let _mp_modo = 'vencidas';
+
+function parseHM(str) {
+  const p = String(str || '').trim().split(':');
+  if (p.length !== 2) return 0;
+  const h = parseInt(p[0], 10), m = parseInt(p[1], 10);
+  return (isNaN(h) || isNaN(m)) ? 0 : h * 60 + m;
+}
+function fmtHM(min) {
+  min = Math.abs(Math.round(min));
+  return String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
+}
+
+function abrirPagamento(mat, nome, sec, set_) {
+  _mp_modo = 'vencidas';
+  _mp_itens_todos = [];
+
+  document.getElementById('mp_titulo').textContent = nome + ' (' + mat + ')';
+  document.getElementById('mp_banner_nome').textContent = nome;
+  document.getElementById('mp_banner_info').textContent = [mat, sec, set_].filter(Boolean).join(' · ');
+  document.getElementById('btn_ir_servidor').href = '/pagamentos/' + mat;
+  document.getElementById('formPagRapido').action = '/pagamentos/' + mat + '/registrar';
+  document.getElementById('mp_data').valueAsDate = new Date();
+  document.getElementById('mp_desc').value = '';
+  document.getElementById('mp_just').value = '';
+  document.getElementById('mp_total').textContent = '00:00';
+  ['mp_alerta_limite','mp_alerta_naovenc'].forEach(id => document.getElementById(id).classList.add('d-none'));
+  document.getElementById('mp_tabela_container').innerHTML =
+    '<div class="text-center py-4"><div class="spinner-border text-danger"></div><p class="mt-2 text-muted small">Carregando lançamentos...</p></div>';
+
+  setBtnModo('vencidas');
+  new bootstrap.Modal(document.getElementById('modalPagRapido')).show();
+
+  fetch('/api/pagamentos-itens/' + mat)
+    .then(r => r.json())
+    .then(data => {
+      _mp_itens_todos = data.todos;
+      buildTable('vencidas');
+    })
+    .catch(() => {
+      document.getElementById('mp_tabela_container').innerHTML =
+        '<div class="alert alert-danger">Erro ao carregar lançamentos. Tente novamente.</div>';
+    });
+}
+
+function setBtnModo(modo) {
+  _mp_modo = modo;
+  const bv = document.getElementById('btn_modo_vencidas');
+  const bt = document.getElementById('btn_modo_todas');
+  bv.className = modo === 'vencidas' ? 'btn btn-danger btn-sm' : 'btn btn-outline-danger btn-sm';
+  bt.className = modo === 'todas'    ? 'btn btn-primary btn-sm' : 'btn btn-outline-primary btn-sm';
+}
+
+function aplicarModo(modo) {
+  setBtnModo(modo);
+  buildTable(modo);
+}
+
+function buildTable(modo) {
+  const itens = _mp_itens_todos;
+  if (!itens.length) {
+    document.getElementById('mp_tabela_container').innerHTML =
+      '<div class="alert alert-success">Este servidor não possui horas com saldo disponível.</div>';
+    return;
+  }
+
+  let html = `<div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Data Realização</th><th>Status</th>
+          <th class="text-center">H.Base</th><th class="text-center">%</th>
+          <th class="text-center">Saldo Banco</th>
+          <th class="text-center text-danger fw-bold" style="min-width:110px">H. Base p/ Folha <i class="bi bi-pencil-fill small"></i></th>
+          <th>Descrição</th>
+        </tr>
+      </thead><tbody>`;
+
+  for (const i of itens) {
+    const isVenc = i.vencido === 1;
+    // Por padrão: vencidas preenchidas com o saldo, não-vencidas com 00:00
+    const defaultVal = (modo === 'vencidas' && !isVenc) ? '00:00' : fmtHM(i.saldo_base_minutos);
+    const rowCls = isVenc ? '' : 'table-info';
+    const badge  = isVenc
+      ? '<span class="badge bg-danger">Vencida</span>'
+      : '<span class="badge bg-info text-dark">Não vencida</span>';
+    const pctCls = i.percentual === 50 ? 'badge-50' : 'badge-100';
+    html += `<tr class="${rowCls}">
+      <td>${fmtDataBR(i.data)}</td>
+      <td>${badge}</td>
+      <td class="text-center">${i.horas_base}</td>
+      <td class="text-center"><span class="badge ${pctCls}">${i.percentual}%</span></td>
+      <td class="text-center text-muted">${fmtHM(i.saldo_minutos)}</td>
+      <td class="text-center">
+        <input type="text" class="form-control form-control-sm text-center fw-bold mp-inp"
+               value="${defaultVal}"
+               data-max="${fmtHM(i.saldo_base_minutos)}"
+               data-vencido="${i.vencido}"
+               data-id="${i.id}"
+               placeholder="HH:MM"
+               style="max-width:85px;margin:auto">
+      </td>
+      <td class="text-muted small">${i.descricao || '–'}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  document.getElementById('mp_tabela_container').innerHTML = html;
+
+  document.querySelectorAll('.mp-inp').forEach(inp => {
+    inp.addEventListener('input', calcularTotal);
+    inp.addEventListener('blur', () => {
+      const maxMin = parseHM(inp.dataset.max);
+      if (parseHM(inp.value) > maxMin) inp.value = fmtHM(maxMin);
+      calcularTotal();
+    });
+  });
+  calcularTotal();
+}
+
+function calcularTotal() {
+  let total = 0, temNaoVenc = false;
+  document.querySelectorAll('.mp-inp').forEach(inp => {
+    const v = parseHM(inp.value);
+    total += v;
+    if (v > 0 && inp.dataset.vencido === '0') temNaoVenc = true;
+  });
+  document.getElementById('mp_total').textContent = fmtHM(total);
+
+  const acima = total > LIMITE_MIN;
+  document.getElementById('mp_alerta_limite').classList.toggle('d-none', !acima);
+  document.getElementById('mp_alerta_naovenc').classList.toggle('d-none', !temNaoVenc);
+
+  const justObrig = acima || temNaoVenc;
+  document.getElementById('mp_star_just').textContent = justObrig ? ' *' : '';
+  document.getElementById('mp_just_hint').style.display = justObrig ? '' : 'none';
+  document.getElementById('mp_just').required = justObrig;
+}
+
+function limparTudo() {
+  document.querySelectorAll('.mp-inp').forEach(inp => { inp.value = '00:00'; });
+  calcularTotal();
+}
+
+document.getElementById('mp_btn_confirmar').addEventListener('click', () => {
+  const data = document.getElementById('mp_data').value;
+  if (!data) { alert('Informe a data do pagamento.'); return; }
+
+  let total = 0, temNaoVenc = false, temAlgum = false;
+  const hidDiv = document.getElementById('mp_hid_horas');
+  hidDiv.innerHTML = '';
+
+  document.querySelectorAll('.mp-inp').forEach(inp => {
+    const v = parseHM(inp.value);
+    total += v;
+    if (v > 0) { temAlgum = true; if (inp.dataset.vencido === '0') temNaoVenc = true; }
+    const el = document.createElement('input');
+    el.type = 'hidden'; el.name = 'horas_' + inp.dataset.id; el.value = inp.value;
+    hidDiv.appendChild(el);
+  });
+
+  if (!temAlgum) { alert('Informe pelo menos um valor de horas.'); return; }
+
+  const acima     = total > LIMITE_MIN;
+  const justObrig = acima || temNaoVenc;
+  const just      = document.getElementById('mp_just').value.trim();
+  if (justObrig && !just) {
+    alert('Justificativa obrigatória para horas não vencidas ou acima de 45h.');
+    document.getElementById('mp_just').focus();
+    return;
+  }
+
+  document.getElementById('mp_hid_data').value = data;
+  document.getElementById('mp_hid_desc').value = document.getElementById('mp_desc').value;
+  document.getElementById('mp_hid_just').value = just;
+  document.getElementById('formPagRapido').submit();
+});
+</script>
 {% endblock %}
