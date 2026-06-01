@@ -1376,7 +1376,7 @@ def registrar_pagamento(matricula):
     db.commit()
     aviso = f"\n⚠️ Total {minutos_para_horas(total_base)} ultrapassa o limite de 45h." if total_base>LIMITE_PAGAMENTO_MINUTOS else ""
     nome_srv = srv["nome"] if srv else matricula
-    flash(f"{nome_srv} ({matricula})\nPagamento de {minutos_para_horas(total_base)} horas base registrado na folha.{aviso}","success")
+    flash(f"{nome_srv} ({matricula})\nPagamento de {minutos_para_horas(total_base)} horas base registrado no banco.{aviso}","success")
     source = request.form.get('_source', 'servidor')
     if source == 'index':
         return redirect(url_for("pagamentos_index"))
@@ -1599,7 +1599,6 @@ def admin_importar_servidores():
 
     _registrar_relatorio_importacao("servidores", arquivo.filename, total, sucessos, erros_lista, payload)
     limpar_cache()
-    flash(f"Importação concluída: {len(sucessos)} importado(s), {len(erros_lista)} erro(s).", "success")
     return redirect(url_for("admin_importacao"))
 
 def _normalizar_tipo_cadastro(valor):
@@ -1693,7 +1692,6 @@ def admin_importar_banco_horas():
         _sucesso_importacao(sucessos, linha, matricula, f"{srv['nome'] or nome_csv}: {minutos_para_horas(minutos)} importado(s) na competência {competencia}")
 
     _registrar_relatorio_importacao("banco_horas", arquivo.filename, total, sucessos, erros_lista, payload)
-    flash(f"Importação de banco de horas concluída: {len(sucessos)} importado(s), {len(erros_lista)} erro(s).", "success")
     return redirect(url_for("admin_importacao"))
 
 @app.route("/admin/importacao/eleicao", methods=["POST"])
@@ -1758,7 +1756,6 @@ def admin_importar_eleicao():
         _sucesso_importacao(sucessos, linha, matricula, f"{srv['nome'] or nome_csv}: {dias} dia(s) importado(s) na referência {referencia}")
 
     _registrar_relatorio_importacao("banco_dias_eleicao", arquivo.filename, total, sucessos, erros_lista, payload)
-    flash(f"Importação de dias de eleição concluída: {len(sucessos)} importado(s), {len(erros_lista)} erro(s).", "success")
     return redirect(url_for("admin_importacao"))
 
 @app.route("/admin/backup")
@@ -1982,7 +1979,6 @@ def admin_importar_cadastros_auxiliares():
 
     _registrar_relatorio_importacao("cadastros_auxiliares", arquivo.filename, total, sucessos, erros_lista, payload)
     limpar_cache()
-    flash(f"Importação de cadastros concluída: {len(sucessos)} importado(s), {len(erros_lista)} erro(s).", "success")
     return redirect(url_for("admin_importacao"))
 
 @app.route("/admin/importacao/<int:importacao_id>/estornar", methods=["POST"])
