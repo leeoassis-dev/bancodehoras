@@ -171,9 +171,9 @@ function verHistorico(matricula, nome) {
       html += '<h6 class="text-warning fw-bold mb-2"><i class="bi bi-arrow-left-right me-1"></i>Compensações</h6>';
       if (data.compensacoes.length) {
         html += '<div class="table-responsive mb-4"><table class="table table-sm table-hover align-middle small">';
-        html += '<thead class="table-light"><tr><th>Data</th><th>Tipo</th><th>Compensado</th><th>Descrição</th></tr></thead><tbody>';
+        html += '<thead class="table-light"><tr><th>Data</th><th>Registro</th><th>Compensado</th><th>Descrição</th></tr></thead><tbody>';
         data.compensacoes.forEach(c => {
-          const tipo = c.tipo === 'dia_inteiro' ? '<span class="badge bg-primary">Dia inteiro</span>' : '<span class="badge bg-secondary">Parcial</span>';
+          const tipo = '<span class="badge bg-secondary">Horas informadas</span>';
           html += `<tr><td>${fmtDataBR(c.data)}</td><td>${tipo}</td><td class="fw-semibold text-warning">${c.minutos_fmt}</td><td class="text-muted">${c.descricao || '–'}</td></tr>`;
         });
         html += '</tbody></table></div>';

@@ -143,12 +143,12 @@
       {% if compensacoes %}
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0 small">
-          <thead class="table-dark"><tr><th>Data</th><th>Tipo</th><th>Compensado</th><th>Descrição</th></tr></thead>
+          <thead class="table-dark"><tr><th>Data</th><th>Registro</th><th>Compensado</th><th>Descrição</th></tr></thead>
           <tbody>
             {% for c in compensacoes %}
             <tr>
               <td>{{ c.data|fmt_data }}</td>
-              <td>{% if c.tipo=='dia_inteiro' %}<span class="badge bg-primary">Dia inteiro</span>{% else %}<span class="badge bg-secondary">Parcial</span>{% endif %}</td>
+              <td><span class="badge bg-secondary">Horas informadas</span></td>
               <td class="text-warning fw-semibold">{{ fmt(c.minutos_compensados) }}</td>
               <td class="text-muted">{{ c.descricao or '–' }}</td>
             </tr>

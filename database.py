@@ -635,7 +635,7 @@ def _popular_demo_render(db):
                 (matricula,data,tipo,minutos_compensados,descricao)
                 VALUES (?,?,?,?,?)""",
                 (s["matricula"], (date(2026, 4, 8) + timedelta(days=idx % 15)).isoformat(),
-                 "dia_inteiro", 480, "Demonstração: compensação dia inteiro"))
+                 "parcial", 480, "Demonstração: compensação em horas informadas"))
             _consumir_fifo_raw(db, s["matricula"], 480, "compensacao", cid)
 
         if idx % 3 == 0:

@@ -5,7 +5,12 @@
   <div>
     <h5 class="mb-0"><i class="bi bi-arrow-left-right me-2 text-warning"></i>Compensação de Horas</h5>
   </div>
-  <a href="/servidores" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('eleicao_servidor', matricula=servidor.matricula) }}" class="btn btn-sm" style="background:#d97706; color:#fff;" title="Gerenciar dias de eleição deste servidor">
+      <i class="bi bi-calendar2-check me-1"></i>Dias de Eleição
+    </a>
+    <a href="/servidores" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
+  </div>
 </div>
 
 <!-- Banner de identificação do servidor -->
@@ -84,7 +89,7 @@
           <thead class="table-light">
             <tr>
               <th>Data</th>
-              <th>Tipo</th>
+              <th>Registro</th>
               <th>H. Compensadas</th>
               <th>Descrição</th>
               <th></th>
@@ -95,11 +100,7 @@
             <tr>
               <td>{{ c.data|fmt_data }}</td>
               <td>
-                {% if c.tipo == 'dia_inteiro' %}
-                  <span class="badge bg-primary">Dia inteiro</span>
-                {% else %}
-                  <span class="badge bg-secondary">Parcial</span>
-                {% endif %}
+                <span class="badge bg-secondary">Horas informadas</span>
               </td>
               <td class="fw-semibold text-warning">{{ fmt(c.minutos_compensados) }}</td>
               <td class="text-muted">{{ c.descricao or '–' }}</td>

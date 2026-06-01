@@ -258,7 +258,7 @@
                   {{ e.horas_base }} + <span class="badge {{ 'badge-50' if e.percentual==50 else 'badge-100' }}">{{ e.percentual }}%</span>
                   {% if e.descricao %} · {{ e.descricao }}{% endif %}
                 {% elif e.tipo_evento == 'compensacao' %}
-                  {{ 'Dia inteiro' if e.tipo=='dia_inteiro' else 'Parcial' }}
+                  Horas informadas
                   {% if e.descricao %} · {{ e.descricao }}{% endif %}
                 {% else %}
                   {{ e.descricao or '–' }}

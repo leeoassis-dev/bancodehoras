@@ -129,9 +129,9 @@ function verHistorico(matricula, nome) {
     } else html+='<p class="text-muted small">Nenhum lançamento.</p>';
     html+='<h6 class="text-warning fw-bold mb-2"><i class="bi bi-arrow-left-right me-1"></i>Compensações</h6>';
     if(data.compensacoes.length){
-      html+='<div class="table-responsive mb-3"><table class="table table-sm align-middle small"><thead class="table-light"><tr><th>Data</th><th>Tipo</th><th>Compensado</th><th>Descrição</th></tr></thead><tbody>';
+      html+='<div class="table-responsive mb-3"><table class="table table-sm align-middle small"><thead class="table-light"><tr><th>Data</th><th>Registro</th><th>Compensado</th><th>Descrição</th></tr></thead><tbody>';
       data.compensacoes.forEach(c=>{
-        html+=`<tr><td>${fmtDataBR(c.data)}</td><td>${c.tipo==='dia_inteiro'?'<span class="badge bg-primary">Dia inteiro</span>':'<span class="badge bg-secondary">Parcial</span>'}</td><td class="text-warning fw-semibold">${c.minutos_fmt}</td><td class="text-muted">${c.descricao||'–'}</td></tr>`;
+        html+=`<tr><td>${fmtDataBR(c.data)}</td><td><span class="badge bg-secondary">Horas informadas</span></td><td class="text-warning fw-semibold">${c.minutos_fmt}</td><td class="text-muted">${c.descricao||'–'}</td></tr>`;
       });
       html+='</tbody></table></div>';
     } else html+='<p class="text-muted small">Nenhuma compensação.</p>';

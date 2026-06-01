@@ -775,6 +775,8 @@ def servidores():
     f, p  = _filtro_servidores(busca, sec, set_, arquivado=0)
     if fg_sel == "1":
         f += " AND s.funcao_gratificada=1"
+    elif fg_sel == "0":
+        f += " AND COALESCE(s.funcao_gratificada,0)=0"
     if vencimento_sel == "vencidas":
         f += """ AND EXISTS (
             SELECT 1 FROM lancamentos l
@@ -1836,7 +1838,7 @@ def relatorios():
                     if e["tipo_evento"]=="lancamento":
                         lanc = minutos_num(e["minutos_creditados"]); detalhes = f"{e['horas_base']} + {e['percentual']}%"; tipo_ev = "Lançamento"
                     elif e["tipo_evento"]=="compensacao":
-                        comp = minutos_num(e["minutos_compensados"]); detalhes = "Dia inteiro" if e["tipo"]=="dia_inteiro" else "Parcial"; tipo_ev = "Compensação"
+                        comp = minutos_num(e["minutos_compensados"]); detalhes = "Horas informadas"; tipo_ev = "Compensação"
                     else:
                         pago = minutos_num(e["base_paga"]); detalhes = e.get("descricao",""); tipo_ev = "Pagamento Folha"
                     subt["lanc"] += lanc; subt["comp"] += comp; subt["pago"] += pago
