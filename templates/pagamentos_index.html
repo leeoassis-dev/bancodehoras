@@ -10,6 +10,59 @@
   </a>
 </div>
 
+<!-- ── Filtros ─────────────────────────────────────────────────────────────── -->
+<form method="get" class="card p-3 mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Buscar por matrícula ou nome</label>
+      <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" name="busca" class="form-control" placeholder="Digite..." value="{{ busca }}">
+      </div>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold mb-1">Secretaria</label>
+      <select name="secretaria" class="form-select form-select-sm">
+        <option value="">Todas</option>
+        {% for s in secretarias %}<option value="{{ s }}" {{ 'selected' if s==sec_sel }}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold mb-1">Departamento</label>
+      <select name="setor" class="form-select form-select-sm">
+        <option value="">Todos</option>
+        {% for s in setores %}<option value="{{ s }}" {{ 'selected' if s==set_sel }}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold mb-1">Status</label>
+      <select name="status" class="form-select form-select-sm">
+        <option value="" {{ 'selected' if not status_sel }}>Todos</option>
+        <option value="vencidas" {{ 'selected' if status_sel=='vencidas' }}>Com horas vencidas</option>
+      </select>
+    </div>
+    <div class="col-md-3 d-flex gap-2 align-items-end flex-wrap">
+      <!-- Botão Ocultar FG — ativo por padrão -->
+      <input type="hidden" name="ocultar_fg" value="{{ '0' if ocultar_fg=='0' else '1' }}">
+      <button type="button" id="btnFgToggle"
+              class="btn btn-sm {{ 'btn-warning' if ocultar_fg=='1' else 'btn-outline-warning' }} fw-semibold"
+              title="{{ 'Função Gratificada oculta — clique para exibir' if ocultar_fg=='1' else 'Clique para ocultar Função Gratificada' }}"
+              onclick="toggleFg(this)">
+        <i class="bi bi-star{{ '-fill' if ocultar_fg=='1' }} me-1"></i>
+        {{ 'Ocultar FG' if ocultar_fg=='1' else 'Exibindo FG' }}
+      </button>
+      <button type="submit" class="btn btn-danger btn-sm flex-fill">
+        <i class="bi bi-funnel me-1"></i>Filtrar
+      </button>
+      {% if busca or sec_sel or set_sel or status_sel or ocultar_fg=='0' %}
+      <a href="{{ url_for('pagamentos_index') }}" class="btn btn-outline-secondary btn-sm" title="Limpar filtros">
+        <i class="bi bi-x-lg"></i>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</form>
+
 {% if pendentes %}
 {% set vencidos = pendentes | selectattr('qtd_vencidas', 'gt', 0) | list %}
 {% if vencidos %}
@@ -17,11 +70,18 @@
   <i class="bi bi-exclamation-triangle-fill fs-5"></i>
   <div>
     <strong>{{ vencidos|length }} servidor(es)</strong> possuem horas <strong>vencidas (+6 meses)</strong> aguardando pagamento ou compensação.
+    {% if ocultar_fg=='1' %}<span class="ms-2 badge bg-warning text-dark"><i class="bi bi-star-fill me-1"></i>FG oculto</span>{% endif %}
   </div>
 </div>
 {% endif %}
 
 <div class="card">
+  <div class="card-header bg-white small text-muted d-flex justify-content-between">
+    <span><i class="bi bi-people me-1"></i>{{ pendentes|length }} servidor(es) exibido(s)</span>
+    {% if ocultar_fg=='1' %}
+    <span class="text-warning"><i class="bi bi-star-fill me-1"></i>Funções Gratificadas ocultas</span>
+    {% endif %}
+  </div>
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
       <thead class="table-dark">
@@ -82,7 +142,12 @@
 {% else %}
 <div class="text-center py-5 text-muted">
   <i class="bi bi-check-circle-fill text-success" style="font-size:3rem"></i>
-  <p class="mt-3 fs-5">Nenhum servidor possui saldo disponível no momento.</p>
+  <p class="mt-3 fs-5">Nenhum servidor encontrado com os filtros selecionados.</p>
+  {% if busca or sec_sel or set_sel or status_sel or ocultar_fg=='1' %}
+  <a href="{{ url_for('pagamentos_index') }}" class="btn btn-outline-secondary btn-sm mt-1">
+    <i class="bi bi-x-lg me-1"></i>Limpar filtros
+  </a>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -203,6 +268,26 @@
 
 {% block scripts %}
 <script>
+// ── Toggle Ocultar FG ────────────────────────────────────────────────────────
+function toggleFg(btn) {
+  const hidInput = document.querySelector('input[name="ocultar_fg"]');
+  const isOculto = hidInput.value === '1';
+  if (isOculto) {
+    // Vai mostrar FG → valor 0
+    hidInput.value = '0';
+    btn.className = 'btn btn-sm btn-outline-warning fw-semibold';
+    btn.innerHTML = '<i class="bi bi-star me-1"></i>Exibindo FG';
+    btn.title = 'Clique para ocultar Função Gratificada';
+  } else {
+    // Vai ocultar FG → valor 1
+    hidInput.value = '1';
+    btn.className = 'btn btn-sm btn-warning fw-semibold';
+    btn.innerHTML = '<i class="bi bi-star-fill me-1"></i>Ocultar FG';
+    btn.title = 'Função Gratificada oculta — clique para exibir';
+  }
+  btn.closest('form').submit();
+}
+
 const LIMITE_MIN = {{ limite }};
 let _mp_itens_todos = [];
 let _mp_modo = 'vencidas';

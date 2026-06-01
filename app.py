@@ -1064,24 +1064,54 @@ def excluir_compensacao(id):
 @app.route("/pagamentos")
 def pagamentos_index():
     db   = get_db()
+    busca      = request.args.get('busca', '').strip()
+    sec_sel    = request.args.get('secretaria', '').strip()
+    set_sel    = request.args.get('setor', '').strip()
+    status_sel = request.args.get('status', '').strip()       # 'vencidas' | ''
+    # ocultar_fg: default '1' (ocultar) na primeira visita sem params
+    ocultar_fg = request.args.get('ocultar_fg', '1' if not request.args else '0')
+
     srvs = db.execute("SELECT * FROM servidores WHERE arquivado=0 ORDER BY nome").fetchall()
-    pend = []
+    pend_todos = []
     for s in srvs:
         itens_v = lancamentos_com_saldo(db, s["matricula"], apenas_vencidos=True)
         itens_t = lancamentos_com_saldo(db, s["matricula"], apenas_vencidos=False)
         if not itens_t: continue
         tb_v = sum(i["saldo_base_minutos"] for i in itens_v)
         tb_t = sum(i["saldo_base_minutos"] for i in itens_t)
-        pend.append({"matricula":s["matricula"],"nome":s["nome"],"cargo":s["cargo"],
-                     "setor":s["setor"],"secretaria":s["secretaria"],
-                     "funcao_gratificada":bool(s["funcao_gratificada"]),
-                     "total_base_vencidas":tb_v,"total_base_todos":tb_t,
-                     "qtd_vencidas":len(itens_v),"qtd_total":len(itens_t),
-                     "acima_limite":tb_t>LIMITE_PAGAMENTO_MINUTOS})
+        pend_todos.append({"matricula":s["matricula"],"nome":s["nome"],"cargo":s["cargo"],
+                           "setor":s["setor"],"secretaria":s["secretaria"],
+                           "funcao_gratificada":bool(s["funcao_gratificada"]),
+                           "total_base_vencidas":tb_v,"total_base_todos":tb_t,
+                           "qtd_vencidas":len(itens_v),"qtd_total":len(itens_t),
+                           "acima_limite":tb_t>LIMITE_PAGAMENTO_MINUTOS})
+
+    # Listas para filtros (antes de filtrar)
+    secretarias = sorted({p["secretaria"] for p in pend_todos if p["secretaria"]})
+    setores     = sorted({p["setor"]      for p in pend_todos if p["setor"]})
+
+    # Aplicar filtros
+    pend = pend_todos
+    if ocultar_fg == '1':
+        pend = [p for p in pend if not p["funcao_gratificada"]]
+    if busca:
+        bl = busca.lower()
+        pend = [p for p in pend if bl in p["nome"].lower() or bl in p["matricula"].lower()]
+    if sec_sel:
+        pend = [p for p in pend if p["secretaria"] == sec_sel]
+    if set_sel:
+        pend = [p for p in pend if p["setor"] == set_sel]
+    if status_sel == 'vencidas':
+        pend = [p for p in pend if p["qtd_vencidas"] > 0]
+
     return render_template("pagamentos_index.html", pendentes=pend,
                            fmt=minutos_para_horas,
                            limite=LIMITE_PAGAMENTO_MINUTOS,
-                           limite_fmt=minutos_para_horas(LIMITE_PAGAMENTO_MINUTOS))
+                           limite_fmt=minutos_para_horas(LIMITE_PAGAMENTO_MINUTOS),
+                           secretarias=secretarias, setores=setores,
+                           busca=busca, sec_sel=sec_sel, set_sel=set_sel,
+                           status_sel=status_sel, ocultar_fg=ocultar_fg,
+                           total_sem_fg=len([p for p in pend_todos if not p["funcao_gratificada"]]))
 
 @app.route("/api/pagamentos-itens/<matricula>")
 @master_required
