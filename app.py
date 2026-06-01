@@ -12,6 +12,7 @@ from database import six_months_ago, five_months_ago
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ibipora_banco_horas_2024_seguro")
 app.url_map.strict_slashes = False
+app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_MB", "8")) * 1024 * 1024
 
 LIMITE_PAGAMENTO_MINUTOS = 45 * 60
 MESES_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
@@ -39,8 +40,7 @@ def limpar_cache():
 
 # â”€â”€â”€ Auth helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-ROTAS_PUBLICAS = {'login','logout','recuperar_senha','recuperar_senha_token','setup',
-                  'criar_conta','api_verificar_cpf','static'}
+ROTAS_PUBLICAS = {'login','logout','recuperar_senha','recuperar_senha_token','setup','static'}
 
 @app.errorhandler(404)
 def pagina_nao_encontrada(e):
@@ -56,6 +56,11 @@ def pagina_nao_encontrada(e):
     if caminho in rotas:
         return redirect(url_for(rotas[caminho]))
     return render_template("404.html"), 404
+
+@app.errorhandler(413)
+def arquivo_muito_grande(e):
+    flash("Arquivo muito grande. Envie um CSV de até 8 MB.", "danger")
+    return redirect(request.referrer or url_for("portal"))
 
 def gerar_senha_temp(n=10):
     chars = string.ascii_letters + string.digits + "!@#$"
@@ -117,7 +122,19 @@ def login_required(f):
 def master_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        if 'uid' not in session:
+            flash("Faça login para continuar.", "warning")
+            return redirect(url_for('login'))
         if session.get('nivel') != 'master':
+            try:
+                registrar_auditoria(
+                    get_db(), "Acesso negado", "seguranca", request.endpoint or request.path,
+                    session.get("matricula"), session.get("nome"),
+                    f"Tentativa de acesso restrito ao RH: {request.path}"
+                )
+                get_db().commit()
+            except Exception:
+                pass
             flash("Acesso restrito ao RH.", "danger")
             return redirect(url_for('portal'))
         return f(*args, **kwargs)
@@ -155,12 +172,26 @@ def verificar_acesso():
     if nivel == 'servidor' and request.endpoint not in (
             'meu_banco', 'meu_cadastro', 'trocar_senha', 'logout',
             'eleicao_servidor', 'eleicao_exportar'):
+        try:
+            registrar_auditoria(get_db(), "Acesso negado", "seguranca", request.endpoint or request.path,
+                                session.get("matricula"), session.get("nome"),
+                                f"Servidor tentou acessar {request.path}")
+            get_db().commit()
+        except Exception:
+            pass
         return redirect(url_for('meu_banco'))
 
     # Secretário / Chefia → consulta + api_historico + eleição (somente leitura)
     if nivel in ('secretario', 'chefia') and request.endpoint not in (
             'portal', 'consulta', 'api_historico', 'meu_cadastro', 'trocar_senha', 'logout',
             'eleicao_index', 'eleicao_servidor', 'eleicao_exportar'):
+        try:
+            registrar_auditoria(get_db(), "Acesso negado", "seguranca", request.endpoint or request.path,
+                                session.get("matricula"), session.get("nome"),
+                                f"{nivel} tentou acessar {request.path}")
+            get_db().commit()
+        except Exception:
+            pass
         return redirect(url_for('consulta'))
 
     # Master: bloqueia apenas se tentar acessar rota de outro nível
@@ -307,16 +338,28 @@ def registrar_visualizacao():
         pass
 
 def _csv_response(filename, headers, rows):
+    def safe_csv(v):
+        txt = "" if v is None else str(v)
+        return "'" + txt if txt[:1] in ("=", "+", "-", "@") else txt
     out = io.StringIO()
     w = csv.writer(out, delimiter=";")
-    w.writerow(headers)
-    w.writerows(rows)
+    w.writerow([safe_csv(h) for h in headers])
+    w.writerows([[safe_csv(v) for v in row] for row in rows])
     r = make_response("\ufeff" + out.getvalue())
     r.headers["Content-Type"] = "text/csv; charset=utf-8"
     r.headers["Content-Disposition"] = f"attachment; filename={filename}.csv"
     return r
 
+def _validar_csv_upload(arquivo):
+    nome = (arquivo.filename or "").lower()
+    if not nome.endswith(".csv"):
+        return False, "Arquivo inválido. Envie somente arquivo CSV."
+    return True, ""
+
 def _csv_reader_upload(arquivo):
+    ok, msg = _validar_csv_upload(arquivo)
+    if not ok:
+        raise ValueError(msg)
     conteudo = arquivo.read().decode("utf-8-sig", errors="replace")
     amostra = conteudo[:2048]
     try:
@@ -324,6 +367,12 @@ def _csv_reader_upload(arquivo):
     except Exception:
         dialect = csv.excel
     return csv.DictReader(io.StringIO(conteudo), dialect=dialect)
+
+def _safe_excel(v):
+    if not isinstance(v, str):
+        return v
+    txt = "" if v is None else str(v)
+    return "'" + txt if txt[:1] in ("=", "+", "-", "@") else v
 
 def _registrar_relatorio_importacao(tipo, arquivo, total, sucessos, erros, payload=None, atualizados=0):
     """Persiste histórico da importação e prepara relatório visual pós-importação."""
@@ -377,7 +426,7 @@ def _xlsx_response(filename, title, headers, rows):
         c.fill = PatternFill("solid", fgColor="1A3A6B")
         c.alignment = Alignment(horizontal="center")
     for row in rows:
-        ws.append(row)
+        ws.append([_safe_excel(v) for v in row])
         label = str(row[0] if row else "")
         if label.startswith("TOTAL DO GRUPO") or label.startswith("TOTAL GERAL"):
             fill = "D9EAF7" if label.startswith("TOTAL DO GRUPO") else "1A3A6B"
@@ -714,6 +763,7 @@ def ultimos_n_meses(n=6):
 # â”€â”€â”€ Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/")
+@master_required
 def dashboard():
     db = get_db()
     cache_key = f"dashboard:{date.today().isoformat()}"
@@ -817,6 +867,7 @@ def dashboard():
 # â”€â”€â”€ Servidores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/servidores")
+@master_required
 def servidores():
     PER_PAGE = 20
     db = get_db()
@@ -909,6 +960,7 @@ def api_historico(matricula):
     })
 
 @app.route("/servidores/novo", methods=["GET","POST"])
+@master_required
 def novo_servidor():
     db = get_db()
     if request.method == "POST":
@@ -933,6 +985,7 @@ def novo_servidor():
     return render_template("servidor_form.html", servidor=None, **_opcoes_servidor_form(db))
 
 @app.route("/servidores/<matricula>/editar", methods=["GET","POST"])
+@master_required
 def editar_servidor(matricula):
     db  = get_db()
     srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
@@ -954,6 +1007,7 @@ def editar_servidor(matricula):
     return render_template("servidor_form.html", servidor=srv, **_opcoes_servidor_form(db))
 
 @app.route("/servidores/<matricula>/arquivar", methods=["POST"])
+@master_required
 def arquivar_servidor(matricula):
     db = get_db()
     srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
@@ -968,6 +1022,7 @@ def arquivar_servidor(matricula):
     return redirect(url_for("servidores"))
 
 @app.route("/servidores/<matricula>/restaurar", methods=["POST"])
+@master_required
 def restaurar_servidor(matricula):
     db = get_db()
     db.execute("UPDATE servidores SET arquivado=0 WHERE matricula=?", (matricula,))
@@ -1015,6 +1070,7 @@ def excluir_servidor(matricula):
     return redirect(url_for("servidores"))
 
 @app.route("/arquivados")
+@master_required
 def arquivados():
     db    = get_db()
     busca = request.args.get("busca","").strip()
@@ -1035,6 +1091,7 @@ def arquivados():
 # â”€â”€â”€ Lançamentos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/lancamentos/<matricula>", methods=["GET","POST"])
+@master_required
 def lancamentos(matricula):
     db  = get_db()
     srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
@@ -1064,6 +1121,7 @@ def lancamentos(matricula):
                            saldo=calcular_saldo(db, matricula), fmt=minutos_para_horas, fg=_fg(srv))
 
 @app.route("/lancamentos/<int:id>/excluir", methods=["POST"])
+@master_required
 def excluir_lancamento(id):
     db = get_db()
     r  = db.execute("""
@@ -1084,6 +1142,7 @@ def excluir_lancamento(id):
 # â”€â”€â”€ Compensações â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/compensacoes/<matricula>", methods=["GET","POST"])
+@master_required
 def compensacoes(matricula):
     db  = get_db()
     srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
@@ -1115,6 +1174,7 @@ def compensacoes(matricula):
                            saldo=saldo, fmt=minutos_para_horas, fg=_fg(srv))
 
 @app.route("/compensacoes/<int:id>/excluir", methods=["POST"])
+@master_required
 def excluir_compensacao(id):
     db = get_db()
     r  = db.execute("""
@@ -1135,6 +1195,7 @@ def excluir_compensacao(id):
 # â”€â”€â”€ Pagamentos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/pagamentos")
+@master_required
 def pagamentos_index():
     db   = get_db()
     busca      = request.args.get('busca', '').strip()
@@ -1198,12 +1259,11 @@ def api_servidores_lista():
         rows = db.execute(
             "SELECT matricula, nome, secretaria, setor FROM servidores WHERE arquivado=0 ORDER BY nome"
         ).fetchall()
-    elif nivel in ('secretario', 'chefia') and vinculos:
-        ph = ','.join('?' * len(vinculos))
-        campo = 'secretaria' if nivel == 'secretario' else 'setor'
+    elif nivel in ('secretario', 'chefia'):
+        acesso_sql, acesso_params = filtro_consulta_vinculos(nivel, vinculos, session.get('matricula') or '')
         rows = db.execute(
             f"SELECT matricula, nome, secretaria, setor FROM servidores "
-            f"WHERE arquivado=0 AND {campo} IN ({ph}) ORDER BY nome", vinculos
+            f"WHERE arquivado=0 {acesso_sql} ORDER BY nome", acesso_params
         ).fetchall()
     elif nivel == 'servidor':
         mat = session.get('matricula')
@@ -1265,6 +1325,7 @@ def api_pagamentos_itens(matricula):
 
 
 @app.route("/pagamentos/<matricula>")
+@master_required
 def pagamentos_servidor(matricula):
     db  = get_db()
     srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
@@ -1276,6 +1337,7 @@ def pagamentos_servidor(matricula):
                            today=date.today().isoformat(), fg=_fg(srv))
 
 @app.route("/pagamentos/<matricula>/registrar", methods=["POST"])
+@master_required
 def registrar_pagamento(matricula):
     db = get_db()
     srv = db.execute("SELECT nome FROM servidores WHERE matricula=?", (matricula,)).fetchone()
@@ -1321,6 +1383,7 @@ def registrar_pagamento(matricula):
     return redirect(url_for("pagamentos_servidor", matricula=matricula))
 
 @app.route("/pagamentos/<int:id>/estornar", methods=["POST"])
+@master_required
 def estornar_pagamento(id):
     db = get_db()
     r  = db.execute("""
@@ -1488,7 +1551,11 @@ def admin_importar_servidores():
     if not arquivo or not arquivo.filename:
         flash("Selecione um arquivo CSV.", "danger")
         return redirect(url_for("admin_importacao"))
-    leitor = _csv_reader_upload(arquivo)
+    try:
+        leitor = _csv_reader_upload(arquivo)
+    except ValueError as e:
+        flash(str(e), "danger")
+        return redirect(url_for("admin_importacao"))
     campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
     if not {"matricula", "nome"}.issubset(campos):
         flash("CSV inválido. Campos obrigatórios: matricula e nome.", "danger")
@@ -1575,7 +1642,11 @@ def admin_importar_banco_horas():
     if not arquivo or not arquivo.filename:
         flash("Selecione um arquivo CSV.", "danger")
         return redirect(url_for("admin_importacao"))
-    leitor = _csv_reader_upload(arquivo)
+    try:
+        leitor = _csv_reader_upload(arquivo)
+    except ValueError as e:
+        flash(str(e), "danger")
+        return redirect(url_for("admin_importacao"))
     campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
     if "matricula" not in campos or not ({"saldo_horas", "horas", "saldo"} & campos):
         flash("CSV inválido. Campos obrigatórios: matricula e saldo_horas.", "danger")
@@ -1634,7 +1705,11 @@ def admin_importar_eleicao():
     if not arquivo or not arquivo.filename:
         flash("Selecione um arquivo CSV.", "danger")
         return redirect(url_for("admin_importacao"))
-    leitor = _csv_reader_upload(arquivo)
+    try:
+        leitor = _csv_reader_upload(arquivo)
+    except ValueError as e:
+        flash(str(e), "danger")
+        return redirect(url_for("admin_importacao"))
     campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
     if "matricula" not in campos or not ({"quantidade_dias", "dias"} & campos):
         flash("CSV inválido. Campos obrigatórios: matricula e quantidade_dias.", "danger")
@@ -1721,7 +1796,7 @@ def admin_backup_excel():
             c.fill = PatternFill("solid", fgColor=azul)
             c.alignment = Alignment(horizontal="center")
         for row in rows:
-            ws.append(row)
+            ws.append([_safe_excel(v) for v in row])
         if ws.max_row > 1:
             for c in ws[ws.max_row]:
                 if str(c.value or "").startswith("TOTAL"):
@@ -1813,6 +1888,10 @@ def admin_backup_excel():
         for vis in db.execute("SELECT * FROM visualizacoes ORDER BY criado_em,id").fetchall()
     ])
 
+    registrar_auditoria(db, "Gerou backup completo em Excel", "backup", date.today().isoformat(), None, None,
+                        "Exportação completa do sistema em memória, sem arquivo temporário persistente.")
+    db.commit()
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -1828,7 +1907,11 @@ def admin_importar_cadastros_auxiliares():
     if not arquivo or not arquivo.filename:
         flash("Selecione um arquivo CSV.", "danger")
         return redirect(url_for("admin_importacao"))
-    leitor = _csv_reader_upload(arquivo)
+    try:
+        leitor = _csv_reader_upload(arquivo)
+    except ValueError as e:
+        flash(str(e), "danger")
+        return redirect(url_for("admin_importacao"))
     campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
     if not {"tipo", "nome"}.issubset(campos):
         flash("CSV inválido. Campos obrigatórios: tipo e nome.", "danger")
@@ -2069,6 +2152,7 @@ def admin_cadastro_aux_excluir(cid):
     return redirect(url_for("admin_cadastros"))
 
 @app.route("/relatorios")
+@master_required
 def relatorios():
     db  = get_db()
     aba = request.args.get("aba","saldos")
@@ -2402,6 +2486,12 @@ def login():
                 "CPF ou senha inválidos. Caso não tenha acesso ou não se recorde da senha, "
                 "contate o Departamento de Gestão de Pessoas para emissão de senha temporária."
             )
+            try:
+                registrar_auditoria(db, "Falha de login", "seguranca", None, None, None,
+                                    f"Tentativa de acesso com CPF {cpf}")
+                db.commit()
+            except Exception:
+                pass
             if not u:
                 flash(msg_senha, "danger")
             else:
@@ -2865,6 +2955,7 @@ def admin_config_email():
 # â”€â”€â”€ Auto-cadastro â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route('/api/verificar-cpf')
+@master_required
 def api_verificar_cpf():
     """AJAX: verifica CPF e retorna dados para o formulário de cadastro."""
     cpf = request.args.get('cpf','').strip()
@@ -2903,6 +2994,7 @@ def api_verificar_cpf():
 
 
 @app.route('/criar-conta', methods=['GET','POST'])
+@master_required
 def criar_conta():
     if request.method == 'POST':
         cpf       = request.form['cpf'].strip()
@@ -3419,7 +3511,7 @@ def eleicao_exportar(matricula, fmt):
                 col_c.fill = PatternFill("solid", fgColor=AMBER2)
                 col_c.alignment = Alignment(horizontal="center")
             for row in rows:
-                ws.append(row)
+                ws.append([_safe_excel(v) for v in row])
                 label = str(row[0]) if row else ""
                 if label.startswith("TOTAL"):
                     for col_c in ws[ws.max_row]:
