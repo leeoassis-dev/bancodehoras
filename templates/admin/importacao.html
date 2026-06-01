@@ -212,7 +212,11 @@
 {% block scripts %}
 <script>
 document.querySelectorAll('[data-process-form]').forEach(form => {
-  form.addEventListener('submit', () => {
+  form.addEventListener('submit', (event) => {
+    if (form.dataset.submitting === '1') {
+      event.preventDefault();
+      return;
+    }
     const modal = new bootstrap.Modal(document.getElementById('modalProcessamento'));
     const titulo = form.dataset.processTitle || 'Processamento em andamento';
     const etapas = [
@@ -223,7 +227,8 @@ document.querySelectorAll('[data-process-form]').forEach(form => {
       ['Gerando relatório da importação...', 'Finalizando', 92]
     ];
     document.getElementById('procTitulo').textContent = titulo;
-    form.querySelectorAll('button,input,textarea').forEach(el => el.disabled = true);
+    form.dataset.submitting = '1';
+    form.querySelectorAll('button').forEach(el => el.disabled = true);
     modal.show();
     let i = 0;
     const timer = setInterval(() => {
