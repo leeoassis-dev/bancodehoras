@@ -9,6 +9,13 @@
     {% if servidor.setor %}<span class="ms-2 text-muted small">| {{ servidor.setor }}</span>{% endif %}
   </div>
   <div class="col-auto d-flex gap-3 align-items-stretch">
+    {% if solicitacoes_habilitado %}
+    <div class="d-flex align-items-center">
+      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalSolicitacao">
+        <i class="bi bi-send me-1"></i>Solicitar Compensação
+      </button>
+    </div>
+    {% endif %}
     <div class="card px-4 py-2 text-center border-start border-4 {{ 'border-success' if saldo >= 0 else 'border-danger' }}">
       <div class="small text-muted">Saldo de horas</div>
       <div class="fs-3 fw-bold {{ 'text-success' if saldo >= 0 else 'text-danger' }}">{{ fmt(saldo) }}</div>
@@ -101,6 +108,11 @@
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabLanc"><i class="bi bi-plus-circle me-1 text-success"></i>Lançamentos ({{ lancamentos|length }})</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabComp"><i class="bi bi-arrow-left-right me-1 text-warning"></i>Compensações ({{ compensacoes|length }})</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPag"><i class="bi bi-cash-coin me-1 text-danger"></i>Pagamentos ({{ pagamentos|length }})</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabSolic" id="tabSolicBtn">
+    <i class="bi bi-send me-1 text-primary"></i>Minhas Solicitações
+    {% set pend_count = (solicitacoes_srv|selectattr('status','equalto','solicitado')|list|length) + (solicitacoes_srv|selectattr('status','equalto','autorizado')|list|length) %}
+    {% if pend_count > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pend_count }}</span>{% endif %}
+  </button></li>
 </ul>
 
 <div class="tab-content">
@@ -186,5 +198,211 @@
     </div>
   </div>
 
+  <!-- Minhas Solicitações -->
+  <div class="tab-pane fade" id="tabSolic">
+    <div class="card">
+      {% if solicitacoes_srv %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 small">
+          <thead class="table-dark">
+            <tr><th>Data</th><th>Tipo</th><th>Quantidade</th><th>Data Pretendida</th><th>Status</th><th>Justificativa</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for s in solicitacoes_srv %}
+            <tr>
+              <td>{{ s.criado_em|fmt_datetime }}</td>
+              <td>
+                {% if s.tipo == 'banco_horas' %}<span class="badge bg-primary">Banco de Horas</span>
+                {% else %}<span class="badge" style="background:#d97706">Dias de Eleição</span>{% endif %}
+              </td>
+              <td class="fw-semibold">
+                {% if s.tipo == 'banco_horas' %}{{ fmt(s.quantidade) }}
+                {% else %}{{ s.quantidade }} dia{{ 's' if s.quantidade != 1 else '' }}{% endif %}
+              </td>
+              <td>{{ s.data_pretendida|fmt_data }}</td>
+              <td>
+                {% if s.status == 'solicitado' %}<span class="badge bg-warning text-dark">{{ status_display(s) }}</span>
+                {% elif s.status == 'autorizado' %}<span class="badge bg-info text-dark">{{ status_display(s) }}</span>
+                {% elif s.status == 'lancado' %}<span class="badge bg-success">{{ status_display(s) }}</span>
+                {% elif s.status == 'indeferido' %}<span class="badge bg-danger">Indeferido{% if s.motivo_indeferimento %} — {{ s.motivo_indeferimento }}{% endif %}</span>
+                {% else %}<span class="badge bg-secondary">{{ status_display(s) }}</span>{% endif %}
+              </td>
+              <td class="text-muted">{{ s.justificativa or '–' }}</td>
+              <td>
+                {% if s.status in ('solicitado', 'autorizado') %}
+                <button class="btn btn-outline-danger btn-sm" onclick="cancelarSolicitacao({{ s.id }})">
+                  <i class="bi bi-x-circle"></i>
+                </button>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:2rem"></i><p class="mt-2">Nenhuma solicitação registrada.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
 </div>
+
+<!-- Modal: Solicitar Compensação -->
+<div class="modal fade" id="modalSolicitacao" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="bi bi-send me-2"></i>Solicitar Compensação</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="solicitacaoAlerta" class="alert d-none mb-3"></div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Tipo de Solicitação <span class="text-danger">*</span></label>
+          <select class="form-select" id="solTipo" required>
+            <option value="">Selecione...</option>
+            <option value="banco_horas">Banco de Horas</option>
+            <option value="eleicao">Banco de Dias de Eleição</option>
+          </select>
+        </div>
+
+        <!-- Campos Banco de Horas -->
+        <div id="camposBancoHoras" class="d-none">
+          <div class="alert alert-light border mb-3 py-2 small">
+            Saldo disponível: <strong id="saldoHorasDisplay" class="text-success">{{ fmt(saldo) }}</strong>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Horas solicitadas <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="solQtdHoras" placeholder="Ex: 04:00">
+            <div class="form-text">Saldo disponível: {{ fmt(saldo) }}</div>
+          </div>
+        </div>
+
+        <!-- Campos Dias de Eleição -->
+        <div id="camposDiasEleicao" class="d-none">
+          <div class="alert alert-warning border mb-3 py-2 small">
+            Saldo disponível: <strong id="saldoDiasDisplay" class="text-dark">{{ saldo_eleicao }} dia{{ 's' if saldo_eleicao != 1 else '' }}</strong>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Quantidade de dias <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" id="solQtdDias" min="1" max="{{ saldo_eleicao }}" placeholder="Ex: 1">
+            <div class="form-text">Máximo disponível: {{ saldo_eleicao }} dia{{ 's' if saldo_eleicao != 1 else '' }}</div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Data pretendida <span class="text-danger">*</span></label>
+          <input type="date" class="form-control" id="solDataPretendida">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Justificativa <span class="text-danger">*</span></label>
+          <textarea class="form-control" id="solJustificativa" rows="3" placeholder="Descreva o motivo da solicitação..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnEnviarSolicitacao">
+          <i class="bi bi-send me-1"></i>Enviar Solicitação
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% block scripts %}
+<script>
+const _matricula = '{{ servidor.matricula }}';
+const _saldoHorasMin = {{ saldo }};
+const _saldoDias = {{ saldo_eleicao }};
+
+document.getElementById('solTipo').addEventListener('change', function() {
+  const tipo = this.value;
+  document.getElementById('camposBancoHoras').classList.toggle('d-none', tipo !== 'banco_horas');
+  document.getElementById('camposDiasEleicao').classList.toggle('d-none', tipo !== 'eleicao');
+  document.getElementById('solicitacaoAlerta').classList.add('d-none');
+});
+
+document.getElementById('btnEnviarSolicitacao').addEventListener('click', async function() {
+  const alertEl = document.getElementById('solicitacaoAlerta');
+  const tipo = document.getElementById('solTipo').value;
+  const data = document.getElementById('solDataPretendida').value;
+  const just = document.getElementById('solJustificativa').value.trim();
+
+  const mostrarErro = (msg) => {
+    alertEl.className = 'alert alert-danger mb-3';
+    alertEl.textContent = msg;
+    alertEl.classList.remove('d-none');
+  };
+
+  if (!tipo) return mostrarErro('Selecione o tipo de solicitação.');
+  if (!data) return mostrarErro('Informe a data pretendida.');
+  if (!just) return mostrarErro('A justificativa é obrigatória.');
+
+  let quantidade = '';
+  if (tipo === 'banco_horas') {
+    quantidade = document.getElementById('solQtdHoras').value.trim();
+    if (!quantidade || !quantidade.match(/^\d+:\d{2}$/)) return mostrarErro('Informe as horas no formato HH:MM.');
+    // Validação frontend: converte HH:MM → minutos
+    const [h, m] = quantidade.split(':').map(Number);
+    const minutos = h * 60 + m;
+    if (minutos <= 0) return mostrarErro('A quantidade de horas deve ser maior que zero.');
+    if (minutos > _saldoHorasMin) return mostrarErro('Quantidade de horas solicitada superior ao saldo disponível.');
+  } else {
+    quantidade = document.getElementById('solQtdDias').value;
+    if (!quantidade || parseInt(quantidade) <= 0) return mostrarErro('Informe a quantidade de dias.');
+    if (parseInt(quantidade) > _saldoDias) return mostrarErro('Quantidade de dias solicitada superior ao saldo disponível.');
+  }
+
+  const btn = this;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Enviando...';
+
+  const fd = new FormData();
+  fd.append('tipo', tipo);
+  fd.append('quantidade', quantidade);
+  fd.append('data_pretendida', data);
+  fd.append('justificativa', just);
+
+  try {
+    const res = await fetch('/solicitacoes/nova', { method: 'POST', body: fd });
+    const data2 = await res.json();
+    if (res.ok && data2.ok) {
+      alertEl.className = 'alert alert-success mb-3';
+      alertEl.textContent = 'Solicitação enviada com sucesso! Aguarde a autorização da chefia.';
+      alertEl.classList.remove('d-none');
+      setTimeout(() => location.reload(), 1800);
+    } else {
+      mostrarErro(data2.erro || 'Erro ao enviar solicitação.');
+    }
+  } catch(e) {
+    mostrarErro('Erro de comunicação. Tente novamente.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-send me-1"></i>Enviar Solicitação';
+  }
+});
+
+async function cancelarSolicitacao(id) {
+  if (!confirm('Deseja cancelar esta solicitação?')) return;
+  const res = await fetch(`/solicitacoes/${id}/cancelar`, { method: 'POST' });
+  const d = await res.json();
+  if (d.ok) location.reload();
+  else alert(d.erro || 'Erro ao cancelar.');
+}
+
+// Abre aba de solicitações se havia pendentes
+window.addEventListener('DOMContentLoaded', () => {
+  const url = new URL(location.href);
+  if (url.hash === '#solicitacoes') {
+    document.getElementById('tabSolicBtn')?.click();
+  }
+  if (window.__showConfirmModal) return;
+  // Mostrar aba automaticamente se há pendentes
+  const badge = document.querySelector('#tabSolicBtn .badge');
+  if (badge) document.getElementById('tabSolicBtn')?.click();
+});
+</script>
+{% endblock %}
 {% endblock %}

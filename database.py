@@ -290,6 +290,27 @@ _SCHEMA_SQLITE = """
         criado_por TEXT,
         criado_em TEXT DEFAULT (datetime('now','localtime'))
     );
+    CREATE TABLE IF NOT EXISTS solicitacoes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        matricula TEXT NOT NULL REFERENCES servidores(matricula),
+        tipo TEXT NOT NULL,
+        quantidade INTEGER NOT NULL,
+        data_pretendida TEXT NOT NULL,
+        justificativa TEXT,
+        status TEXT NOT NULL DEFAULT 'solicitado',
+        criado_por_uid INTEGER,
+        criado_por_nome TEXT,
+        criado_em TEXT DEFAULT (datetime('now','localtime')),
+        aprovador_uid INTEGER,
+        aprovador_nome TEXT,
+        data_autorizacao TEXT,
+        motivo_indeferimento TEXT,
+        justificativa_rh TEXT,
+        rh_uid INTEGER,
+        rh_nome TEXT,
+        data_lancamento TEXT,
+        referencia_id INTEGER
+    );
 """
 
 _SCHEMA_POSTGRES = """
@@ -391,6 +412,27 @@ _SCHEMA_POSTGRES = """
         criado_por TEXT,
         criado_em TEXT DEFAULT TO_CHAR(NOW(),'YYYY-MM-DD HH24:MI:SS')
     );
+    CREATE TABLE IF NOT EXISTS solicitacoes (
+        id SERIAL PRIMARY KEY,
+        matricula TEXT NOT NULL REFERENCES servidores(matricula),
+        tipo TEXT NOT NULL,
+        quantidade INTEGER NOT NULL,
+        data_pretendida TEXT NOT NULL,
+        justificativa TEXT,
+        status TEXT NOT NULL DEFAULT 'solicitado',
+        criado_por_uid INTEGER,
+        criado_por_nome TEXT,
+        criado_em TEXT DEFAULT TO_CHAR(NOW(),'YYYY-MM-DD HH24:MI:SS'),
+        aprovador_uid INTEGER,
+        aprovador_nome TEXT,
+        data_autorizacao TEXT,
+        motivo_indeferimento TEXT,
+        justificativa_rh TEXT,
+        rh_uid INTEGER,
+        rh_nome TEXT,
+        data_lancamento TEXT,
+        referencia_id INTEGER
+    );
 """
 
 # ─── init_db ─────────────────────────────────────────────────────────────────
@@ -411,6 +453,7 @@ def init_db():
         ("servidores",        "arquivado",          "INTEGER NOT NULL DEFAULT 0"),
         ("usuarios",          "vinculos",           "TEXT DEFAULT '[]'"),
         ("pre_autorizacoes",  "vinculos",           "TEXT DEFAULT '[]'"),
+        ("usuarios",          "secretaria",         "TEXT"),
     ]
     for table, col, defn in _migracoes:
         try:
@@ -425,6 +468,7 @@ def init_db():
     _migrar_vinculos(db)
     _migrar_consumos(db)
     _criar_master_padrao(db)
+    _garantir_config_solicitacoes(db)
     _popular_demo_render(db)
     _popular_demo_eleicao(db)
     db.close()
@@ -448,6 +492,8 @@ def _criar_indices(db):
         CREATE INDEX IF NOT EXISTS idx_cadastros_aux_tipo_nome ON cadastros_auxiliares (tipo, ativo, nome);
         CREATE INDEX IF NOT EXISTS idx_eleicao_creditos_matricula ON eleicao_creditos (matricula);
         CREATE INDEX IF NOT EXISTS idx_eleicao_baixas_matricula ON eleicao_baixas (matricula, data);
+        CREATE INDEX IF NOT EXISTS idx_solicitacoes_matricula ON solicitacoes (matricula, status);
+        CREATE INDEX IF NOT EXISTS idx_solicitacoes_status ON solicitacoes (status, tipo);
     """)
     db.commit()
 
@@ -514,6 +560,17 @@ def _migrar_consumos(db):
         for comp in comps:
             _consumir_fifo_raw(db, mat, comp["minutos_compensados"], "compensacao", comp["id"])
     db.commit()
+
+
+def _garantir_config_solicitacoes(db):
+    """Insere config padrão da funcionalidade de solicitações se ainda não existir."""
+    if not db.execute("SELECT 1 FROM config WHERE chave='solicitacoes_habilitado'").fetchone():
+        db.upsert(
+            "INSERT OR IGNORE INTO config (chave,valor) VALUES (?,?)",
+            "INSERT INTO config (chave,valor) VALUES (?,?) ON CONFLICT (chave) DO NOTHING",
+            ("solicitacoes_habilitado", "1")
+        )
+        db.commit()
 
 
 def _criar_master_padrao(db):

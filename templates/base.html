@@ -188,6 +188,13 @@
         <i class="bi bi-calendar2-check" style="color:#fde68a"></i>
         <span class="sidebar-link-text" style="color:#fde68a">Dias de Eleição</span>
       </a>
+      <div class="sidebar-section-title">Solicitações</div>
+      <a class="sidebar-link {% if request.path.startswith('/admin/tarefas') %}active{% endif %}" href="/admin/tarefas" title="Tarefas">
+        <i class="bi bi-list-check"></i>
+        <span class="sidebar-link-text">Tarefas
+          {% if pendentes_tarefas > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pendentes_tarefas }}</span>{% endif %}
+        </span>
+      </a>
       <div class="sidebar-section-title">Administração</div>
       <a class="sidebar-link {% if request.path.startswith('/admin/cadastros') %}active{% endif %}" href="/admin/cadastros" title="Cadastros"><i class="bi bi-folder-check"></i><span class="sidebar-link-text">Cadastros</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/importacao') %}active{% endif %}" href="/admin/importacao" title="Importação"><i class="bi bi-upload"></i><span class="sidebar-link-text">Importação</span></a>
@@ -199,6 +206,13 @@
     {% elif u_nivel in ('secretario','chefia') %}
       <div class="sidebar-section-title">Consulta</div>
       <a class="sidebar-link {% if request.path.startswith('/consulta') %}active{% endif %}" href="/consulta" title="Consulta"><i class="bi bi-people"></i><span class="sidebar-link-text">Consulta</span></a>
+      <div class="sidebar-section-title">Solicitações</div>
+      <a class="sidebar-link {% if request.path == '/consulta' and request.args.get('aba') == 'solicitacoes' %}active{% endif %}" href="/consulta?aba=solicitacoes" title="Solicitações Pendentes">
+        <i class="bi bi-inbox-fill"></i>
+        <span class="sidebar-link-text">Solicitações
+          {% if pendentes_aprovacao > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pendentes_aprovacao }}</span>{% endif %}
+        </span>
+      </a>
       <div class="sidebar-section-title">Eleitoral</div>
       <a class="sidebar-link {% if request.path.startswith('/eleicao') %}active{% endif %}" href="/eleicao" title="Dias de Eleição">
         <i class="bi bi-calendar2-check" style="color:#fde68a"></i>

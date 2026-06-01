@@ -1,0 +1,458 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-list-check me-2 text-primary"></i>Tarefas — Solicitações de Compensação</h4>
+    <span class="text-muted small">Solicitações realizadas pelos servidores, autorizações e lançamentos pelo RH.</span>
+  </div>
+  <div class="d-flex align-items-center gap-3">
+    <span class="small text-muted me-1">Funcionalidade:</span>
+    <div class="form-check form-switch mb-0 d-flex align-items-center gap-2">
+      <input class="form-check-input" type="checkbox" role="switch" id="toggleSolicitacoes"
+             {{ 'checked' if habilitado else '' }} style="width:2.5em;height:1.4em;cursor:pointer">
+      <label class="form-check-label fw-semibold" for="toggleSolicitacoes" id="toggleLabel">
+        <span id="toggleTexto" class="{{ 'text-success' if habilitado else 'text-danger' }}">
+          {{ 'Habilitada' if habilitado else 'Desabilitada' }}
+        </span>
+      </label>
+    </div>
+  </div>
+</div>
+
+<!-- Filtros -->
+<form method="get" class="card p-3 mb-3" id="formFiltros">
+  <div class="row g-2">
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Servidor / Matrícula</label>
+      <div style="position:relative">
+        <input type="text" name="matricula" class="form-control form-control-sm" id="filtroMatricula"
+               placeholder="Nome ou matrícula..." value="{{ filtros.matricula }}" autocomplete="off">
+        <div id="acMatricula" class="bg-white border rounded shadow"
+             style="position:absolute;top:100%;left:0;right:0;z-index:1055;max-height:220px;overflow-y:auto;margin-top:2px;display:none;"></div>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold mb-1">Secretaria</label>
+      <input type="text" name="secretaria" class="form-control form-control-sm" id="filtroSecretaria"
+             placeholder="Secretaria..." value="{{ filtros.secretaria }}" autocomplete="off">
+      <div id="acSecretaria" class="bg-white border rounded shadow"
+           style="position:absolute;z-index:1055;max-height:200px;overflow-y:auto;margin-top:2px;display:none;min-width:220px;"></div>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold mb-1">Departamento</label>
+      <input type="text" name="setor" class="form-control form-control-sm" id="filtroSetor"
+             placeholder="Departamento..." value="{{ filtros.setor }}" autocomplete="off">
+      <div id="acSetor" class="bg-white border rounded shadow"
+           style="position:absolute;z-index:1055;max-height:200px;overflow-y:auto;margin-top:2px;display:none;min-width:220px;"></div>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold mb-1">Tipo</label>
+      <select name="tipo" class="form-select form-select-sm">
+        <option value="">Todos</option>
+        <option value="banco_horas" {{ 'selected' if filtros.tipo == 'banco_horas' }}>Banco de Horas</option>
+        <option value="eleicao" {{ 'selected' if filtros.tipo == 'eleicao' }}>Dias de Eleição</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold mb-1">Status</label>
+      <select name="status" class="form-select form-select-sm">
+        <option value="">Todos</option>
+        <option value="solicitado" {{ 'selected' if filtros.status == 'solicitado' }}>Pendente de Autorização</option>
+        <option value="autorizado" {{ 'selected' if filtros.status == 'autorizado' }}>Aguardando Lançamento RH</option>
+        <option value="lancado" {{ 'selected' if filtros.status == 'lancado' }}>Lançado pelo RH</option>
+        <option value="indeferido" {{ 'selected' if filtros.status == 'indeferido' }}>Indeferido</option>
+        <option value="cancelado" {{ 'selected' if filtros.status == 'cancelado' }}>Cancelado</option>
+      </select>
+    </div>
+    <div class="col-md-1 d-flex align-items-end gap-1">
+      <button type="submit" class="btn btn-primary btn-sm flex-fill"><i class="bi bi-funnel"></i></button>
+      {% if filtros.matricula or filtros.secretaria or filtros.setor or filtros.tipo or filtros.status or filtros.dt_ini or filtros.dt_fim %}
+      <a href="/admin/tarefas" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x"></i></a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="row g-2 mt-1">
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Solicitado de</label>
+      <input type="date" name="dt_ini" class="form-control form-control-sm" value="{{ filtros.dt_ini }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold mb-1">Solicitado até</label>
+      <input type="date" name="dt_fim" class="form-control form-control-sm" value="{{ filtros.dt_fim }}">
+    </div>
+  </div>
+</form>
+
+<!-- Tabela -->
+{% if solicitacoes %}
+<div class="card">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span class="small text-muted">{{ solicitacoes|length }} solicitação(ões) encontrada(s)</span>
+    {% set pendentes_lanc = solicitacoes|selectattr('status','equalto','autorizado')|list %}
+    {% if pendentes_lanc %}
+    <span class="badge bg-warning text-dark">{{ pendentes_lanc|length }} aguardando lançamento</span>
+    {% endif %}
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0 small">
+      <thead class="table-dark">
+        <tr>
+          <th>#</th>
+          <th>Servidor</th>
+          <th>Secretaria / Dept.</th>
+          <th>Tipo</th>
+          <th>Quantidade</th>
+          <th>Data Pretendida</th>
+          <th>Status</th>
+          <th>Solicitado em</th>
+          <th>Autorizado por</th>
+          <th>Data Autorização</th>
+          <th>Lançado por</th>
+          <th>Data Lançamento</th>
+          <th class="no-sort text-center">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in solicitacoes %}
+        <tr>
+          <td class="text-muted">{{ s.id }}</td>
+          <td>
+            <div class="fw-semibold">{{ s.servidor_nome }}</div>
+            <div class="text-muted" style="font-size:.75rem">{{ s.matricula }}</div>
+          </td>
+          <td class="small text-muted">
+            {% if s.secretaria %}<div>{{ s.secretaria }}</div>{% endif %}
+            {% if s.setor %}<div class="text-muted" style="font-size:.72rem">{{ s.setor }}</div>{% endif %}
+          </td>
+          <td>
+            {% if s.tipo == 'banco_horas' %}<span class="badge bg-primary">Banco de Horas</span>
+            {% else %}<span class="badge" style="background:#d97706">Dias Eleição</span>{% endif %}
+          </td>
+          <td class="fw-semibold">
+            {% if s.tipo == 'banco_horas' %}{{ fmt(s.quantidade) }}
+            {% else %}{{ s.quantidade }} dia{{ 's' if s.quantidade != 1 else '' }}{% endif %}
+          </td>
+          <td>{{ s.data_pretendida|fmt_data }}</td>
+          <td>
+            {% if s.status == 'solicitado' %}
+              <span class="badge bg-warning text-dark">Pendente Autorização</span>
+            {% elif s.status == 'autorizado' %}
+              <span class="badge bg-info text-dark">Aguard. Lançamento RH</span>
+            {% elif s.status == 'lancado' %}
+              <span class="badge bg-success">Lançado</span>
+            {% elif s.status == 'indeferido' %}
+              <span class="badge bg-danger" title="{{ s.motivo_indeferimento or '' }}">Indeferido</span>
+            {% elif s.status == 'cancelado' %}
+              <span class="badge bg-secondary">Cancelado</span>
+            {% else %}
+              <span class="badge bg-secondary">{{ s.status }}</span>
+            {% endif %}
+          </td>
+          <td>{{ s.criado_em|fmt_datetime }}</td>
+          <td class="text-muted small">
+            {{ s.aprovador_nome or '–' }}
+            {% if s.justificativa_rh %}<br><span class="text-info" title="{{ s.justificativa_rh }}"><i class="bi bi-info-circle"></i> RH</span>{% endif %}
+          </td>
+          <td>{{ s.data_autorizacao|fmt_datetime if s.data_autorizacao else '–' }}</td>
+          <td class="text-muted small">{{ s.rh_nome or '–' }}</td>
+          <td>{{ s.data_lancamento|fmt_datetime if s.data_lancamento else '–' }}</td>
+          <td class="text-center">
+            {% if s.status == 'solicitado' %}
+              <button class="btn btn-sm btn-success me-1"
+                      onclick="abrirAutorizacaoRH({{ s.id }}, '{{ s.servidor_nome|replace("'","\\'")|e }}', '{{ s.tipo }}', {{ s.quantidade }}, '{{ s.data_pretendida }}', '{{ s.justificativa|replace("'","\\'")|e }}')">
+                <i class="bi bi-check-circle"></i>
+              </button>
+              <button class="btn btn-sm btn-danger"
+                      onclick="abrirIndeferimentoRH({{ s.id }}, '{{ s.servidor_nome|replace("'","\\'")|e }}')">
+                <i class="bi bi-x-circle"></i>
+              </button>
+            {% elif s.status == 'autorizado' %}
+              <button class="btn btn-sm btn-primary"
+                      onclick="abrirLancamento({{ s.id }}, '{{ s.servidor_nome|replace("'","\\'")|e }}', '{{ s.tipo }}', {{ s.quantidade }}, '{{ s.data_pretendida }}', '{{ s.aprovador_nome or '' }}')">
+                <i class="bi bi-send me-1"></i>Lançar
+              </button>
+            {% else %}
+              <span class="text-muted small">–</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox" style="font-size:3rem"></i>
+  <p class="mt-3">Nenhuma solicitação encontrada.</p>
+</div>
+{% endif %}
+
+<!-- Modal: Autorizar (RH direto) -->
+<div class="modal fade" id="modalAutorizarRH" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title"><i class="bi bi-check-circle me-2"></i>Autorizar Solicitação (RH)</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="autorRHAlerta" class="alert d-none mb-3"></div>
+        <div class="mb-3 p-3 bg-light rounded small">
+          <div><strong>Servidor:</strong> <span id="autorRHNome"></span></div>
+          <div><strong>Tipo:</strong> <span id="autorRHTipo"></span></div>
+          <div><strong>Quantidade:</strong> <span id="autorRHQtd"></span></div>
+          <div><strong>Data pretendida:</strong> <span id="autorRHData"></span></div>
+          <div><strong>Justificativa:</strong> <span id="autorRHJust"></span></div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Justificativa do RH <span class="text-danger">*</span></label>
+          <textarea class="form-control" id="autorRHJustRH" rows="2"
+                    placeholder="Obrigatório para autorização sem passar pela chefia..."></textarea>
+          <div class="form-text text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Autorização direta pelo RH requer justificativa.</div>
+        </div>
+      </div>
+      <input type="hidden" id="autorRHSid">
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success" id="btnConfAutorizarRH">
+          <i class="bi bi-check-circle me-1"></i>Autorizar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Indeferir (RH) -->
+<div class="modal fade" id="modalIndeferirRH" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-x-circle me-2"></i>Indeferir Solicitação</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="indefRHAlerta" class="alert d-none mb-3"></div>
+        <p>Indeferindo solicitação de <strong id="indefRHNome"></strong>.</p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Motivo do indeferimento</label>
+          <textarea class="form-control" id="indefRHMotivo" rows="3" placeholder="Descreva o motivo (opcional)..."></textarea>
+        </div>
+      </div>
+      <input type="hidden" id="indefRHSid">
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="btnConfIndeferirRH">
+          <i class="bi bi-x-circle me-1"></i>Confirmar Indeferimento
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Lançar -->
+<div class="modal fade" id="modalLancar" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="bi bi-send me-2"></i>Lançar Compensação</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="lancarAlerta" class="alert d-none mb-3"></div>
+        <div class="mb-3 p-3 bg-light rounded small">
+          <div><strong>Servidor:</strong> <span id="lancarNome"></span></div>
+          <div><strong>Tipo:</strong> <span id="lancarTipo"></span></div>
+          <div><strong>Quantidade:</strong> <span id="lancarQtd"></span></div>
+          <div><strong>Data pretendida:</strong> <span id="lancarData"></span></div>
+          <div><strong>Autorizado por:</strong> <span id="lancarAprovador"></span></div>
+        </div>
+        <p class="text-primary small"><i class="bi bi-info-circle me-1"></i>
+          O lançamento efetiva a compensação/fruição no histórico do servidor conforme a modalidade original da solicitação.
+        </p>
+        <div class="mb-3 d-none" id="lancarJustRHWrap">
+          <label class="form-label fw-semibold">Justificativa do RH <span class="text-danger">*</span></label>
+          <textarea class="form-control" id="lancarJustRH" rows="2"
+                    placeholder="Obrigatório para lançamento sem autorização da chefia..."></textarea>
+        </div>
+      </div>
+      <input type="hidden" id="lancarSid">
+      <input type="hidden" id="lancarStatusAtual">
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnConfLancar">
+          <i class="bi bi-send me-1"></i>Confirmar Lançamento
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Toggle habilitado/desabilitado ──────────────────────────────────────────
+document.getElementById('toggleSolicitacoes').addEventListener('change', async function() {
+  const res = await fetch('/admin/tarefas/toggle', { method: 'POST' });
+  const d = await res.json();
+  if (d.ok) {
+    const texto = document.getElementById('toggleTexto');
+    texto.textContent = d.habilitado ? 'Habilitada' : 'Desabilitada';
+    texto.className = d.habilitado ? 'text-success' : 'text-danger';
+  } else {
+    this.checked = !this.checked;
+    alert('Erro ao alterar configuração.');
+  }
+});
+
+// ── Autocomplete servidores ─────────────────────────────────────────────────
+(async function() {
+  let srvCache = null;
+  async function loadSrvs() {
+    if (srvCache) return srvCache;
+    try { const r = await fetch('/api/servidores-lista'); srvCache = await r.json(); } catch(e) { srvCache = []; }
+    return srvCache;
+  }
+  function norm(v) { return (v||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+
+  function initAC(input, drop, onSelect) {
+    input.addEventListener('input', async () => {
+      const q = norm(input.value);
+      if (q.length < 2) { drop.style.display='none'; return; }
+      const srvs = await loadSrvs();
+      const matches = srvs.filter(s => norm(s.m).includes(q)||norm(s.n).includes(q)).slice(0,8);
+      if (!matches.length) { drop.style.display='none'; return; }
+      drop.innerHTML = matches.map((s,i) =>
+        `<div class="__ac px-3 py-2 border-bottom" data-idx="${i}" style="cursor:pointer">
+           <span class="badge bg-secondary me-1">${s.m}</span><strong>${s.n}</strong>
+         </div>`
+      ).join('');
+      drop.style.display = 'block';
+      drop.querySelectorAll('.__ac').forEach(el => {
+        el.addEventListener('mouseenter', () => el.style.background='#f0f7ff');
+        el.addEventListener('mouseleave', () => el.style.background='');
+        el.addEventListener('mousedown', e => {
+          e.preventDefault();
+          onSelect(matches[+el.dataset.idx]);
+          drop.style.display = 'none';
+        });
+      });
+    });
+    input.addEventListener('blur', () => setTimeout(() => drop.style.display='none', 160));
+  }
+
+  const inpMat = document.getElementById('filtroMatricula');
+  const dropMat = document.getElementById('acMatricula');
+  initAC(inpMat, dropMat, s => { inpMat.value = s.m; document.getElementById('formFiltros').submit(); });
+
+  // Autocomplete secretaria
+  const secList = {{ secretarias|tojson }};
+  function initTextAC(inp, drop, lista) {
+    inp.addEventListener('input', () => {
+      const q = norm(inp.value);
+      if (q.length < 2) { drop.style.display='none'; return; }
+      const matches = lista.filter(v => norm(v).includes(q)).slice(0,8);
+      if (!matches.length) { drop.style.display='none'; return; }
+      drop.innerHTML = matches.map(v =>
+        `<div class="__ac2 px-3 py-2 border-bottom" style="cursor:pointer">${v}</div>`
+      ).join('');
+      drop.style.display='block';
+      drop.querySelectorAll('.__ac2').forEach(el => {
+        el.addEventListener('mouseenter', () => el.style.background='#f0f7ff');
+        el.addEventListener('mouseleave', () => el.style.background='');
+        el.addEventListener('mousedown', e => { e.preventDefault(); inp.value=el.textContent; drop.style.display='none'; });
+      });
+    });
+    inp.addEventListener('blur', () => setTimeout(() => drop.style.display='none', 160));
+  }
+  initTextAC(document.getElementById('filtroSecretaria'), document.getElementById('acSecretaria'), secList);
+  initTextAC(document.getElementById('filtroSetor'), document.getElementById('acSetor'), {{ setores|tojson }});
+})();
+
+// ── Autorizar RH direto (sem chefia) ───────────────────────────────────────
+function fmtQtd(tipo, qtd) {
+  if (tipo === 'banco_horas') {
+    return Math.floor(qtd/60).toString().padStart(2,'0') + ':' + (qtd%60).toString().padStart(2,'0');
+  }
+  return qtd + (qtd===1?' dia':' dias');
+}
+
+function abrirAutorizacaoRH(sid, nome, tipo, qtd, data, just) {
+  document.getElementById('autorRHSid').value = sid;
+  document.getElementById('autorRHNome').textContent = nome;
+  document.getElementById('autorRHTipo').textContent = tipo==='banco_horas'?'Banco de Horas':'Dias de Eleição';
+  document.getElementById('autorRHQtd').textContent = fmtQtd(tipo, qtd);
+  document.getElementById('autorRHData').textContent = fmtDataBR(data);
+  document.getElementById('autorRHJust').textContent = just||'–';
+  document.getElementById('autorRHJustRH').value = '';
+  document.getElementById('autorRHAlerta').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('modalAutorizarRH')).show();
+}
+
+document.getElementById('btnConfAutorizarRH').addEventListener('click', async function() {
+  const sid = document.getElementById('autorRHSid').value;
+  const justRH = document.getElementById('autorRHJustRH').value.trim();
+  const alertEl = document.getElementById('autorRHAlerta');
+  if (!justRH) {
+    alertEl.className='alert alert-danger mb-3';
+    alertEl.textContent='Justificativa obrigatória para autorização direta pelo RH.';
+    alertEl.classList.remove('d-none'); return;
+  }
+  this.disabled=true; this.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Autorizando...';
+  const fd = new FormData(); fd.append('justificativa_rh', justRH);
+  const res = await fetch(`/solicitacoes/${sid}/autorizar`, { method:'POST', body:fd });
+  const d = await res.json();
+  if (d.ok) { alertEl.className='alert alert-success mb-3'; alertEl.textContent='Autorizado!'; alertEl.classList.remove('d-none'); setTimeout(()=>location.reload(),1000); }
+  else { alertEl.className='alert alert-danger mb-3'; alertEl.textContent=d.erro||'Erro.'; alertEl.classList.remove('d-none'); this.disabled=false; this.innerHTML='<i class="bi bi-check-circle me-1"></i>Autorizar'; }
+});
+
+// ── Indeferir RH ───────────────────────────────────────────────────────────
+function abrirIndeferimentoRH(sid, nome) {
+  document.getElementById('indefRHSid').value=sid;
+  document.getElementById('indefRHNome').textContent=nome;
+  document.getElementById('indefRHMotivo').value='';
+  document.getElementById('indefRHAlerta').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('modalIndeferirRH')).show();
+}
+
+document.getElementById('btnConfIndeferirRH').addEventListener('click', async function() {
+  const sid=document.getElementById('indefRHSid').value;
+  const motivo=document.getElementById('indefRHMotivo').value.trim();
+  const alertEl=document.getElementById('indefRHAlerta');
+  this.disabled=true; this.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Indeferindo...';
+  const fd=new FormData(); fd.append('motivo',motivo);
+  const res=await fetch(`/solicitacoes/${sid}/indeferir`,{method:'POST',body:fd});
+  const d=await res.json();
+  if(d.ok){alertEl.className='alert alert-success mb-3';alertEl.textContent='Indeferido.';alertEl.classList.remove('d-none');setTimeout(()=>location.reload(),1000);}
+  else{alertEl.className='alert alert-danger mb-3';alertEl.textContent=d.erro||'Erro.';alertEl.classList.remove('d-none');this.disabled=false;this.innerHTML='<i class="bi bi-x-circle me-1"></i>Confirmar Indeferimento';}
+});
+
+// ── Lançar ─────────────────────────────────────────────────────────────────
+function abrirLancamento(sid, nome, tipo, qtd, data, aprovador) {
+  document.getElementById('lancarSid').value=sid;
+  document.getElementById('lancarNome').textContent=nome;
+  document.getElementById('lancarTipo').textContent=tipo==='banco_horas'?'Banco de Horas':'Dias de Eleição';
+  document.getElementById('lancarQtd').textContent=fmtQtd(tipo,qtd);
+  document.getElementById('lancarData').textContent=fmtDataBR(data);
+  document.getElementById('lancarAprovador').textContent=aprovador||'–';
+  document.getElementById('lancarAlerta').classList.add('d-none');
+  document.getElementById('lancarJustRHWrap').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('modalLancar')).show();
+}
+
+document.getElementById('btnConfLancar').addEventListener('click', async function() {
+  const sid=document.getElementById('lancarSid').value;
+  const justRH=document.getElementById('lancarJustRH').value.trim();
+  const alertEl=document.getElementById('lancarAlerta');
+  this.disabled=true; this.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Lançando...';
+  const fd=new FormData();
+  if(justRH) fd.append('justificativa_rh',justRH);
+  const res=await fetch(`/admin/tarefas/${sid}/lancar`,{method:'POST',body:fd});
+  const d=await res.json();
+  if(d.ok){alertEl.className='alert alert-success mb-3';alertEl.textContent='Lançamento realizado com sucesso!';alertEl.classList.remove('d-none');setTimeout(()=>location.reload(),1200);}
+  else{alertEl.className='alert alert-danger mb-3';alertEl.textContent=d.erro||'Erro.';alertEl.classList.remove('d-none');this.disabled=false;this.innerHTML='<i class="bi bi-send me-1"></i>Confirmar Lançamento';}
+});
+</script>
+{% endblock %}

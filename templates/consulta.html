@@ -8,6 +8,23 @@
   </div>
 </div>
 
+<ul class="nav nav-tabs mb-3" id="tabsConsulta">
+  <li class="nav-item">
+    <button class="nav-link {% if aba != 'solicitacoes' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tabServidores" id="btnTabServidores">
+      <i class="bi bi-people me-1"></i>Servidores
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link {% if aba == 'solicitacoes' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tabSolicitacoes" id="btnTabSolicitacoes">
+      <i class="bi bi-inbox-fill me-1"></i>Solicitações Pendentes
+      {% if sol_pendentes %}<span class="badge bg-warning text-dark ms-1">{{ sol_pendentes|length }}</span>{% endif %}
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+<div class="tab-pane fade {% if aba != 'solicitacoes' %}show active{% endif %}" id="tabServidores">
+
 <form method="get" class="card p-3 mb-3">
   <div class="row g-2 align-items-end">
     <div class="col-md-4">
@@ -93,6 +110,118 @@
   <p class="mt-3">Nenhum servidor encontrado{{ ' para "' + busca + '"' if busca else '' }}.</p>
 </div>
 {% endif %}
+</div><!-- /tabServidores -->
+
+<!-- Aba Solicitações Pendentes -->
+<div class="tab-pane fade {% if aba == 'solicitacoes' %}show active{% endif %}" id="tabSolicitacoes">
+  {% if sol_pendentes %}
+  <div class="card">
+    <div class="card-header bg-white small text-muted">{{ sol_pendentes|length }} solicitação(ões) aguardando autorização</div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 small">
+        <thead class="table-dark">
+          <tr><th>Servidor</th><th>Tipo</th><th>Quantidade</th><th>Data Pretendida</th><th>Solicitado em</th><th>Justificativa</th><th class="text-center">Ações</th></tr>
+        </thead>
+        <tbody>
+          {% for s in sol_pendentes %}
+          <tr>
+            <td>
+              <div class="fw-semibold">{{ s.servidor_nome }}</div>
+              <div class="text-muted small">{{ s.matricula }} | {{ s.setor or s.secretaria or '–' }}</div>
+            </td>
+            <td>
+              {% if s.tipo == 'banco_horas' %}<span class="badge bg-primary">Banco de Horas</span>
+              {% else %}<span class="badge" style="background:#d97706">Dias de Eleição</span>{% endif %}
+            </td>
+            <td class="fw-semibold">
+              {% if s.tipo == 'banco_horas' %}{{ fmt(s.quantidade) }}
+              {% else %}{{ s.quantidade }} dia{{ 's' if s.quantidade != 1 else '' }}{% endif %}
+            </td>
+            <td>{{ s.data_pretendida|fmt_data }}</td>
+            <td>{{ s.criado_em|fmt_datetime }}</td>
+            <td class="text-muted">{{ s.justificativa or '–' }}</td>
+            <td class="text-center">
+              <button class="btn btn-sm btn-success me-1"
+                      onclick="abrirAutorizacao({{ s.id }}, '{{ s.servidor_nome|replace("'","\\'")|e }}', '{{ s.tipo }}', {{ s.quantidade }}, '{{ s.data_pretendida }}', '{{ s.justificativa|replace("'","\\'")|e }}')">
+                <i class="bi bi-check-circle me-1"></i>Autorizar
+              </button>
+              <button class="btn btn-sm btn-danger"
+                      onclick="abrirIndeferimento({{ s.id }}, '{{ s.servidor_nome|replace("'","\\'")|e }}')">
+                <i class="bi bi-x-circle me-1"></i>Indeferir
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="text-center py-5 text-muted">
+    <i class="bi bi-inbox" style="font-size:3rem"></i>
+    <p class="mt-3">Nenhuma solicitação pendente de autorização.</p>
+  </div>
+  {% endif %}
+</div><!-- /tabSolicitacoes -->
+</div><!-- /tab-content -->
+
+<!-- Modal: Autorizar Solicitação -->
+<div class="modal fade" id="modalAutorizar" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title"><i class="bi bi-check-circle me-2"></i>Autorizar Solicitação</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="autorAlerta" class="alert d-none mb-3"></div>
+        <div class="mb-3 p-3 bg-light rounded small">
+          <div><strong>Servidor:</strong> <span id="autorNome"></span></div>
+          <div><strong>Tipo:</strong> <span id="autorTipo"></span></div>
+          <div><strong>Quantidade:</strong> <span id="autorQtd"></span></div>
+          <div><strong>Data pretendida:</strong> <span id="autorData"></span></div>
+          <div><strong>Justificativa:</strong> <span id="autorJust"></span></div>
+        </div>
+        <p class="text-success small"><i class="bi bi-info-circle me-1"></i>Ao autorizar, a solicitação ficará disponível para lançamento pelo RH.</p>
+      </div>
+      <input type="hidden" id="autorSid">
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success" id="btnConfAutorizar">
+          <i class="bi bi-check-circle me-1"></i>Confirmar Autorização
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Indeferir Solicitação -->
+<div class="modal fade" id="modalIndeferir" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-x-circle me-2"></i>Indeferir Solicitação</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="indefAlerta" class="alert d-none mb-3"></div>
+        <p>Indeferindo solicitação de <strong id="indefNome"></strong>.</p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Motivo do indeferimento</label>
+          <textarea class="form-control" id="indefMotivo" rows="3" placeholder="Descreva o motivo (opcional)..."></textarea>
+        </div>
+        <p class="text-danger small"><i class="bi bi-info-circle me-1"></i>O saldo reservado será devolvido ao servidor após o indeferimento.</p>
+      </div>
+      <input type="hidden" id="indefSid">
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="btnConfIndeferir">
+          <i class="bi bi-x-circle me-1"></i>Confirmar Indeferimento
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Modal histórico (somente leitura) -->
 <div class="modal fade" id="modalHistorico" tabindex="-1">
@@ -112,6 +241,80 @@
 
 {% block scripts %}
 <script>
+// Autorização / Indeferimento
+function abrirAutorizacao(sid, nome, tipo, qtd, data, just) {
+  document.getElementById('autorSid').value = sid;
+  document.getElementById('autorNome').textContent = nome;
+  document.getElementById('autorTipo').textContent = tipo === 'banco_horas' ? 'Banco de Horas' : 'Dias de Eleição';
+  document.getElementById('autorQtd').textContent = tipo === 'banco_horas'
+    ? (Math.floor(qtd/60).toString().padStart(2,'0') + ':' + (qtd%60).toString().padStart(2,'0'))
+    : qtd + (qtd === 1 ? ' dia' : ' dias');
+  document.getElementById('autorData').textContent = fmtDataBR(data);
+  document.getElementById('autorJust').textContent = just || '–';
+  document.getElementById('autorAlerta').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('modalAutorizar')).show();
+}
+
+function abrirIndeferimento(sid, nome) {
+  document.getElementById('indefSid').value = sid;
+  document.getElementById('indefNome').textContent = nome;
+  document.getElementById('indefMotivo').value = '';
+  document.getElementById('indefAlerta').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('modalIndeferir')).show();
+}
+
+document.getElementById('btnConfAutorizar').addEventListener('click', async function() {
+  const sid = document.getElementById('autorSid').value;
+  const alertEl = document.getElementById('autorAlerta');
+  this.disabled = true;
+  this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Autorizando...';
+  const res = await fetch(`/solicitacoes/${sid}/autorizar`, { method: 'POST', body: new FormData() });
+  const d = await res.json();
+  if (d.ok) {
+    alertEl.className = 'alert alert-success mb-3';
+    alertEl.textContent = 'Solicitação autorizada com sucesso!';
+    alertEl.classList.remove('d-none');
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    alertEl.className = 'alert alert-danger mb-3';
+    alertEl.textContent = d.erro || 'Erro ao autorizar.';
+    alertEl.classList.remove('d-none');
+    this.disabled = false;
+    this.innerHTML = '<i class="bi bi-check-circle me-1"></i>Confirmar Autorização';
+  }
+});
+
+document.getElementById('btnConfIndeferir').addEventListener('click', async function() {
+  const sid = document.getElementById('indefSid').value;
+  const motivo = document.getElementById('indefMotivo').value.trim();
+  const alertEl = document.getElementById('indefAlerta');
+  this.disabled = true;
+  this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Indeferindo...';
+  const fd = new FormData(); fd.append('motivo', motivo);
+  const res = await fetch(`/solicitacoes/${sid}/indeferir`, { method: 'POST', body: fd });
+  const d = await res.json();
+  if (d.ok) {
+    alertEl.className = 'alert alert-success mb-3';
+    alertEl.textContent = 'Solicitação indeferida.';
+    alertEl.classList.remove('d-none');
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    alertEl.className = 'alert alert-danger mb-3';
+    alertEl.textContent = d.erro || 'Erro ao indeferir.';
+    alertEl.classList.remove('d-none');
+    this.disabled = false;
+    this.innerHTML = '<i class="bi bi-x-circle me-1"></i>Confirmar Indeferimento';
+  }
+});
+
+// Ativa aba correta ao carregar
+document.addEventListener('DOMContentLoaded', () => {
+  const url = new URL(location.href);
+  if (url.searchParams.get('aba') === 'solicitacoes') {
+    document.getElementById('btnTabSolicitacoes')?.click();
+  }
+});
+
 function verHistorico(matricula, nome) {
   document.getElementById('modalNome').textContent = nome + ' (' + matricula + ')';
   document.getElementById('modalBody').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
