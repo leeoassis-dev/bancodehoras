@@ -16,9 +16,9 @@
         O arquivo gerado contém servidores ativos, arquivados, cadastros, acessos, banco de horas,
         histórico completo, banco de dias de eleição, importações, auditoria e visualizações.
       </p>
-      <a id="btnBackup" href="/admin/backup/excel" class="btn btn-primary">
+      <button id="btnBackup" type="button" class="btn btn-primary">
         <i class="bi bi-file-earmark-excel me-1"></i>Gerar Backup em Excel
-      </a>
+      </button>
     </div>
   </div>
   <div class="col-lg-5">
@@ -55,10 +55,18 @@
 
 {% block scripts %}
 <script>
-document.getElementById('btnBackup').addEventListener('click', () => {
+function nomeArquivoBackup(response) {
+  const cd = response.headers.get('Content-Disposition') || '';
+  const match = cd.match(/filename="?([^"]+)"?/i);
+  return match ? match[1] : 'backup_banco_horas.xlsx';
+}
+
+document.getElementById('btnBackup').addEventListener('click', async () => {
   const btn = document.getElementById('btnBackup');
-  btn.classList.add('disabled');
-  const modal = new bootstrap.Modal(document.getElementById('modalBackup'));
+  btn.disabled = true;
+  const modalEl = document.getElementById('modalBackup');
+  const modal = new bootstrap.Modal(modalEl);
+  const barra = document.getElementById('backupBarra');
   const etapas = [
     ['Exportando servidores ativos...', 'Aba 1 de 10', 15],
     ['Exportando servidores arquivados...', 'Aba 2 de 10', 25],
@@ -75,13 +83,50 @@ document.getElementById('btnBackup').addEventListener('click', () => {
     const e = etapas[Math.min(i, etapas.length - 1)];
     document.getElementById('backupMsg').textContent = e[0];
     document.getElementById('backupEtapa').textContent = e[1];
-    const barra = document.getElementById('backupBarra');
     barra.style.width = e[2] + '%';
     barra.textContent = e[2] + '%';
     i++;
     if (i >= etapas.length) clearInterval(timer);
   }, 650);
-  setTimeout(() => btn.classList.remove('disabled'), 6000);
+
+  try {
+    const response = await fetch('/admin/backup/excel', { credentials: 'same-origin' });
+    if (!response.ok) throw new Error('Falha ao gerar o backup.');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nomeArquivoBackup(response);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    clearInterval(timer);
+    barra.classList.remove('progress-bar-animated');
+    barra.style.width = '100%';
+    barra.textContent = '100%';
+    document.getElementById('backupMsg').textContent = 'Backup concluído com sucesso.';
+    document.getElementById('backupEtapa').textContent = 'Download finalizado';
+    setTimeout(() => modal.hide(), 900);
+  } catch (err) {
+    clearInterval(timer);
+    barra.classList.remove('progress-bar-animated');
+    barra.classList.add('bg-danger');
+    barra.style.width = '100%';
+    barra.textContent = 'Erro';
+    document.getElementById('backupMsg').textContent = 'Não foi possível gerar o backup completo. Tente novamente.';
+    document.getElementById('backupEtapa').textContent = err.message || 'Erro no processamento';
+  } finally {
+    btn.disabled = false;
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      barra.classList.add('progress-bar-animated');
+      barra.classList.remove('bg-danger');
+      barra.style.width = '10%';
+      barra.textContent = '10%';
+      document.getElementById('backupMsg').textContent = 'Preparando backup do sistema...';
+      document.getElementById('backupEtapa').textContent = 'Iniciando exportação';
+    }, { once: true });
+  }
 });
 </script>
 {% endblock %}
