@@ -39,19 +39,31 @@
   O pagamento será permitido, mas <strong>é obrigatória justificativa</strong>.
 </div>
 
-<!-- Cabeçalho com total dinâmico -->
-<div class="alert alert-danger mb-3">
-  <div class="row align-items-center">
-    <div class="col-md-8">
+<!-- Botões de modo + Total + Registrar -->
+<div class="card mb-3 p-3">
+  <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+    <button type="button" id="btn_modo_vencidas" class="btn btn-danger btn-sm"
+            onclick="aplicarModo('vencidas')">
+      <i class="bi bi-exclamation-circle me-1"></i>Somente horas vencidas
+    </button>
+    <button type="button" id="btn_modo_todas" class="btn btn-outline-primary btn-sm"
+            onclick="aplicarModo('todas')">
+      <i class="bi bi-list-check me-1"></i>Incluir todas as horas
+    </button>
+    <button type="button" class="btn btn-outline-secondary btn-sm"
+            onclick="limparTudo()" title="Zerar todos os campos">
+      <i class="bi bi-eraser me-1"></i>Limpar
+    </button>
+  </div>
+  <div class="d-flex align-items-center justify-content-between">
+    <div>
       <strong><i class="bi bi-calculator me-1"></i>Total de horas base para lançar na folha:</strong>
-      <span class="fs-4 ms-2 fw-bold" id="totalBase">00:00</span>
+      <span class="fs-4 ms-2 fw-bold text-danger" id="totalBase">00:00</span>
       <span class="ms-2 text-muted small">(limite legal: 45:00)</span>
     </div>
-    <div class="col-md-4 text-end">
-      <button class="btn btn-danger" id="btnRegistrar" data-bs-toggle="modal" data-bs-target="#modalPagamento">
-        <i class="bi bi-check2-circle me-1"></i>Registrar Baixa
-      </button>
-    </div>
+    <button class="btn btn-danger" id="btnRegistrar" data-bs-toggle="modal" data-bs-target="#modalPagamento">
+      <i class="bi bi-check2-circle me-1"></i>Registrar Baixa
+    </button>
   </div>
 </div>
 
@@ -212,15 +224,43 @@
 {% block scripts %}
 <script>
 const LIMITE = {{ limite }};
+let _modo = 'vencidas';
 
 function parseHM(str) {
-  const p = str.trim().split(':');
+  const p = String(str || '').trim().split(':');
   if (p.length !== 2) return 0;
-  return parseInt(p[0]) * 60 + parseInt(p[1]);
+  const h = parseInt(p[0], 10), m = parseInt(p[1], 10);
+  return (isNaN(h) || isNaN(m)) ? 0 : h * 60 + m;
 }
 function fmtHM(m) {
   m = Math.abs(Math.round(m));
-  return String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+}
+
+function aplicarModo(modo) {
+  _modo = modo;
+  document.getElementById('btn_modo_vencidas').className =
+    modo === 'vencidas' ? 'btn btn-danger btn-sm' : 'btn btn-outline-danger btn-sm';
+  document.getElementById('btn_modo_todas').className =
+    modo === 'todas' ? 'btn btn-primary btn-sm' : 'btn btn-outline-primary btn-sm';
+
+  document.querySelectorAll('.horas-input').forEach(inp => {
+    if (modo === 'vencidas' && inp.dataset.vencido === '0') {
+      inp.value = '00:00';
+    } else {
+      inp.value = inp.dataset.max;
+    }
+  });
+  calcularEstado();
+}
+
+function limparTudo() {
+  document.querySelectorAll('.horas-input').forEach(inp => { inp.value = '00:00'; });
+  // Reset botões para estado neutro
+  document.getElementById('btn_modo_vencidas').className = 'btn btn-outline-danger btn-sm';
+  document.getElementById('btn_modo_todas').className   = 'btn btn-outline-primary btn-sm';
+  _modo = '';
+  calcularEstado();
 }
 
 function calcularEstado() {
@@ -230,9 +270,9 @@ function calcularEstado() {
     total += v;
     if (v > 0 && inp.dataset.vencido === '0') temNaoVenc = true;
   });
-  document.getElementById('totalBase').textContent = fmtHM(total);
-  document.getElementById('totalRodape').textContent = fmtHM(total);
-  document.getElementById('modal_total').textContent = fmtHM(total);
+  document.getElementById('totalBase').textContent    = fmtHM(total);
+  document.getElementById('totalRodape').textContent  = fmtHM(total);
+  document.getElementById('modal_total').textContent  = fmtHM(total);
 
   const acima = total > LIMITE;
   document.getElementById('alertaLimite').classList.toggle('d-none', !acima);
@@ -242,17 +282,17 @@ function calcularEstado() {
 
   const justObrig = acima || temNaoVenc;
   document.getElementById('starJust').textContent = justObrig ? '*' : '';
-  document.getElementById('modal_just').required = justObrig;
+  document.getElementById('modal_just').required  = justObrig;
 
   return { total, temNaoVenc, acima };
 }
 
 document.querySelectorAll('.horas-input').forEach(inp => {
-  inp.addEventListener('input', calcularEstado);
+  inp.addEventListener('input', () => { _modo = ''; calcularEstado(); });
   inp.addEventListener('blur', () => {
     const maxMin = parseHM(inp.dataset.max);
-    const val = parseHM(inp.value);
-    if (val > maxMin) { inp.value = fmtHM(maxMin); calcularEstado(); }
+    if (parseHM(inp.value) > maxMin) { inp.value = fmtHM(maxMin); }
+    calcularEstado();
   });
 });
 
@@ -268,12 +308,13 @@ document.getElementById('btnConfirmar').addEventListener('click', () => {
     document.getElementById('modal_just').focus();
     return;
   }
-  document.getElementById('hid_data').value = data;
-  document.getElementById('hid_descricao').value = document.getElementById('modal_desc').value;
+  document.getElementById('hid_data').value       = data;
+  document.getElementById('hid_descricao').value  = document.getElementById('modal_desc').value;
   document.getElementById('hid_justificativa').value = just;
   document.getElementById('formPagamento').submit();
 });
 
-calcularEstado();
+// Aplica modo padrão ao carregar: somente vencidas
+aplicarModo('vencidas');
 </script>
 {% endblock %}
