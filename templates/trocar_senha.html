@@ -4,19 +4,29 @@
   <div class="col-md-5">
     <div class="card p-4">
       <h5 class="mb-1 fw-bold"><i class="bi bi-key-fill me-2 text-warning"></i>Alterar Senha</h5>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}
+          <div class="alert alert-{{ cat }} small mt-2">{{ msg|safe }}</div>
+        {% endfor %}
+      {% endwith %}
       {% if session.get('temp') %}
       <div class="alert alert-warning small mt-2">
-        <i class="bi bi-exclamation-triangle me-1"></i>Sua senha é temporária. Defina uma senha pessoal para continuar.
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        Sua senha é temporária. No campo <strong>Senha atual</strong>, digite <strong>123456</strong>
+        e escolha uma nova senha pessoal para continuar.
       </div>
       {% endif %}
       <form method="post" class="mt-3">
         <div class="mb-3">
-          <label class="form-label fw-semibold">Senha atual</label>
-          <input type="password" name="senha_atual" class="form-control" required>
+          <label class="form-label fw-semibold">Senha atual
+            {% if session.get('temp') %}<small class="text-muted">(use 123456)</small>{% endif %}
+          </label>
+          <input type="password" name="senha_atual" class="form-control"
+                 {% if session.get('temp') %}placeholder="123456"{% endif %} required>
         </div>
         <div class="mb-3">
-          <label class="form-label fw-semibold">Nova senha <small class="text-muted">(mín. 8 caracteres)</small></label>
-          <input type="password" name="senha_nova" class="form-control" minlength="8" required>
+          <label class="form-label fw-semibold">Nova senha <small class="text-muted">(mín. 6 caracteres)</small></label>
+          <input type="password" name="senha_nova" class="form-control" minlength="6" required>
         </div>
         <div class="mb-4">
           <label class="form-label fw-semibold">Confirmar nova senha</label>

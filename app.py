@@ -1876,8 +1876,40 @@ def login():
         cpf   = request.form['cpf'].strip()
         senha = request.form['senha']
         u = db.execute("SELECT * FROM usuarios WHERE cpf=? AND ativo=1", (cpf,)).fetchone()
+
+        # ── Primeiro acesso: auto-cria conta para servidores cadastrados ─────
+        if not u:
+            srv = db.execute(
+                "SELECT * FROM servidores WHERE cpf=? AND arquivado=0", (cpf,)).fetchone()
+            if srv:
+                try:
+                    pre = db.execute(
+                        "SELECT * FROM pre_autorizacoes WHERE cpf=?", (cpf,)).fetchone()
+                    nivel_auto     = pre['nivel']     if pre else 'servidor'
+                    vinculos_auto  = get_vinculos(pre) if pre else []
+                    matricula_auto = (pre['matricula'] or srv['matricula']) if pre else srv['matricula']
+                    db.insert("""
+                        INSERT INTO usuarios
+                            (cpf, nome, email, senha_hash, nivel, matricula, vinculos, ativo, senha_temporaria)
+                        VALUES (?,?,?,?,?,?,?,1,1)
+                    """, (cpf, srv['nome'], srv.get('email') or '',
+                          generate_password_hash('123456'),
+                          nivel_auto, matricula_auto, json.dumps(vinculos_auto)))
+                    db.commit()
+                    u = db.execute(
+                        "SELECT * FROM usuarios WHERE cpf=? AND ativo=1", (cpf,)).fetchone()
+                except Exception:
+                    db.commit()
+                    u = db.execute(
+                        "SELECT * FROM usuarios WHERE cpf=? AND ativo=1", (cpf,)).fetchone()
+
         if not u or not check_password_hash(u['senha_hash'], senha):
-            flash("CPF ou senha inválidos.", "danger")
+            if not u:
+                flash("CPF não encontrado no sistema. Contate o RH.", "danger")
+            elif u.get('senha_temporaria'):
+                flash("Senha incorreta. No <strong>primeiro acesso</strong> utilize a senha padrão: <strong>123456</strong>", "danger")
+            else:
+                flash("CPF ou senha inválidos.", "danger")
             return render_template('login.html')
         if not _usuario_tem_servidor_ativo(db, u):
             flash("Acesso inativo ou sem servidor ativo vinculado. Contate o RH.", "warning")
@@ -1925,11 +1957,15 @@ def trocar_senha():
         db = get_db()
         u  = db.execute("SELECT * FROM usuarios WHERE id=?", (session['uid'],)).fetchone()
         if not check_password_hash(u['senha_hash'], atual):
-            flash("Senha atual incorreta.", "danger")
+            msg_atual = ("Senha temporária incorreta. Use <strong>123456</strong> no campo acima."
+                         if u.get('senha_temporaria') else "Senha atual incorreta.")
+            flash(msg_atual, "danger")
         elif nova != conf:
             flash("As novas senhas não coincidem.", "danger")
-        elif len(nova) < 8:
-            flash("A senha deve ter pelo menos 8 caracteres.", "danger")
+        elif nova == '123456':
+            flash("Escolha uma senha diferente da senha temporária padrão.", "danger")
+        elif len(nova) < 6:
+            flash("A senha deve ter pelo menos 6 caracteres.", "danger")
         else:
             db.execute("UPDATE usuarios SET senha_hash=?, senha_temporaria=0 WHERE id=?",
                        (generate_password_hash(nova), session['uid']))
