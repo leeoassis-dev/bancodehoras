@@ -762,6 +762,7 @@ def dashboard():
 
 @app.route("/servidores")
 def servidores():
+    PER_PAGE = 20
     db = get_db()
     busca = request.args.get("busca","").strip()
     sec   = request.args.get("secretaria","").strip()
@@ -769,6 +770,8 @@ def servidores():
     apenas_com_saldo = request.args.get("saldo") == "com_saldo"
     fg_sel = request.args.get("fg","").strip()
     vencimento_sel = request.args.get("vencimento","").strip()
+    page  = max(1, request.args.get("page", 1, type=int))
+
     f, p  = _filtro_servidores(busca, sec, set_, arquivado=0)
     if fg_sel == "1":
         f += " AND s.funcao_gratificada=1"
@@ -792,18 +795,26 @@ def servidores():
         (SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=s.matricula)
         -(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=s.matricula)
     """
-    lista = db.execute(f"""
+    lista_total = db.execute(f"""
         SELECT s.*,
             {saldo_expr} AS saldo_minutos
         FROM servidores s {f} ORDER BY s.nome""", p).fetchall()
     if apenas_com_saldo:
-        lista = [s for s in lista if minutos_num(s["saldo_minutos"]) > 0]
+        lista_total = [s for s in lista_total if minutos_num(s["saldo_minutos"]) > 0]
+
+    total = len(lista_total)
+    total_pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
+    page = min(page, total_pages)
+    lista = lista_total[(page-1)*PER_PAGE : page*PER_PAGE]
+
     secs, sets = _listas_filtro(db, 0)
     return render_template("servidores.html", servidores=lista, fmt=minutos_para_horas,
                             secretarias=secs, setores=sets,
                             busca=busca, secretaria_sel=sec, setor_sel=set_,
                             saldo_sel="com_saldo" if apenas_com_saldo else "",
-                            fg_sel=fg_sel, vencimento_sel=vencimento_sel)
+                            fg_sel=fg_sel, vencimento_sel=vencimento_sel,
+                            page=page, total_pages=total_pages, total=total,
+                            per_page=PER_PAGE)
 
 @app.route("/api/historico/<matricula>")
 def api_historico(matricula):

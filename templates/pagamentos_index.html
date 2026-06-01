@@ -399,10 +399,17 @@ function buildTable(modo) {
   document.getElementById('mp_tabela_container').innerHTML = html;
 
   document.querySelectorAll('.mp-inp').forEach(inp => {
-    inp.addEventListener('input', calcularTotal);
+    inp.title = `Máx disponível: ${inp.dataset.max}`;
+    inp.addEventListener('input', () => {
+      const val = parseHM(inp.value);
+      const maxMin = parseHM(inp.dataset.max);
+      inp.classList.toggle('is-invalid', inp.value.trim() !== '' && val > maxMin);
+      calcularTotal();
+    });
     inp.addEventListener('blur', () => {
       const maxMin = parseHM(inp.dataset.max);
       if (parseHM(inp.value) > maxMin) inp.value = fmtHM(maxMin);
+      inp.classList.remove('is-invalid');
       calcularTotal();
     });
   });

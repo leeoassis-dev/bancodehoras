@@ -115,7 +115,9 @@
                      data-max="{{ fmt(i.saldo_base_minutos) }}"
                      data-vencido="{{ '1' if i.vencido else '0' }}"
                      placeholder="HH:MM" pattern="\d{1,3}:\d{2}"
+                     title="Máx disponível: {{ fmt(i.saldo_base_minutos) }}"
                      style="max-width:90px;margin:auto">
+              <div class="text-muted" style="font-size:.65rem;">máx {{ fmt(i.saldo_base_minutos) }}</div>
             </td>
             <td class="text-muted small">{{ i.descricao or '–' }}</td>
           </tr>
@@ -287,11 +289,31 @@ function calcularEstado() {
   return { total, temNaoVenc, acima };
 }
 
+function validarInputHoras(inp) {
+  const val = parseHM(inp.value);
+  const maxMin = parseHM(inp.dataset.max);
+  if (inp.value.trim() && val > maxMin) {
+    inp.classList.add('is-invalid');
+    inp.title = `Máx disponível: ${inp.dataset.max}`;
+  } else {
+    inp.classList.remove('is-invalid');
+    inp.title = `Máx disponível: ${inp.dataset.max}`;
+  }
+}
+
 document.querySelectorAll('.horas-input').forEach(inp => {
-  inp.addEventListener('input', () => { _modo = ''; calcularEstado(); });
+  inp.title = `Máx disponível: ${inp.dataset.max}`;
+  inp.addEventListener('input', () => {
+    _modo = '';
+    validarInputHoras(inp);
+    calcularEstado();
+  });
   inp.addEventListener('blur', () => {
     const maxMin = parseHM(inp.dataset.max);
-    if (parseHM(inp.value) > maxMin) { inp.value = fmtHM(maxMin); }
+    if (parseHM(inp.value) > maxMin) {
+      inp.value = fmtHM(maxMin);
+    }
+    inp.classList.remove('is-invalid');
     calcularEstado();
   });
 });

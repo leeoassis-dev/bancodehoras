@@ -615,9 +615,16 @@ function pagBuiltTable(modo) {
   html += '</tbody></table></div>';
   document.getElementById('pag_tabela').innerHTML = html;
   document.querySelectorAll('.pag-inp').forEach(inp => {
-    inp.addEventListener('input', pagCalc);
+    inp.title = `Máx disponível: ${inp.dataset.max}`;
+    inp.addEventListener('input', () => {
+      const val = parseHM(inp.value);
+      const maxMin = parseHM(inp.dataset.max);
+      inp.classList.toggle('is-invalid', inp.value.trim() !== '' && val > maxMin);
+      pagCalc();
+    });
     inp.addEventListener('blur', () => {
       if (parseHM(inp.value) > parseHM(inp.dataset.max)) inp.value = inp.dataset.max;
+      inp.classList.remove('is-invalid');
       pagCalc();
     });
   });
