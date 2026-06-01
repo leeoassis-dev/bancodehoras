@@ -985,6 +985,8 @@ def lancamentos(matricula):
             )
             db.commit()
             flash(f"Lançamento: {hrs} + {pct}% = {minutos_para_horas(mc)}","success")
+            if request.form.get('_source') == 'dashboard':
+                return redirect(url_for("dashboard"))
             return redirect(url_for("lancamentos", matricula=matricula))
     hist = db.execute("""
         SELECT l.*, COALESCE((SELECT SUM(c.minutos) FROM consumos c WHERE c.lancamento_id=l.id),0) AS consumido
@@ -1036,6 +1038,8 @@ def compensacoes(matricula):
                 flash(f"Compensação registrada. Atenção: o saldo ficou negativo em {minutos_para_horas(novo_saldo)}.", "warning")
             else:
                 flash(f"Compensação de {minutos_para_horas(mc)} registrada (FIFO).", "success")
+            if request.form.get('_source') == 'dashboard':
+                return redirect(url_for("dashboard"))
             return redirect(url_for("compensacoes", matricula=matricula))
     hist = db.execute("SELECT * FROM compensacoes WHERE matricula=? ORDER BY data DESC", (matricula,)).fetchall()
     return render_template("compensacoes.html", servidor=srv, historico=hist,
@@ -1112,6 +1116,14 @@ def pagamentos_index():
                            busca=busca, sec_sel=sec_sel, set_sel=set_sel,
                            status_sel=status_sel, ocultar_fg=ocultar_fg,
                            total_sem_fg=len([p for p in pend_todos if not p["funcao_gratificada"]]))
+
+@app.route("/api/saldo-servidor/<matricula>")
+@master_required
+def api_saldo_servidor(matricula):
+    db = get_db()
+    return jsonify({"saldo": calcular_saldo(db, matricula),
+                    "saldo_fmt": minutos_para_horas(calcular_saldo(db, matricula))})
+
 
 @app.route("/api/pagamentos-itens/<matricula>")
 @master_required

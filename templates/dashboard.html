@@ -52,7 +52,7 @@
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
       <h6 class="fw-bold mb-1"><i class="bi bi-lightning-charge-fill me-1 text-primary"></i>Atalhos de Lançamento</h6>
-      <span class="text-muted small">Digite a matrícula ou o nome e abra diretamente a tela de lançamento, compensação ou pagamento.</span>
+      <span class="text-muted small">Digite a matrícula ou o nome e realize lançamentos sem sair do dashboard.</span>
     </div>
   </div>
   <div class="row g-2 align-items-end">
@@ -69,19 +69,233 @@
     </div>
     <div class="col-lg-5">
       <div class="d-flex gap-2 flex-wrap">
-        <button type="button" class="btn btn-success flex-fill" onclick="abrirAtalho('lancamentos')">
+        <button type="button" class="btn btn-success flex-fill" onclick="abrirModal('lanc')">
           <i class="bi bi-plus-circle me-1"></i>Lançar hora
         </button>
-        <button type="button" class="btn btn-warning text-white flex-fill" onclick="abrirAtalho('compensacoes')">
+        <button type="button" class="btn btn-warning text-white flex-fill" onclick="abrirModal('comp')">
           <i class="bi bi-arrow-left-right me-1"></i>Compensar
         </button>
-        <button type="button" class="btn btn-danger flex-fill" onclick="abrirAtalho('pagamentos')">
+        <button type="button" class="btn btn-danger flex-fill" onclick="abrirModal('pag')">
           <i class="bi bi-cash-coin me-1"></i>Pagar
         </button>
       </div>
     </div>
   </div>
 </div>
+
+<!-- ═══ Modal: Lançar Hora ═══════════════════════════════════════════════════ -->
+<div class="modal fade" id="modalLanc" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white py-2">
+        <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Lançar Hora Extra</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert py-2 px-3 mb-3 d-flex align-items-center gap-2"
+             style="background:#f0fdf4; border:1.5px solid #198754; border-radius:.5rem;">
+          <i class="bi bi-person-badge text-success fs-5"></i>
+          <div>
+            <div class="fw-bold text-success" id="lanc_nome"></div>
+            <div class="small text-muted" id="lanc_info"></div>
+          </div>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-semibold small">Data <span class="text-danger">*</span></label>
+            <input type="date" id="lanc_data" class="form-control" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-semibold small">Horas (HH:MM) <span class="text-danger">*</span></label>
+            <input type="text" id="lanc_horas" class="form-control" placeholder="Ex: 02:30"
+                   pattern="\d{1,3}:\d{2}" required>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Adicional sobre as horas <span class="text-danger">*</span></label>
+          <div class="btn-group w-100" role="group">
+            <input type="radio" class="btn-check" name="lanc_pct_radio" id="pct50" value="50" checked>
+            <label class="btn btn-outline-warning fw-bold" for="pct50">50%</label>
+            <input type="radio" class="btn-check" name="lanc_pct_radio" id="pct100" value="100">
+            <label class="btn btn-outline-danger fw-bold" for="pct100">100%</label>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Resultado creditado</label>
+          <div class="border rounded p-2 bg-light text-center">
+            <span class="text-muted small">Crédito no banco: </span>
+            <strong class="text-success fs-5" id="lanc_preview">–</strong>
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-semibold small">Descrição / Justificativa</label>
+          <textarea id="lanc_desc" class="form-control form-control-sm" rows="2"
+                    placeholder="Ex: Plantão de final de semana"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success" onclick="submitLanc()">
+          <i class="bi bi-check-lg me-1"></i>Salvar Lançamento
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<form id="formLanc" method="post" action="" style="display:none">
+  <input type="hidden" name="_source" value="dashboard">
+  <input type="hidden" name="data"       id="lanc_hid_data">
+  <input type="hidden" name="horas"      id="lanc_hid_horas">
+  <input type="hidden" name="percentual" id="lanc_hid_pct">
+  <input type="hidden" name="descricao"  id="lanc_hid_desc">
+</form>
+
+<!-- ═══ Modal: Compensar ════════════════════════════════════════════════════ -->
+<div class="modal fade" id="modalComp" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header text-white py-2" style="background:#e67e00;">
+        <h5 class="modal-title"><i class="bi bi-arrow-left-right me-2"></i>Registrar Compensação</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert py-2 px-3 mb-3 d-flex align-items-center gap-2"
+             style="background:#fffbeb; border:1.5px solid #f59e0b; border-radius:.5rem;">
+          <i class="bi bi-person-badge text-warning fs-5"></i>
+          <div>
+            <div class="fw-bold text-warning" id="comp_nome"></div>
+            <div class="small text-muted" id="comp_info"></div>
+          </div>
+          <div class="ms-auto text-end">
+            <div class="small text-muted">Saldo atual</div>
+            <div class="fw-bold" id="comp_saldo_atual">–</div>
+          </div>
+        </div>
+        <div class="alert alert-warning py-2 small mb-3">
+          <i class="bi bi-info-circle me-1"></i>
+          O sistema permite compensação acima do saldo, mas avisará quando o banco ficar negativo.
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-semibold small">Data da compensação <span class="text-danger">*</span></label>
+            <input type="date" id="comp_data" class="form-control" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-semibold small">Quantidade de horas <span class="text-danger">*</span></label>
+            <input type="text" id="comp_horas" class="form-control" placeholder="HH:MM"
+                   pattern="\d{1,3}:\d{2}" required>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Saldo após compensação</label>
+          <div class="border rounded p-2 bg-light d-flex justify-content-between align-items-center">
+            <span class="small text-muted">Projeção:</span>
+            <div>
+              <strong id="comp_saldo_proj" class="fs-5">–</strong>
+              <span id="comp_aviso_neg" class="text-danger small ms-2 d-none">
+                <i class="bi bi-exclamation-triangle-fill"></i> Saldo negativo
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-semibold small">Descrição / Justificativa</label>
+          <textarea id="comp_desc" class="form-control form-control-sm" rows="2"
+                    placeholder="Ex: Folga compensatória"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn text-white fw-semibold" style="background:#e67e00"
+                onclick="submitComp()">
+          <i class="bi bi-check-lg me-1"></i>Registrar Compensação
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<form id="formComp" method="post" action="" style="display:none">
+  <input type="hidden" name="_source"   value="dashboard">
+  <input type="hidden" name="data"      id="comp_hid_data">
+  <input type="hidden" name="horas"     id="comp_hid_horas">
+  <input type="hidden" name="descricao" id="comp_hid_desc">
+</form>
+
+<!-- ═══ Modal: Pagamento (padrão completo) ══════════════════════════════════ -->
+<div class="modal fade" id="modalPag" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white py-2">
+        <h5 class="modal-title"><i class="bi bi-cash-coin me-2"></i>Registrar Pagamento — <span id="pag_titulo"></span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pb-2">
+        <div class="alert py-2 px-3 mb-3 d-flex align-items-center gap-3"
+             style="background:#fff5f5; border:1.5px solid #dc3545; border-radius:.5rem;">
+          <i class="bi bi-person-badge fs-4 text-danger"></i>
+          <div>
+            <div class="fw-bold fs-5 text-danger" id="pag_banner_nome" style="line-height:1.2"></div>
+            <div class="small text-muted" id="pag_banner_info"></div>
+          </div>
+        </div>
+        <div id="pag_alerta_limite" class="alert alert-warning d-none small mb-2">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i><strong>Total acima de 45:00 — justificativa obrigatória.</strong>
+        </div>
+        <div id="pag_alerta_naovenc" class="alert alert-info d-none small mb-2">
+          <i class="bi bi-info-circle-fill me-1"></i>Horas <strong>não vencidas</strong> incluídas — <strong>justificativa obrigatória.</strong>
+        </div>
+        <div class="d-flex gap-2 mb-3 flex-wrap">
+          <button id="pag_btn_vencidas" class="btn btn-danger btn-sm" onclick="pagAplicarModo('vencidas')">
+            <i class="bi bi-exclamation-circle me-1"></i>Somente horas vencidas
+          </button>
+          <button id="pag_btn_todas" class="btn btn-outline-primary btn-sm" onclick="pagAplicarModo('todas')">
+            <i class="bi bi-list-check me-1"></i>Incluir todas as horas
+          </button>
+          <button class="btn btn-outline-secondary btn-sm ms-auto" onclick="pagLimpar()">
+            <i class="bi bi-eraser me-1"></i>Limpar
+          </button>
+        </div>
+        <div class="alert alert-danger py-2 mb-3 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-calculator me-1"></i>Total horas base para folha:</span>
+          <span class="fs-4 fw-bold" id="pag_total">00:00</span>
+          <span class="small text-muted">(limite: 45:00)</span>
+        </div>
+        <div id="pag_tabela"></div>
+        <div class="row g-3 mt-1">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Data de competência <span class="text-danger">*</span></label>
+            <input type="date" id="pag_data" class="form-control" required>
+          </div>
+          <div class="col-md-8">
+            <label class="form-label fw-semibold small">Referência / Competência</label>
+            <input type="text" id="pag_desc" class="form-control"
+                   placeholder="Ex: Folha 06/2026 – competência maio/2026">
+          </div>
+        </div>
+        <div class="mt-3">
+          <label class="form-label fw-semibold small">
+            Justificativa <span class="text-danger" id="pag_star_just"></span>
+          </label>
+          <textarea id="pag_just" class="form-control form-control-sm" rows="2"
+                    placeholder="Obrigatória para horas não vencidas ou acima de 45h"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" onclick="submitPag()">
+          <i class="bi bi-check2-circle me-1"></i>Confirmar Pagamento
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<form id="formPag" method="post" action="" style="display:none">
+  <input type="hidden" name="_source"      value="dashboard">
+  <input type="hidden" name="data_pagamento" id="pag_hid_data">
+  <input type="hidden" name="descricao"    id="pag_hid_desc">
+  <input type="hidden" name="justificativa" id="pag_hid_just">
+  <div id="pag_hid_horas"></div>
+</form>
 
 <!-- ── Gráficos linha 1 ── -->
 <div class="row g-3 mb-4">
@@ -215,13 +429,244 @@ inputAtalho?.addEventListener('input', () => {
   infoAtalho.textContent = servidor?.info || 'Digite a matrícula ou o nome e selecione um servidor válido.';
 });
 
-function abrirAtalho(tipo) {
-  const servidor = encontrarServidorAtalho();
-  if (!servidor) {
-    alert('Digite a matrícula ou escolha um servidor válido antes de abrir o lançamento.');
+// ── Modais de atalho rápido ───────────────────────────────────────────────────
+
+const LIMITE_PAG = 45 * 60;
+
+function parseHM(str) {
+  const p = String(str || '').trim().split(':');
+  if (p.length !== 2) return 0;
+  const h = parseInt(p[0], 10), m = parseInt(p[1], 10);
+  return (isNaN(h) || isNaN(m)) ? 0 : h * 60 + m;
+}
+function fmtHM(min) {
+  min = Math.abs(Math.round(min));
+  return String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
+}
+
+function abrirModal(tipo) {
+  const srv = encontrarServidorAtalho();
+  if (!srv) {
+    alert('Digite a matrícula ou escolha um servidor válido antes de continuar.');
+    inputAtalho.focus();
     return;
   }
-  window.location.href = `/${tipo}/${encodeURIComponent(servidor.matricula)}`;
+  if (tipo === 'lanc') abrirModalLanc(srv);
+  else if (tipo === 'comp') abrirModalComp(srv);
+  else if (tipo === 'pag') abrirModalPag(srv);
+}
+
+// ── Modal Lançamento ────────────────────────────────────────────────────────
+function abrirModalLanc(srv) {
+  document.getElementById('lanc_nome').textContent = srv.nome;
+  document.getElementById('lanc_info').textContent = [srv.matricula, srv.info].filter(Boolean).join(' · ');
+  document.getElementById('formLanc').action = `/lancamentos/${encodeURIComponent(srv.matricula)}`;
+  document.getElementById('lanc_data').valueAsDate = new Date();
+  document.getElementById('lanc_horas').value = '';
+  document.getElementById('lanc_desc').value = '';
+  document.getElementById('lanc_preview').textContent = '–';
+  document.getElementById('pct50').checked = true;
+  atualizarPreviewLanc();
+  new bootstrap.Modal(document.getElementById('modalLanc')).show();
+  setTimeout(() => document.getElementById('lanc_horas').focus(), 400);
+}
+
+function atualizarPreviewLanc() {
+  const mb = parseHM(document.getElementById('lanc_horas').value);
+  const pct = parseInt(document.querySelector('input[name="lanc_pct_radio"]:checked')?.value || '50');
+  const mc = mb + Math.floor(mb * pct / 100);
+  document.getElementById('lanc_preview').textContent = mc > 0 ? fmtHM(mc) : '–';
+  document.getElementById('lanc_preview').style.color = mc > 0 ? '#198754' : '';
+}
+
+document.getElementById('lanc_horas').addEventListener('input', atualizarPreviewLanc);
+document.querySelectorAll('input[name="lanc_pct_radio"]').forEach(r =>
+  r.addEventListener('change', atualizarPreviewLanc));
+
+function submitLanc() {
+  const data  = document.getElementById('lanc_data').value;
+  const horas = document.getElementById('lanc_horas').value.trim();
+  const pct   = document.querySelector('input[name="lanc_pct_radio"]:checked')?.value || '50';
+  if (!data) { alert('Informe a data.'); return; }
+  if (parseHM(horas) <= 0) { alert('Informe as horas no formato HH:MM.'); document.getElementById('lanc_horas').focus(); return; }
+  document.getElementById('lanc_hid_data').value  = data;
+  document.getElementById('lanc_hid_horas').value = horas;
+  document.getElementById('lanc_hid_pct').value   = pct;
+  document.getElementById('lanc_hid_desc').value  = document.getElementById('lanc_desc').value;
+  document.getElementById('formLanc').submit();
+}
+
+// ── Modal Compensação ───────────────────────────────────────────────────────
+let _compSaldoMin = 0;
+
+function abrirModalComp(srv) {
+  document.getElementById('comp_nome').textContent = srv.nome;
+  document.getElementById('comp_info').textContent = [srv.matricula, srv.info].filter(Boolean).join(' · ');
+  document.getElementById('formComp').action = `/compensacoes/${encodeURIComponent(srv.matricula)}`;
+  document.getElementById('comp_data').valueAsDate = new Date();
+  document.getElementById('comp_horas').value = '';
+  document.getElementById('comp_desc').value = '';
+  document.getElementById('comp_saldo_atual').textContent = '…';
+  document.getElementById('comp_saldo_proj').textContent = '–';
+  document.getElementById('comp_aviso_neg').classList.add('d-none');
+  _compSaldoMin = 0;
+  new bootstrap.Modal(document.getElementById('modalComp')).show();
+
+  fetch(`/api/saldo-servidor/${encodeURIComponent(srv.matricula)}`)
+    .then(r => r.json())
+    .then(d => {
+      _compSaldoMin = d.saldo;
+      document.getElementById('comp_saldo_atual').textContent = d.saldo_fmt;
+      document.getElementById('comp_saldo_atual').style.color = d.saldo >= 0 ? '#198754' : '#dc3545';
+      atualizarPreviewComp();
+    });
+  setTimeout(() => document.getElementById('comp_horas').focus(), 400);
+}
+
+function atualizarPreviewComp() {
+  const mc = parseHM(document.getElementById('comp_horas').value);
+  const proj = _compSaldoMin - mc;
+  document.getElementById('comp_saldo_proj').textContent = mc > 0 ? fmtHM(proj) : '–';
+  document.getElementById('comp_saldo_proj').style.color = proj < 0 ? '#dc3545' : '#198754';
+  document.getElementById('comp_aviso_neg').classList.toggle('d-none', proj >= 0 || mc === 0);
+}
+
+document.getElementById('comp_horas').addEventListener('input', atualizarPreviewComp);
+
+function submitComp() {
+  const data  = document.getElementById('comp_data').value;
+  const horas = document.getElementById('comp_horas').value.trim();
+  if (!data) { alert('Informe a data.'); return; }
+  if (parseHM(horas) <= 0) { alert('Informe as horas no formato HH:MM.'); document.getElementById('comp_horas').focus(); return; }
+  document.getElementById('comp_hid_data').value  = data;
+  document.getElementById('comp_hid_horas').value = horas;
+  document.getElementById('comp_hid_desc').value  = document.getElementById('comp_desc').value;
+  document.getElementById('formComp').submit();
+}
+
+// ── Modal Pagamento ─────────────────────────────────────────────────────────
+let _pagItens = [];
+let _pagModo  = 'vencidas';
+
+function abrirModalPag(srv) {
+  _pagItens = [];
+  _pagModo  = 'vencidas';
+  document.getElementById('pag_titulo').textContent     = `${srv.nome} (${srv.matricula})`;
+  document.getElementById('pag_banner_nome').textContent = srv.nome;
+  document.getElementById('pag_banner_info').textContent = [srv.matricula, srv.info].filter(Boolean).join(' · ');
+  document.getElementById('formPag').action = `/pagamentos/${encodeURIComponent(srv.matricula)}/registrar`;
+  document.getElementById('pag_data').valueAsDate = new Date();
+  document.getElementById('pag_desc').value  = '';
+  document.getElementById('pag_just').value  = '';
+  document.getElementById('pag_total').textContent = '00:00';
+  document.getElementById('pag_tabela').innerHTML =
+    '<div class="text-center py-4"><div class="spinner-border text-danger"></div><p class="mt-2 text-muted small">Carregando lançamentos...</p></div>';
+  ['pag_alerta_limite','pag_alerta_naovenc'].forEach(id => document.getElementById(id).classList.add('d-none'));
+  pagSetBtns('vencidas');
+  new bootstrap.Modal(document.getElementById('modalPag')).show();
+
+  fetch(`/api/pagamentos-itens/${encodeURIComponent(srv.matricula)}`)
+    .then(r => r.json())
+    .then(d => { _pagItens = d.todos; pagBuiltTable('vencidas'); })
+    .catch(() => { document.getElementById('pag_tabela').innerHTML =
+      '<div class="alert alert-danger">Erro ao carregar lançamentos.</div>'; });
+}
+
+function pagSetBtns(modo) {
+  _pagModo = modo;
+  document.getElementById('pag_btn_vencidas').className =
+    modo === 'vencidas' ? 'btn btn-danger btn-sm' : 'btn btn-outline-danger btn-sm';
+  document.getElementById('pag_btn_todas').className =
+    modo === 'todas' ? 'btn btn-primary btn-sm' : 'btn btn-outline-primary btn-sm';
+}
+
+function pagAplicarModo(modo) { pagSetBtns(modo); pagBuiltTable(modo); }
+
+function pagBuiltTable(modo) {
+  if (!_pagItens.length) {
+    document.getElementById('pag_tabela').innerHTML =
+      '<div class="alert alert-success">Sem horas com saldo disponível.</div>'; return;
+  }
+  let html = `<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+    <thead class="table-light"><tr>
+      <th>Data</th><th>Status</th><th class="text-center">H.Base</th>
+      <th class="text-center">%</th><th class="text-center">Saldo</th>
+      <th class="text-center text-danger fw-bold" style="min-width:100px">H.Base p/ Folha</th>
+      <th>Descrição</th>
+    </tr></thead><tbody>`;
+  for (const i of _pagItens) {
+    const isVenc = i.vencido === 1;
+    const val = (modo === 'vencidas' && !isVenc) ? '00:00' : fmtHM(i.saldo_base_minutos);
+    html += `<tr class="${isVenc ? '' : 'table-info'}">
+      <td>${fmtDataBR(i.data)}</td>
+      <td>${isVenc ? '<span class="badge bg-danger">Vencida</span>' : '<span class="badge bg-info text-dark">Não vencida</span>'}</td>
+      <td class="text-center">${i.horas_base}</td>
+      <td class="text-center"><span class="badge ${i.percentual===50?'badge-50':'badge-100'}">${i.percentual}%</span></td>
+      <td class="text-center text-muted">${fmtHM(i.saldo_minutos)}</td>
+      <td class="text-center">
+        <input type="text" class="form-control form-control-sm text-center fw-bold pag-inp"
+               value="${val}" data-max="${fmtHM(i.saldo_base_minutos)}"
+               data-vencido="${i.vencido}" data-id="${i.id}"
+               style="max-width:80px;margin:auto">
+      </td>
+      <td class="text-muted small">${i.descricao || '–'}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  document.getElementById('pag_tabela').innerHTML = html;
+  document.querySelectorAll('.pag-inp').forEach(inp => {
+    inp.addEventListener('input', pagCalc);
+    inp.addEventListener('blur', () => {
+      if (parseHM(inp.value) > parseHM(inp.dataset.max)) inp.value = inp.dataset.max;
+      pagCalc();
+    });
+  });
+  pagCalc();
+}
+
+function pagCalc() {
+  let total = 0, temNV = false;
+  document.querySelectorAll('.pag-inp').forEach(inp => {
+    const v = parseHM(inp.value); total += v;
+    if (v > 0 && inp.dataset.vencido === '0') temNV = true;
+  });
+  document.getElementById('pag_total').textContent = fmtHM(total);
+  const acima = total > LIMITE_PAG;
+  document.getElementById('pag_alerta_limite').classList.toggle('d-none', !acima);
+  document.getElementById('pag_alerta_naovenc').classList.toggle('d-none', !temNV);
+  document.getElementById('pag_star_just').textContent = (acima || temNV) ? ' *' : '';
+  document.getElementById('pag_just').required = acima || temNV;
+}
+
+function pagLimpar() {
+  document.querySelectorAll('.pag-inp').forEach(inp => { inp.value = '00:00'; });
+  pagSetBtns(''); pagCalc();
+}
+
+function submitPag() {
+  const data = document.getElementById('pag_data').value;
+  if (!data) { alert('Informe a data do pagamento.'); return; }
+  let total = 0, temNV = false, temAlgum = false;
+  const hid = document.getElementById('pag_hid_horas');
+  hid.innerHTML = '';
+  document.querySelectorAll('.pag-inp').forEach(inp => {
+    const v = parseHM(inp.value); total += v;
+    if (v > 0) { temAlgum = true; if (inp.dataset.vencido === '0') temNV = true; }
+    const el = document.createElement('input');
+    el.type = 'hidden'; el.name = 'horas_' + inp.dataset.id; el.value = inp.value;
+    hid.appendChild(el);
+  });
+  if (!temAlgum) { alert('Informe pelo menos um valor de horas.'); return; }
+  const justObrig = total > LIMITE_PAG || temNV;
+  const just = document.getElementById('pag_just').value.trim();
+  if (justObrig && !just) {
+    alert('Justificativa obrigatória para horas não vencidas ou acima de 45h.');
+    document.getElementById('pag_just').focus(); return;
+  }
+  document.getElementById('pag_hid_data').value = data;
+  document.getElementById('pag_hid_desc').value = document.getElementById('pag_desc').value;
+  document.getElementById('pag_hid_just').value = just;
+  document.getElementById('formPag').submit();
 }
 
 // Gráfico lançamentos x compensações
