@@ -1523,9 +1523,9 @@ def admin_importacao_modelo_cadastros():
 def admin_importacao_modelo_banco_horas():
     out = io.StringIO()
     w = csv.writer(out, delimiter=";")
-    w.writerow(["matricula","nome","saldo_horas","competencia","data_lancamento","justificativa","observacoes"])
-    w.writerow(["12345","Nome do Servidor","12:30","04/2026","2026-04-30","Importação de saldo inicial","Conferido pela unidade"])
-    w.writerow(["67890","Outro Servidor","08:00","05/2026","","Ajuste autorizado","Data em branco usa a data atual"])
+    w.writerow(["matricula","nome","saldo_horas","percentual","competencia","data_lancamento","justificativa","observacoes"])
+    w.writerow(["12345","Nome do Servidor","12:30","50","04/2026","2026-04-30","Importação de saldo inicial","Conferido pela unidade"])
+    w.writerow(["67890","Outro Servidor","08:00","100","05/2026","","Ajuste autorizado","Data em branco usa a data atual"])
     r = make_response("\ufeff" + out.getvalue())
     r.headers["Content-Type"] = "text/csv; charset=utf-8"
     r.headers["Content-Disposition"] = "attachment; filename=modelo_importacao_banco_horas.csv"
@@ -1660,6 +1660,7 @@ def admin_importar_banco_horas():
         matricula = _valor_csv(row, "matricula", "matrícula")
         nome_csv = _valor_csv(row, "nome")
         horas_txt = _valor_csv(row, "saldo_horas", "horas", "saldo")
+        percentual_txt = _valor_csv(row, "percentual") or "0"
         competencia = _valor_csv(row, "competencia", "competência") or competencia_padrao
         justificativa = _valor_csv(row, "justificativa") or justificativa_padrao
         obs = _valor_csv(row, "observacoes", "observações", "obs")
@@ -1667,17 +1668,25 @@ def admin_importar_banco_horas():
         if not matricula or not horas_txt or not competencia or not justificativa:
             _erro_importacao(erros_lista, linha, matricula, "Campo obrigatório não preenchido: matrícula, saldo_horas, competência e justificativa.")
             continue
+        try:
+            pct = int(str(percentual_txt).strip().replace("%", ""))
+            if pct not in (0, 50, 100):
+                raise ValueError()
+        except ValueError:
+            _erro_importacao(erros_lista, linha, matricula, "Percentual inválido. Use 0, 50 ou 100.")
+            continue
         minutos = horas_para_minutos(horas_txt)
         if minutos <= 0 or not data_lanc:
             _erro_importacao(erros_lista, linha, matricula, "Formato inválido em saldo_horas ou data_lancamento.")
             continue
+        minutos_creditados = minutos + minutos * pct // 100
         srv = db.execute("SELECT nome FROM servidores WHERE matricula=? AND arquivado=0", (matricula,)).fetchone()
         if not srv:
             _erro_importacao(erros_lista, linha, matricula, "Matrícula não localizada em servidores ativos.")
             continue
         duplicado = db.execute("""
             SELECT 1 FROM lancamentos
-            WHERE matricula=? AND descricao LIKE ? AND minutos_creditados=?
+            WHERE matricula=? AND descricao LIKE ? AND minutos_base=?
             LIMIT 1
         """, (matricula, f"%Competência: {competencia}%", minutos)).fetchone()
         if duplicado:
@@ -1687,9 +1696,9 @@ def admin_importar_banco_horas():
         lid = db.insert("""INSERT INTO lancamentos
             (matricula,data,horas_base,minutos_base,percentual,minutos_creditados,descricao)
             VALUES (?,?,?,?,?,?,?)""",
-            (matricula, data_lanc, minutos_para_horas(minutos), minutos, 0, minutos, desc))
+            (matricula, data_lanc, minutos_para_horas(minutos), minutos, pct, minutos_creditados, desc))
         payload.append({"acao": "criado_lancamento", "id": lid, "matricula": matricula})
-        _sucesso_importacao(sucessos, linha, matricula, f"{srv['nome'] or nome_csv}: {minutos_para_horas(minutos)} importado(s) na competência {competencia}")
+        _sucesso_importacao(sucessos, linha, matricula, f"{srv['nome'] or nome_csv}: {minutos_para_horas(minutos)} base ({pct}%) = {minutos_para_horas(minutos_creditados)} creditado(s) na competência {competencia}")
 
     _registrar_relatorio_importacao("banco_horas", arquivo.filename, total, sucessos, erros_lista, payload)
     return redirect(url_for("admin_importacao"))
