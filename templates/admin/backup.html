@@ -47,6 +47,14 @@
         </div>
         <div class="small text-muted mt-2">O download começará automaticamente quando o arquivo estiver pronto.</div>
       </div>
+      <div class="modal-footer border-0 d-none" id="backupFooter">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x-lg me-1"></i>Fechar
+        </button>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('btnBackup').click()">
+          <i class="bi bi-arrow-clockwise me-1"></i>Tentar novamente
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -67,6 +75,8 @@ document.getElementById('btnBackup').addEventListener('click', async () => {
   const modalEl = document.getElementById('modalBackup');
   const modal = new bootstrap.Modal(modalEl);
   const barra = document.getElementById('backupBarra');
+  const footer = document.getElementById('backupFooter');
+  footer.classList.add('d-none');
   const etapas = [
     ['Exportando servidores ativos...', 'Aba 1 de 10', 15],
     ['Exportando servidores arquivados...', 'Aba 2 de 10', 25],
@@ -107,6 +117,7 @@ document.getElementById('btnBackup').addEventListener('click', async () => {
     barra.textContent = '100%';
     document.getElementById('backupMsg').textContent = 'Backup concluído com sucesso.';
     document.getElementById('backupEtapa').textContent = 'Download finalizado';
+    footer.classList.add('d-none');
     setTimeout(() => modal.hide(), 900);
   } catch (err) {
     clearInterval(timer);
@@ -116,6 +127,7 @@ document.getElementById('btnBackup').addEventListener('click', async () => {
     barra.textContent = 'Erro';
     document.getElementById('backupMsg').textContent = 'Não foi possível gerar o backup completo. Tente novamente.';
     document.getElementById('backupEtapa').textContent = err.message || 'Erro no processamento';
+    footer.classList.remove('d-none');
   } finally {
     btn.disabled = false;
     modalEl.addEventListener('hidden.bs.modal', () => {
@@ -125,6 +137,7 @@ document.getElementById('btnBackup').addEventListener('click', async () => {
       barra.textContent = '10%';
       document.getElementById('backupMsg').textContent = 'Preparando backup do sistema...';
       document.getElementById('backupEtapa').textContent = 'Iniciando exportação';
+      footer.classList.add('d-none');
     }, { once: true });
   }
 });

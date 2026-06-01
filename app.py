@@ -1770,7 +1770,7 @@ def admin_backup():
 @master_required
 def admin_backup_excel():
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 
     db = get_db()
