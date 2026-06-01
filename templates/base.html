@@ -292,6 +292,95 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
+// ── Autocomplete global de busca por servidor ────────────────────────────────
+let __srvCache = null;
+async function __carregarSrvs() {
+  if (__srvCache) return __srvCache;
+  try {
+    const r = await fetch('/api/servidores-lista');
+    __srvCache = await r.json();
+  } catch(e) { __srvCache = []; }
+  return __srvCache;
+}
+
+function __norm(v) {
+  return (v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function initBuscaAC(inputEl) {
+  if (!inputEl || inputEl.dataset.acInit) return;
+  inputEl.dataset.acInit = '1';
+  inputEl.setAttribute('autocomplete', 'off');
+
+  // Suporta input-group: envolve o grupo inteiro ou apenas o input
+  const inputGroup = inputEl.closest('.input-group');
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:relative;display:block;';
+  if (inputGroup) {
+    inputGroup.parentNode.insertBefore(wrap, inputGroup);
+    wrap.appendChild(inputGroup);
+  } else {
+    inputEl.parentNode.insertBefore(wrap, inputEl);
+    wrap.appendChild(inputEl);
+  }
+
+  const drop = document.createElement('div');
+  drop.className = 'bg-white border rounded shadow';
+  drop.style.cssText = 'position:absolute;top:100%;left:0;right:0;z-index:1055;max-height:260px;overflow-y:auto;margin-top:2px;display:none;';
+  wrap.appendChild(drop);
+
+  let _matches = [];
+
+  const fechar = () => { drop.style.display = 'none'; drop.innerHTML = ''; };
+
+  inputEl.addEventListener('input', async () => {
+    const q = __norm(inputEl.value);
+    if (q.length < 2) { fechar(); return; }
+    const srvs = await __carregarSrvs();
+    _matches = srvs.filter(s =>
+      __norm(s.m).includes(q) || __norm(s.n).includes(q)
+    ).slice(0, 8);
+
+    if (!_matches.length) {
+      drop.innerHTML = '<div class="px-3 py-2 text-muted small">Nenhum servidor encontrado.</div>';
+      drop.style.display = 'block';
+      return;
+    }
+    drop.innerHTML = _matches.map((s, i) =>
+      `<div class="__ac-item px-3 py-2 border-bottom" data-idx="${i}"
+            style="cursor:pointer;transition:background .1s">
+         <div class="small"><span class="badge bg-secondary me-1">${s.m}</span><strong>${s.n}</strong></div>
+         ${s.i ? `<div class="text-muted" style="font-size:.72rem">${s.i}</div>` : ''}
+       </div>`
+    ).join('');
+    drop.style.display = 'block';
+
+    drop.querySelectorAll('.__ac-item').forEach(el => {
+      el.addEventListener('mouseenter', () => el.style.background = '#f0f7ff');
+      el.addEventListener('mouseleave', () => el.style.background = '');
+      el.addEventListener('mousedown', e => {
+        e.preventDefault();
+        const s = _matches[parseInt(el.dataset.idx)];
+        // Coloca apenas a matrícula no campo (match exato, limpo)
+        inputEl.value = s.m;
+        fechar();
+        // Submete o formulário pai automaticamente
+        const form = inputEl.closest('form');
+        if (form) form.submit();
+      });
+    });
+  });
+
+  inputEl.addEventListener('blur', () => setTimeout(fechar, 160));
+  inputEl.addEventListener('keydown', e => { if (e.key === 'Escape') fechar(); });
+  document.addEventListener('click', e => { if (!wrap.contains(e.target)) fechar(); });
+}
+
+// Inicializa automaticamente todos os inputs marcados com data-busca-ac
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-busca-ac]').forEach(el => initBuscaAC(el));
+});
+
 // ── Formatação de datas para exibição em dd/mm/aaaa ─────────────────────────
 function fmtDataBR(s) {
   if (!s) return '–';

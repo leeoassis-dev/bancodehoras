@@ -1128,6 +1128,41 @@ def pagamentos_index():
                            status_sel=status_sel, ocultar_fg=ocultar_fg,
                            total_sem_fg=len([p for p in pend_todos if not p["funcao_gratificada"]]))
 
+@app.route("/api/servidores-lista")
+@login_required
+def api_servidores_lista():
+    """Lista de servidores para autocomplete de busca — filtrada pelo nível do usuário."""
+    db    = get_db()
+    nivel = session.get('nivel')
+    vinculos = session.get('vinculos', [])
+
+    if nivel == 'master':
+        rows = db.execute(
+            "SELECT matricula, nome, secretaria, setor FROM servidores WHERE arquivado=0 ORDER BY nome"
+        ).fetchall()
+    elif nivel in ('secretario', 'chefia') and vinculos:
+        ph = ','.join('?' * len(vinculos))
+        campo = 'secretaria' if nivel == 'secretario' else 'setor'
+        rows = db.execute(
+            f"SELECT matricula, nome, secretaria, setor FROM servidores "
+            f"WHERE arquivado=0 AND {campo} IN ({ph}) ORDER BY nome", vinculos
+        ).fetchall()
+    elif nivel == 'servidor':
+        mat = session.get('matricula')
+        rows = db.execute(
+            "SELECT matricula, nome, secretaria, setor FROM servidores WHERE matricula=? AND arquivado=0",
+            (mat,)
+        ).fetchall() if mat else []
+    else:
+        rows = []
+
+    return jsonify([{
+        "m": r['matricula'],
+        "n": r['nome'],
+        "i": ' · '.join(filter(None, [r['secretaria'], r['setor']]))
+    } for r in rows])
+
+
 @app.route("/api/servidor-info/<matricula>")
 @master_required
 def api_servidor_info(matricula):
