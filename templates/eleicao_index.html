@@ -239,21 +239,33 @@ function abrirLancamento(mat, nome) {
   }
 }
 
+let _matchesAtual = [];
+
 document.getElementById('buscaServidor').addEventListener('input', function() {
   const q = this.value.trim().toLowerCase();
   const box = document.getElementById('resultadosBusca');
   if (q.length < 2) { box.classList.add('d-none'); box.innerHTML = ''; return; }
-  const matches = _servidores.filter(s =>
+  _matchesAtual = _servidores.filter(s =>
     s.nome.toLowerCase().includes(q) || s.mat.toLowerCase().includes(q)
   ).slice(0, 10);
-  if (!matches.length) { box.innerHTML = '<div class="p-2 text-muted small">Nenhum resultado.</div>'; box.classList.remove('d-none'); return; }
-  box.innerHTML = matches.map(s =>
-    `<div class="p-2 border-bottom" style="cursor:pointer" onmousedown="selecionarServidor(${JSON.stringify(s)})">`+
+  if (!_matchesAtual.length) {
+    box.innerHTML = '<div class="p-2 text-muted small">Nenhum resultado.</div>';
+    box.classList.remove('d-none');
+    return;
+  }
+  box.innerHTML = _matchesAtual.map((s, i) =>
+    `<div class="p-2 border-bottom srv-result" style="cursor:pointer" data-idx="${i}">`+
     `<strong>${s.mat}</strong> – ${s.nome}`+
     `${s.sec ? '<br><small class="text-muted">'+s.sec+(s.set?' | '+s.set:'')+'</small>' : ''}`+
     `</div>`
   ).join('');
   box.classList.remove('d-none');
+  box.querySelectorAll('.srv-result').forEach(el => {
+    el.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      selecionarServidor(_matchesAtual[parseInt(this.dataset.idx)]);
+    });
+  });
 });
 
 function selecionarServidor(srv) {
