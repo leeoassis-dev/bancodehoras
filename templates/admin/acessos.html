@@ -244,17 +244,40 @@
         <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Nova Pré-autorização de Acesso</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
-      <form method="post" action="/admin/acessos/pre/novo">
+      <form method="post" action="/admin/acessos/pre/novo" id="formPreAuth">
         <div class="modal-body">
           <div class="alert alert-info small">
-            O CPF pré-autorizado poderá criar conta pelo link "Criar Conta" na tela de login.
-            O nível de acesso estará pré-configurado conforme definido aqui.
+            Busque o servidor pela matrícula. O sistema vinculará automaticamente o CPF cadastrado.
+            No primeiro acesso, o servidor usará a senha padrão <strong>123456</strong>.
           </div>
+
+          <!-- Campo matrícula com busca -->
           <div class="mb-3">
-            <label class="form-label fw-semibold">CPF <span class="text-danger">*</span></label>
-            <input type="text" name="cpf" id="cpfModal" class="form-control" maxlength="14"
-                   placeholder="000.000.000-00" required>
+            <label class="form-label fw-semibold">Matrícula do servidor <span class="text-danger">*</span></label>
+            <div class="position-relative">
+              <input type="text" name="matricula" id="preMatricula" class="form-control"
+                     placeholder="Digite a matrícula" autocomplete="off" required>
+              <div id="preDropdown"
+                   class="position-absolute w-100 bg-white border rounded shadow-sm d-none"
+                   style="top:100%;left:0;z-index:1060;max-height:200px;overflow-y:auto;margin-top:2px;"></div>
+            </div>
+            <!-- Banner do servidor encontrado -->
+            <div id="preBanner" class="d-none mt-2 p-2 rounded border"
+                 style="background:#f0f9ff; border-color:#0ea5e9!important;">
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-person-check text-primary fs-5"></i>
+                <div>
+                  <div class="fw-bold small" id="preNome"></div>
+                  <div class="text-muted" style="font-size:.75rem" id="preInfo"></div>
+                </div>
+                <span id="preAviso" class="badge bg-warning text-dark ms-auto d-none">Já tem conta</span>
+              </div>
+            </div>
+            <div id="preErro" class="d-none mt-1">
+              <small class="text-danger"><i class="bi bi-exclamation-circle me-1"></i><span id="preErroMsg"></span></small>
+            </div>
           </div>
+
           <div class="mb-3">
             <label class="form-label fw-semibold">Nível de acesso</label>
             <select name="nivel" id="nivelModal" class="form-select" onchange="ajustarModal()">
@@ -290,13 +313,8 @@
               {% if not setores %}<p class="text-muted small mb-0">Nenhum departamento cadastrado.</p>{% endif %}
             </div>
           </div>
-          <div id="modalMatDiv" class="mb-3">
-            <label class="form-label fw-semibold">Servidor (matrícula)</label>
-            <select name="matricula" class="form-select">
-              <option value="">— Selecione (se servidor) —</option>
-              {% for s in servidores %}<option value="{{ s.matricula }}">{{ s.nome }} ({{ s.matricula }})</option>{% endfor %}
-            </select>
-          </div>
+          <!-- id="modalMatDiv" mantido para não quebrar ajustarModal() JS -->
+          <div id="modalMatDiv" style="display:none"></div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Observação</label>
             <input type="text" name="obs" class="form-control" placeholder="Opcional">
@@ -375,13 +393,114 @@
 
 {% block scripts %}
 <script>
-// Máscara CPF modal
-document.getElementById('cpfModal').addEventListener('input',function(){
-  let v=this.value.replace(/\D/g,'').slice(0,11);
-  if(v.length>9)v=v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');
-  else if(v.length>6)v=v.replace(/(\d{3})(\d{3})(\d{0,3})/,'$1.$2.$3');
-  else if(v.length>3)v=v.replace(/(\d{3})(\d{0,3})/,'$1.$2');
-  this.value=v;
+// ── Autocomplete de matrícula na pré-autorização ──────────────────────────
+const _servidoresPreAuth = [
+  {% for s in servidores %}
+  { mat: {{ s.matricula|tojson }}, nome: {{ s.nome|tojson }} }{{ ',' if not loop.last }}
+  {% endfor %}
+];
+
+let _preMatchesAtual = [];
+const preInput   = document.getElementById('preMatricula');
+const preDropEl  = document.getElementById('preDropdown');
+const preBanner  = document.getElementById('preBanner');
+const preErroEl  = document.getElementById('preErro');
+let _preDebounce = null;
+
+function fecharPreDrop() {
+  preDropEl.classList.add('d-none'); preDropEl.innerHTML = '';
+}
+
+function mostrarPreBanner(data) {
+  document.getElementById('preNome').textContent = data.nome;
+  const info = [data.cargo, data.secretaria, data.setor].filter(Boolean).join(' · ');
+  document.getElementById('preInfo').textContent = info || 'Servidor cadastrado';
+  const aviso = document.getElementById('preAviso');
+  aviso.classList.toggle('d-none', !data.ja_tem_conta);
+  preBanner.classList.remove('d-none');
+  preErroEl.classList.add('d-none');
+}
+
+function mostrarPreErro(msg) {
+  document.getElementById('preErroMsg').textContent = msg;
+  preErroEl.classList.remove('d-none');
+  preBanner.classList.add('d-none');
+}
+
+function buscarServidorPre(mat) {
+  if (!mat) { preBanner.classList.add('d-none'); preErroEl.classList.add('d-none'); return; }
+  fetch('/api/servidor-info/' + encodeURIComponent(mat))
+    .then(r => r.json())
+    .then(d => {
+      if (!d.encontrado) {
+        mostrarPreErro('Matrícula não encontrada no cadastro de servidores.');
+      } else if (!d.tem_cpf) {
+        mostrarPreErro('Servidor sem CPF cadastrado. Atualize o cadastro antes de pré-autorizar.');
+      } else {
+        mostrarPreBanner(d);
+      }
+    })
+    .catch(() => mostrarPreErro('Erro ao buscar servidor.'));
+}
+
+preInput?.addEventListener('input', () => {
+  const q = preInput.value.trim().toLowerCase();
+  preBanner.classList.add('d-none');
+  preErroEl.classList.add('d-none');
+  clearTimeout(_preDebounce);
+
+  if (q.length < 1) { fecharPreDrop(); return; }
+
+  _preMatchesAtual = _servidoresPreAuth.filter(s =>
+    s.mat.toLowerCase().includes(q) ||
+    s.nome.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').includes(
+      q.normalize('NFD').replace(/[̀-ͯ]/g,''))
+  ).slice(0, 8);
+
+  if (!_preMatchesAtual.length) {
+    preDropEl.innerHTML = '<div class="px-3 py-2 text-muted small">Nenhum servidor encontrado.</div>';
+    preDropEl.classList.remove('d-none');
+    return;
+  }
+  preDropEl.innerHTML = _preMatchesAtual.map((s, i) =>
+    `<div class="pre-item px-3 py-2 border-bottom" data-idx="${i}" style="cursor:pointer">
+       <span class="badge bg-secondary me-1">${s.mat}</span>
+       <span class="small fw-semibold">${s.nome}</span>
+     </div>`
+  ).join('');
+  preDropEl.classList.remove('d-none');
+
+  preDropEl.querySelectorAll('.pre-item').forEach(el => {
+    el.addEventListener('mouseenter', () => el.style.background='#f0f7ff');
+    el.addEventListener('mouseleave', () => el.style.background='');
+    el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const s = _preMatchesAtual[parseInt(el.dataset.idx)];
+      preInput.value = s.mat;
+      fecharPreDrop();
+      buscarServidorPre(s.mat);
+    });
+  });
+});
+
+preInput?.addEventListener('blur', () => {
+  setTimeout(() => {
+    fecharPreDrop();
+    if (preInput.value.trim()) buscarServidorPre(preInput.value.trim());
+  }, 180);
+});
+
+preInput?.addEventListener('keydown', e => {
+  if (e.key === 'Escape') fecharPreDrop();
+  if (e.key === 'Enter') { e.preventDefault(); fecharPreDrop(); buscarServidorPre(preInput.value.trim()); }
+});
+
+// Limpa banner ao abrir o modal
+document.getElementById('modalPreAuth')?.addEventListener('show.bs.modal', () => {
+  preInput.value = '';
+  preBanner.classList.add('d-none');
+  preErroEl.classList.add('d-none');
+  fecharPreDrop();
 });
 
 function ajustarModal() {

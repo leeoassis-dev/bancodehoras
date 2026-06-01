@@ -1128,6 +1128,28 @@ def pagamentos_index():
                            status_sel=status_sel, ocultar_fg=ocultar_fg,
                            total_sem_fg=len([p for p in pend_todos if not p["funcao_gratificada"]]))
 
+@app.route("/api/servidor-info/<matricula>")
+@master_required
+def api_servidor_info(matricula):
+    db = get_db()
+    srv = db.execute(
+        "SELECT nome, cpf, cargo, secretaria, setor FROM servidores WHERE matricula=? AND arquivado=0",
+        (matricula,)).fetchone()
+    if not srv:
+        return jsonify({"encontrado": False})
+    ja_tem_conta = bool(db.execute(
+        "SELECT 1 FROM usuarios WHERE cpf=? AND ativo=1", (srv['cpf'] or '',)).fetchone())
+    return jsonify({
+        "encontrado": True,
+        "nome": srv['nome'],
+        "cargo": srv['cargo'] or '',
+        "secretaria": srv['secretaria'] or '',
+        "setor": srv['setor'] or '',
+        "ja_tem_conta": ja_tem_conta,
+        "tem_cpf": bool((srv['cpf'] or '').strip()),
+    })
+
+
 @app.route("/api/saldo-servidor/<matricula>")
 @master_required
 def api_saldo_servidor(matricula):
@@ -2665,16 +2687,28 @@ def admin_acessos():
 @master_required
 def admin_nova_pre_autorizacao():
     db  = get_db()
-    cpf = request.form['cpf'].strip()
+    mat = request.form.get('matricula','').strip()
+    if not mat:
+        flash('Informe a matrícula do servidor.', 'danger')
+        return redirect(url_for('admin_acessos'))
+
+    # Busca o servidor pela matrícula para obter o CPF
+    srv = db.execute("SELECT nome, cpf FROM servidores WHERE matricula=? AND arquivado=0", (mat,)).fetchone()
+    if not srv:
+        flash(f'Matrícula {mat} não encontrada no cadastro de servidores.', 'danger')
+        return redirect(url_for('admin_acessos'))
+
+    cpf = (srv['cpf'] or '').strip()
     if not cpf:
-        flash('CPF obrigatorio.', 'danger')
+        flash(f'O servidor {srv["nome"]} não possui CPF cadastrado. Atualize o cadastro antes de pré-autorizar.', 'warning')
         return redirect(url_for('admin_acessos'))
-    if db.execute('SELECT 1 FROM usuarios WHERE cpf=?', (cpf,)).fetchone():
-        flash('Este CPF ja possui conta ativa.', 'warning')
+
+    if db.execute('SELECT 1 FROM usuarios WHERE cpf=? AND ativo=1', (cpf,)).fetchone():
+        flash(f'{srv["nome"]} já possui conta ativa no sistema.', 'warning')
         return redirect(url_for('admin_acessos'))
+
     nivel    = request.form.get('nivel','servidor')
     vinculos = request.form.getlist('vinculos')
-    mat      = request.form.get('matricula','').strip()
     obs      = request.form.get('obs','').strip()
     vj = json.dumps(vinculos)
     db.upsert(
@@ -2690,7 +2724,7 @@ def admin_nova_pre_autorizacao():
         (cpf, nivel, mat, obs, vj)
     )
     db.commit()
-    flash(f'Pre-autorizacao criada para CPF {cpf}.', 'success')
+    flash(f'Pré-autorização criada para {srv["nome"]} (matrícula {mat}).', 'success')
     return redirect(url_for('admin_acessos'))
 
 
