@@ -2074,12 +2074,14 @@ def login():
                         "SELECT * FROM usuarios WHERE cpf=? AND ativo=1", (cpf,)).fetchone()
 
         if not u or not check_password_hash(u['senha_hash'], senha):
+            msg_senha = (
+                "CPF ou senha inválidos. Caso não tenha acesso ou não se recorde da senha, "
+                "contate o Departamento de Gestão de Pessoas para emissão de senha temporária."
+            )
             if not u:
-                flash("CPF não encontrado no sistema. Contate o RH.", "danger")
-            elif u.get('senha_temporaria'):
-                flash("Senha incorreta. No <strong>primeiro acesso</strong> utilize a senha padrão: <strong>123456</strong>", "danger")
+                flash(msg_senha, "danger")
             else:
-                flash("CPF ou senha inválidos.", "danger")
+                flash(msg_senha, "danger")
             return render_template('login.html')
         if not _usuario_tem_servidor_ativo(db, u):
             flash("Acesso inativo ou sem servidor ativo vinculado. Contate o RH.", "warning")

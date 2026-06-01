@@ -216,16 +216,6 @@
     .btn-entrar:hover { background: #1e4a8a; transform: translateY(-1px); }
     .btn-entrar:active { transform: translateY(0); }
 
-    .links-bottom {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 1.1rem;
-      font-size: .8rem;
-    }
-    .links-bottom a { color: #6b7280; text-decoration: none; }
-    .links-bottom a:hover { color: #1a3a6b; }
-    .links-bottom a.criar { color: #1a3a6b; font-weight: 600; }
-
     /* Responsivo */
     @media (max-width: 768px) {
       body { flex-direction: column; }
@@ -337,14 +327,6 @@
         <strong>Primeiro acesso?</strong> Se já está cadastrado no sistema, use a senha <strong>123456</strong> e redefina ao entrar.
       </div>
 
-      <div class="links-bottom">
-        <a href="{{ url_for('recuperar_senha') }}">
-          <i class="bi bi-key me-1"></i>Esqueci minha senha
-        </a>
-        <a href="{{ url_for('criar_conta') }}" class="criar">
-          <i class="bi bi-person-plus me-1"></i>Criar conta
-        </a>
-      </div>
     </div>
 
     <p class="text-center mt-3" style="color:#9ca3af; font-size:.72rem;">
