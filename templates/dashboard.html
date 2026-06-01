@@ -58,13 +58,15 @@
   <div class="row g-2 align-items-end">
     <div class="col-lg-7">
       <label class="form-label small fw-semibold mb-1">Servidor / Matrícula</label>
-      <input id="atalhoServidor" class="form-control" list="atalhoServidores"
-             placeholder="Digite a matrícula ou o nome do servidor" autocomplete="off">
-      <datalist id="atalhoServidores">
-        {% for s in servidores_atalho %}
-        <option value="{{ s.matricula }} - {{ s.nome }}">
-        {% endfor %}
-      </datalist>
+      <div class="position-relative">
+        <input id="atalhoServidor" class="form-control" autocomplete="off"
+               placeholder="Digite a matrícula ou o nome do servidor">
+        <!-- Dropdown customizado — aparece abaixo do campo -->
+        <div id="atalhoDropdown"
+             class="position-absolute w-100 bg-white border rounded shadow-sm d-none"
+             style="top:100%;left:0;z-index:1055;max-height:260px;overflow-y:auto;margin-top:2px;">
+        </div>
+      </div>
       <div id="atalhoInfo" class="form-text">As informações do servidor serão carregadas da base de dados.</div>
     </div>
     <div class="col-lg-5">
@@ -395,38 +397,76 @@ const servidoresAtalho = [
   {% endfor %}
 ];
 
-const inputAtalho = document.getElementById('atalhoServidor');
-const infoAtalho = document.getElementById('atalhoInfo');
+const inputAtalho  = document.getElementById('atalhoServidor');
+const infoAtalho   = document.getElementById('atalhoInfo');
+const dropdown     = document.getElementById('atalhoDropdown');
+let _servidorAtual = null;
+let _matchesAtalho = [];
 
 function normalizarBusca(valor) {
   return (valor || '').toString().trim().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function fecharDropdown() {
+  dropdown.classList.add('d-none');
+  dropdown.innerHTML = '';
+}
+
+function selecionarServidorAtalho(srv) {
+  _servidorAtual = srv;
+  inputAtalho.value = srv.matricula + ' - ' + srv.nome;
+  infoAtalho.textContent = srv.info;
+  infoAtalho.style.color = '#198754';
+  fecharDropdown();
 }
 
 function encontrarServidorAtalho() {
-  const bruto = inputAtalho?.value || '';
-  const busca = normalizarBusca(bruto);
-  const matriculaInicial = bruto.trim().match(/^\d+/)?.[0];
-
-  if (!busca) return null;
-
-  let servidor = servidoresAtalho.find(s => s.matricula === matriculaInicial);
-  if (servidor) return servidor;
-
-  servidor = servidoresAtalho.find(s =>
-    normalizarBusca(s.matricula) === busca || normalizarBusca(s.nome) === busca
-  );
-  if (servidor) return servidor;
-
-  const encontrados = servidoresAtalho.filter(s =>
-    normalizarBusca(s.matricula).includes(busca) || normalizarBusca(s.nome).includes(busca)
-  );
-  return encontrados.length === 1 ? encontrados[0] : null;
+  return _servidorAtual;
 }
 
 inputAtalho?.addEventListener('input', () => {
-  const servidor = encontrarServidorAtalho();
-  infoAtalho.textContent = servidor?.info || 'Digite a matrícula ou o nome e selecione um servidor válido.';
+  const q = normalizarBusca(inputAtalho.value);
+  _servidorAtual = null;
+  infoAtalho.textContent = 'Digite a matrícula ou o nome e selecione um servidor.';
+  infoAtalho.style.color = '';
+
+  if (q.length < 2) { fecharDropdown(); return; }
+
+  _matchesAtalho = servidoresAtalho.filter(s =>
+    normalizarBusca(s.matricula).includes(q) || normalizarBusca(s.nome).includes(q)
+  ).slice(0, 8);
+
+  if (!_matchesAtalho.length) {
+    dropdown.innerHTML = '<div class="px-3 py-2 text-muted small">Nenhum servidor encontrado.</div>';
+    dropdown.classList.remove('d-none');
+    return;
+  }
+
+  dropdown.innerHTML = _matchesAtalho.map((s, i) =>
+    '<div class="atalho-item px-3 py-2 border-bottom" data-idx="' + i + '"' +
+    ' style="cursor:pointer;transition:background .1s">' +
+    '<div class="fw-semibold small"><span class="badge bg-secondary me-1">' + s.matricula + '</span>' + s.nome + '</div>' +
+    '<div class="text-muted" style="font-size:.75rem">' + s.info + '</div></div>'
+  ).join('');
+  dropdown.classList.remove('d-none');
+
+  dropdown.querySelectorAll('.atalho-item').forEach(el => {
+    el.addEventListener('mouseenter', () => el.style.background = '#f0f7ff');
+    el.addEventListener('mouseleave', () => el.style.background = '');
+    el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      selecionarServidorAtalho(_matchesAtalho[parseInt(el.dataset.idx)]);
+    });
+  });
+});
+
+inputAtalho?.addEventListener('blur', () => setTimeout(fecharDropdown, 150));
+inputAtalho?.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { fecharDropdown(); inputAtalho.blur(); }
+});
+document.addEventListener('click', e => {
+  if (!inputAtalho?.contains(e.target) && !dropdown?.contains(e.target)) fecharDropdown();
 });
 
 // ── Modais de atalho rápido ───────────────────────────────────────────────────
