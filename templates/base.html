@@ -183,6 +183,7 @@
       <a class="sidebar-link {% if request.path.startswith('/servidores') %}active{% endif %}" href="/servidores" title="Servidores"><i class="bi bi-people"></i><span class="sidebar-link-text">Servidores</span></a>
       <a class="sidebar-link {% if request.path.startswith('/pagamentos') %}active{% endif %}" href="/pagamentos" title="Pagamentos"><i class="bi bi-cash-coin"></i><span class="sidebar-link-text">Pagamentos</span></a>
       <a class="sidebar-link {% if request.path.startswith('/relatorios') %}active{% endif %}" href="/relatorios" title="Relatórios"><i class="bi bi-file-earmark-text"></i><span class="sidebar-link-text">Relatórios</span></a>
+      <div class="sidebar-section-title">Eleitoral</div>
       <a class="sidebar-link {% if request.path.startswith('/eleicao') %}active{% endif %}" href="/eleicao" title="Dias de Eleição">
         <i class="bi bi-calendar2-check" style="color:#fde68a"></i>
         <span class="sidebar-link-text" style="color:#fde68a">Dias de Eleição</span>
@@ -197,6 +198,11 @@
     {% elif u_nivel in ('secretario','chefia') %}
       <div class="sidebar-section-title">Consulta</div>
       <a class="sidebar-link {% if request.path.startswith('/consulta') %}active{% endif %}" href="/consulta" title="Consulta"><i class="bi bi-people"></i><span class="sidebar-link-text">Consulta</span></a>
+      <div class="sidebar-section-title">Eleitoral</div>
+      <a class="sidebar-link {% if request.path.startswith('/eleicao') %}active{% endif %}" href="/eleicao" title="Dias de Eleição">
+        <i class="bi bi-calendar2-check" style="color:#fde68a"></i>
+        <span class="sidebar-link-text" style="color:#fde68a">Dias de Eleição</span>
+      </a>
     {% elif u_nivel == 'servidor' %}
       <div class="sidebar-section-title">Meu acesso</div>
       <a class="sidebar-link {% if request.path.startswith('/meu-banco') %}active{% endif %}" href="/meu-banco" title="Meu Banco"><i class="bi bi-person-badge"></i><span class="sidebar-link-text">Meu Banco</span></a>

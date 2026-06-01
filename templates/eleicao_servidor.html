@@ -23,9 +23,11 @@
        class="btn btn-sm btn-outline-success" title="Exportar Excel">
       <i class="bi bi-file-earmark-excel me-1"></i>Excel
     </a>
+    {% if nivel != 'servidor' %}
     <a href="{{ url_for('compensacoes', matricula=servidor.matricula) }}" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-clock-history me-1"></i>Banco de Horas
     </a>
+    {% endif %}
   </div>
 </div>
 
@@ -81,11 +83,14 @@
       <div class="card-header d-flex align-items-center justify-content-between py-2"
            style="background:#78350f; color:#fff;">
         <span><i class="bi bi-plus-circle me-2"></i>Créditos de Eleição ({{ creditos|length }})</span>
+        {% if nivel == 'master' %}
         <button class="btn btn-sm btn-light" data-bs-toggle="collapse" data-bs-target="#formCredito">
           <i class="bi bi-plus-lg me-1"></i>Novo
         </button>
+        {% endif %}
       </div>
 
+      {% if nivel == 'master' %}
       <!-- Formulário novo crédito -->
       <div class="collapse" id="formCredito">
         <div class="card-body border-bottom" style="background:#fef3c7;">
@@ -110,13 +115,15 @@
               <button type="submit" class="btn btn-sm text-white" style="background:#b45309;">
                 <i class="bi bi-check-lg me-1"></i>Salvar
               </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#formCredito">
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      data-bs-toggle="collapse" data-bs-target="#formCredito">
                 Cancelar
               </button>
             </div>
           </form>
         </div>
       </div>
+      {% endif %}
 
       <!-- Lista de créditos -->
       <div class="card-body p-0">
@@ -124,7 +131,13 @@
         <div class="table-responsive">
           <table class="table table-sm table-hover align-middle mb-0 small">
             <thead class="table-light">
-              <tr><th>Eleição</th><th class="text-center">Dias</th><th>Observação</th><th>Lançado em</th><th></th></tr>
+              <tr>
+                <th>Eleição</th>
+                <th class="text-center">Dias</th>
+                <th>Observação</th>
+                <th>Lançado em</th>
+                {% if nivel == 'master' %}<th></th>{% endif %}
+              </tr>
             </thead>
             <tbody>
               {% for c in creditos %}
@@ -136,16 +149,23 @@
                 <td class="text-muted">{{ c.observacao or '–' }}</td>
                 <td class="text-muted" style="white-space:nowrap;">
                   {{ c.criado_em[:10] if c.criado_em else '–' }}
-                  {% if c.criado_por %}<br><span class="small" style="font-size:.7rem">por {{ c.criado_por }}</span>{% endif %}
+                  {% if c.criado_por %}<br><span style="font-size:.7rem">por {{ c.criado_por }}</span>{% endif %}
                 </td>
-                <td class="text-end">
-                  <form method="post" action="{{ url_for('eleicao_excluir_credito', matricula=servidor.matricula, cid=c.id) }}"
+                {% if nivel == 'master' %}
+                <td class="text-end" style="white-space:nowrap;">
+                  <button class="btn btn-sm btn-outline-secondary me-1" title="Editar"
+                          onclick="abrirEdicao({{ c.id }}, '{{ c.referencia_eleicao|e }}', {{ c.quantidade_dias }}, '{{ (c.observacao or '')|e }}')">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <form method="post" style="display:inline"
+                        action="{{ url_for('eleicao_excluir_credito', matricula=servidor.matricula, cid=c.id) }}"
                         onsubmit="return confirm('Excluir este crédito de {{ c.quantidade_dias }} dia(s)?')">
                     <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir">
                       <i class="bi bi-trash"></i>
                     </button>
                   </form>
                 </td>
+                {% endif %}
               </tr>
               {% endfor %}
             </tbody>
@@ -166,12 +186,15 @@
     <div class="card h-100">
       <div class="card-header d-flex align-items-center justify-content-between py-2 bg-secondary text-white">
         <span><i class="bi bi-calendar-minus me-2"></i>Folgas Tiradas ({{ total_baixas }})</span>
+        {% if nivel == 'master' %}
         <button class="btn btn-sm btn-light" data-bs-toggle="collapse" data-bs-target="#formBaixa"
                 {% if saldo <= 0 %}disabled title="Saldo zerado"{% endif %}>
           <i class="bi bi-plus-lg me-1"></i>Registrar Folga
         </button>
+        {% endif %}
       </div>
 
+      {% if nivel == 'master' %}
       <!-- Formulário nova baixa -->
       <div class="collapse" id="formBaixa">
         <div class="card-body border-bottom" style="background:#f0fdf4;">
@@ -191,7 +214,8 @@
               <button type="submit" class="btn btn-sm btn-success">
                 <i class="bi bi-check-lg me-1"></i>Registrar
               </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#formBaixa">
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      data-bs-toggle="collapse" data-bs-target="#formBaixa">
                 Cancelar
               </button>
             </div>
@@ -203,6 +227,7 @@
           {% endif %}
         </div>
       </div>
+      {% endif %}
 
       <!-- Lista de baixas -->
       <div class="card-body p-0">
@@ -210,7 +235,12 @@
         <div class="table-responsive">
           <table class="table table-sm table-hover align-middle mb-0 small">
             <thead class="table-light">
-              <tr><th>Data da Folga</th><th>Observação</th><th>Registrado em</th><th></th></tr>
+              <tr>
+                <th>Data da Folga</th>
+                <th>Observação</th>
+                <th>Registrado em</th>
+                {% if nivel == 'master' %}<th></th>{% endif %}
+              </tr>
             </thead>
             <tbody>
               {% for b in baixas %}
@@ -219,16 +249,19 @@
                 <td class="text-muted">{{ b.observacao or '–' }}</td>
                 <td class="text-muted" style="white-space:nowrap;">
                   {{ b.criado_em[:10] if b.criado_em else '–' }}
-                  {% if b.criado_por %}<br><span class="small" style="font-size:.7rem">por {{ b.criado_por }}</span>{% endif %}
+                  {% if b.criado_por %}<br><span style="font-size:.7rem">por {{ b.criado_por }}</span>{% endif %}
                 </td>
+                {% if nivel == 'master' %}
                 <td class="text-end">
-                  <form method="post" action="{{ url_for('eleicao_excluir_baixa', matricula=servidor.matricula, bid=b.id) }}"
+                  <form method="post"
+                        action="{{ url_for('eleicao_excluir_baixa', matricula=servidor.matricula, bid=b.id) }}"
                         onsubmit="return confirm('Estornar esta folga de {{ b.data }}?')">
                     <button type="submit" class="btn btn-sm btn-outline-danger" title="Estornar">
                       <i class="bi bi-arrow-counterclockwise"></i>
                     </button>
                   </form>
                 </td>
+                {% endif %}
               </tr>
               {% endfor %}
             </tbody>
@@ -245,4 +278,55 @@
   </div>
 
 </div>
+
+<!-- ─── Modal: Editar Crédito (master) ───────────────────────────────────────── -->
+{% if nivel == 'master' %}
+<div class="modal fade" id="modalEditarCredito" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header text-white" style="background:#78350f;">
+        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Editar Crédito de Eleição</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="formEditar" method="post" action="">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Referência da Eleição <span class="text-danger">*</span></label>
+            <input type="text" name="referencia_eleicao" id="editRef" class="form-control"
+                   placeholder="Ex: Eleições Municipais 2024 – 1º Turno" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Quantidade de Dias <span class="text-danger">*</span></label>
+            <input type="number" name="quantidade_dias" id="editQtd" class="form-control"
+                   min="1" max="30" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Observação (trabalho realizado)</label>
+            <textarea name="observacao" id="editObs" class="form-control" rows="2"
+                      placeholder="Ex: Mesário titular – Seção 123"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn text-white fw-semibold" style="background:#b45309;">
+            <i class="bi bi-check-lg me-1"></i>Salvar Alterações
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function abrirEdicao(id, ref, qtd, obs) {
+  document.getElementById('editRef').value = ref;
+  document.getElementById('editQtd').value = qtd;
+  document.getElementById('editObs').value = obs;
+  document.getElementById('formEditar').action =
+    '/eleicao/{{ servidor.matricula }}/credito/' + id + '/editar';
+  new bootstrap.Modal(document.getElementById('modalEditarCredito')).show();
+}
+</script>
+{% endif %}
+
 {% endblock %}

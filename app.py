@@ -151,13 +151,16 @@ def verificar_acesso():
         flash("Sua senha é temporária. Defina uma nova senha para continuar.", "warning")
         return redirect(url_for('trocar_senha'))
 
-    # Servidor → só meu_banco
-    if nivel == 'servidor' and request.endpoint not in ('meu_banco', 'meu_cadastro', 'trocar_senha', 'logout'):
+    # Servidor → meu_banco + seus próprios dados de eleição
+    if nivel == 'servidor' and request.endpoint not in (
+            'meu_banco', 'meu_cadastro', 'trocar_senha', 'logout',
+            'eleicao_servidor', 'eleicao_exportar'):
         return redirect(url_for('meu_banco'))
 
-    # Secretário / Chefia → só consulta + api_historico
+    # Secretário / Chefia → consulta + api_historico + eleição (somente leitura)
     if nivel in ('secretario', 'chefia') and request.endpoint not in (
-            'portal', 'consulta', 'api_historico', 'meu_cadastro', 'trocar_senha', 'logout'):
+            'portal', 'consulta', 'api_historico', 'meu_cadastro', 'trocar_senha', 'logout',
+            'eleicao_index', 'eleicao_servidor', 'eleicao_exportar'):
         return redirect(url_for('consulta'))
 
     # Master: bloqueia apenas se tentar acessar rota de outro nível
@@ -2599,18 +2602,35 @@ def admin_revogar_acesso(uid):
 # ─── Banco de Dias de Eleição ─────────────────────────────────────────────────
 
 @app.route('/eleicao')
-@master_required
+@login_required
 def eleicao_index():
-    db = get_db()
+    db    = get_db()
+    nivel = session.get('nivel')
     busca     = request.args.get('busca', '').strip()
     sec_sel   = request.args.get('secretaria', '').strip()
     set_sel   = request.args.get('setor', '').strip()
-    saldo_sel = request.args.get('saldo', '').strip()   # 'com_saldo' | 'zerado' | ''
+    saldo_sel = request.args.get('saldo', '').strip()
 
-    filtro = """WHERE s.arquivado=0
-        AND (EXISTS (SELECT 1 FROM eleicao_creditos WHERE matricula=s.matricula)
-             OR EXISTS (SELECT 1 FROM eleicao_baixas WHERE matricula=s.matricula))"""
+    # Restrição de vínculo para secretario/chefia
+    vinculos = session.get('vinculos', []) if nivel in ('secretario', 'chefia') else []
+
+    filtro = "WHERE s.arquivado=0"
     params = []
+
+    if nivel in ('secretario', 'chefia'):
+        if not vinculos:
+            filtro += " AND 1=0"
+        else:
+            ph = ','.join('?' * len(vinculos))
+            if nivel == 'secretario':
+                filtro += f" AND s.secretaria IN ({ph})"; params.extend(vinculos)
+            else:
+                filtro += f" AND s.setor IN ({ph})"; params.extend(vinculos)
+    else:
+        # master: só mostra quem tem registro de eleição
+        filtro += """ AND (EXISTS (SELECT 1 FROM eleicao_creditos WHERE matricula=s.matricula)
+                           OR EXISTS (SELECT 1 FROM eleicao_baixas WHERE matricula=s.matricula))"""
+
     if busca:
         filtro += " AND (s.matricula LIKE ? OR s.nome LIKE ?)"; params += [f"%{busca}%", f"%{busca}%"]
     if sec_sel:
@@ -2630,33 +2650,54 @@ def eleicao_index():
     elif saldo_sel == 'zerado':
         servidores = [s for s in servidores if (int(s['total_creditos'] or 0) - int(s['total_baixas'] or 0)) <= 0]
 
-    # Listas para filtros (apenas servidores com lançamentos de eleição)
-    secs = [r[0] for r in db.execute("""
-        SELECT DISTINCT s.secretaria FROM servidores s
-        WHERE s.arquivado=0 AND s.secretaria IS NOT NULL AND s.secretaria!=''
-          AND (EXISTS (SELECT 1 FROM eleicao_creditos WHERE matricula=s.matricula)
-               OR EXISTS (SELECT 1 FROM eleicao_baixas WHERE matricula=s.matricula))
-        ORDER BY s.secretaria""").fetchall()]
-    sets_ = [r[0] for r in db.execute("""
-        SELECT DISTINCT s.setor FROM servidores s
-        WHERE s.arquivado=0 AND s.setor IS NOT NULL AND s.setor!=''
-          AND (EXISTS (SELECT 1 FROM eleicao_creditos WHERE matricula=s.matricula)
-               OR EXISTS (SELECT 1 FROM eleicao_baixas WHERE matricula=s.matricula))
-        ORDER BY s.setor""").fetchall()]
+    # Listas de filtro
+    base_filtro = "WHERE s.arquivado=0"
+    base_params = []
+    if nivel in ('secretario', 'chefia') and vinculos:
+        ph = ','.join('?' * len(vinculos))
+        if nivel == 'secretario':
+            base_filtro += f" AND s.secretaria IN ({ph})"; base_params.extend(vinculos)
+        else:
+            base_filtro += f" AND s.setor IN ({ph})"; base_params.extend(vinculos)
+    secs  = [r[0] for r in db.execute(f"SELECT DISTINCT s.secretaria FROM servidores s {base_filtro} AND s.secretaria IS NOT NULL AND s.secretaria!='' ORDER BY s.secretaria", base_params).fetchall()]
+    sets_ = [r[0] for r in db.execute(f"SELECT DISTINCT s.setor FROM servidores s {base_filtro} AND s.setor IS NOT NULL AND s.setor!='' ORDER BY s.setor", base_params).fetchall()]
+
+    # Para modal de lançamento rápido (master apenas): lista todos os servidores ativos
+    todos_servidores = []
+    if nivel == 'master':
+        todos_servidores = db.execute(
+            "SELECT matricula, nome, secretaria, setor FROM servidores WHERE arquivado=0 ORDER BY nome"
+        ).fetchall()
 
     return render_template('eleicao_index.html', servidores=servidores,
                            busca=busca, sec_sel=sec_sel, set_sel=set_sel, saldo_sel=saldo_sel,
-                           secretarias=secs, setores=sets_)
+                           secretarias=secs, setores=sets_,
+                           todos_servidores=todos_servidores,
+                           nivel=nivel)
 
 
 @app.route('/eleicao/<matricula>', methods=['GET', 'POST'])
-@master_required
+@login_required
 def eleicao_servidor(matricula):
-    db = get_db()
+    db    = get_db()
+    nivel = session.get('nivel')
+
+    # Servidor só pode ver seus próprios dados
+    if nivel == 'servidor' and session.get('matricula') != matricula:
+        return redirect(url_for('meu_banco'))
+
+    if not usuario_pode_ver_matricula(db, matricula):
+        flash("Acesso não autorizado.", "danger")
+        return redirect(url_for('portal'))
+
     srv = db.execute("SELECT * FROM servidores WHERE matricula=? AND arquivado=0", (matricula,)).fetchone()
     if not srv:
         flash("Servidor não encontrado.", "danger")
         return redirect(url_for('eleicao_index'))
+
+    if request.method == 'POST' and nivel != 'master':
+        flash("Apenas o RH pode realizar lançamentos.", "danger")
+        return redirect(url_for('eleicao_servidor', matricula=matricula))
 
     if request.method == 'POST':
         acao = request.form.get('acao')
@@ -2714,7 +2755,8 @@ def eleicao_servidor(matricula):
     return render_template('eleicao_servidor.html', servidor=srv,
                            creditos=creditos, baixas=baixas,
                            saldo=saldo, total_creditos=total_creditos,
-                           total_baixas=len(baixas))
+                           total_baixas=len(baixas),
+                           nivel=nivel)
 
 
 @app.route('/eleicao/<matricula>/credito/<int:cid>/excluir', methods=['POST'])
@@ -2746,10 +2788,51 @@ def eleicao_excluir_credito(matricula, cid):
     return redirect(url_for('eleicao_servidor', matricula=matricula))
 
 
-@app.route('/eleicao/<matricula>/exportar/<fmt>')
+@app.route('/eleicao/<matricula>/credito/<int:cid>/editar', methods=['POST'])
 @master_required
+def eleicao_editar_credito(matricula, cid):
+    db     = get_db()
+    srv    = db.execute("SELECT nome FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    credito= db.execute("SELECT * FROM eleicao_creditos WHERE id=? AND matricula=?", (cid, matricula)).fetchone()
+    if not credito:
+        flash("Crédito não encontrado.", "danger")
+        return redirect(url_for('eleicao_servidor', matricula=matricula))
+    ref = request.form.get('referencia_eleicao', '').strip()
+    obs = request.form.get('observacao', '').strip()
+    try:
+        qtd = int(request.form.get('quantidade_dias', 0))
+    except (ValueError, TypeError):
+        qtd = 0
+    if not ref or qtd <= 0:
+        flash("Preencha corretamente os campos.", "danger")
+        return redirect(url_for('eleicao_servidor', matricula=matricula))
+    # Valida saldo: nova quantidade vs baixas existentes
+    outras_creds = db.execute(
+        "SELECT COALESCE(SUM(quantidade_dias),0) FROM eleicao_creditos WHERE matricula=? AND id!=?",
+        (matricula, cid)).fetchone()[0]
+    baixas_count = db.execute("SELECT COUNT(*) FROM eleicao_baixas WHERE matricula=?", (matricula,)).fetchone()[0]
+    if int(outras_creds or 0) + qtd < int(baixas_count or 0):
+        flash("A nova quantidade deixaria o saldo negativo. Reduza as folgas primeiro.", "warning")
+        return redirect(url_for('eleicao_servidor', matricula=matricula))
+    db.execute(
+        "UPDATE eleicao_creditos SET referencia_eleicao=?, quantidade_dias=?, observacao=? WHERE id=? AND matricula=?",
+        (ref, qtd, obs or None, cid, matricula))
+    db.commit()
+    registrar_auditoria(db, "ELEICAO_CREDITO_EDIT", "eleicao_creditos",
+                        matricula=matricula, servidor_nome=srv['nome'] if srv else None,
+                        detalhe=f"{qtd} dia(s) – {ref}")
+    db.commit()
+    flash("Crédito atualizado com sucesso.", "success")
+    return redirect(url_for('eleicao_servidor', matricula=matricula))
+
+
+@app.route('/eleicao/<matricula>/exportar/<fmt>')
+@login_required
 def eleicao_exportar(matricula, fmt):
     db  = get_db()
+    if not usuario_pode_ver_matricula(db, matricula):
+        flash("Acesso não autorizado.", "danger")
+        return redirect(url_for('portal'))
     srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
     if not srv:
         flash("Servidor não encontrado.", "danger")

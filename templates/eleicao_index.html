@@ -6,6 +6,12 @@
     <h4 class="mb-0"><i class="bi bi-calendar2-check me-2" style="color:#b45309"></i>Banco de Dias de Eleição</h4>
     <span class="text-muted small">Servidores com saldo de dias por trabalho eleitoral</span>
   </div>
+  {% if nivel == 'master' %}
+  <button class="btn btn-lg text-white fw-bold px-4" style="background:#b45309;"
+          data-bs-toggle="modal" data-bs-target="#modalLancarCredito" title="Lançar dias de eleição">
+    <i class="bi bi-plus-lg me-1"></i> Lançar Dias
+  </button>
+  {% endif %}
 </div>
 
 <!-- Filtros -->
@@ -61,9 +67,11 @@
       {{ servidores|length }} servidor(es) encontrado(s)
     </span>
     <span class="small text-muted">
-      Total saldo: <strong style="color:#b45309">
-        {{ servidores | map(attribute='total_creditos') | map('int') | sum -
-           servidores | map(attribute='total_baixas') | map('int') | sum }} dia(s)
+      Total saldo:
+      <strong style="color:#b45309">
+        {% set total_s = namespace(v=0) %}
+        {% for s in servidores %}{% set total_s.v = total_s.v + s.total_creditos|int - s.total_baixas|int %}{% endfor %}
+        {{ total_s.v }} dia(s)
       </strong>
     </span>
   </div>
@@ -78,7 +86,7 @@
           <th class="text-center sortable-header">Creditados <span class="sort-indicator"></span></th>
           <th class="text-center sortable-header">Folgas <span class="sort-indicator"></span></th>
           <th class="text-center sortable-header">Saldo <span class="sort-indicator"></span></th>
-          <th class="text-center">Detalhe</th>
+          <th class="text-center">Ações</th>
         </tr>
       </thead>
       <tbody>
@@ -111,10 +119,19 @@
             {% endif %}
           </td>
           <td class="text-center">
-            <a href="{{ url_for('eleicao_servidor', matricula=s.matricula) }}"
-               class="btn btn-sm text-white" style="background:#78350f;">
-              <i class="bi bi-calendar2-check me-1"></i>Detalhe
-            </a>
+            <div class="d-flex gap-1 justify-content-center">
+              {% if nivel == 'master' %}
+              <button class="btn btn-sm text-white" style="background:#d97706;"
+                      title="Lançar crédito"
+                      onclick="abrirLancamento('{{ s.matricula }}','{{ s.nome|e }}')">
+                <i class="bi bi-plus-lg"></i>
+              </button>
+              {% endif %}
+              <a href="{{ url_for('eleicao_servidor', matricula=s.matricula) }}"
+                 class="btn btn-sm text-white" style="background:#78350f;" title="Ver detalhes">
+                <i class="bi bi-calendar2-check"></i>
+              </a>
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -131,10 +148,137 @@
     <a href="{{ url_for('eleicao_index') }}" class="btn btn-outline-secondary btn-sm mt-2">Limpar filtros</a>
     {% else %}
     <p class="mt-3 mb-1 fw-semibold">Nenhum servidor com lançamentos de eleição.</p>
-    <p class="small">Para registrar dias, acesse o servidor via <a href="{{ url_for('servidores') }}">Servidores</a> e clique em "Dias de Eleição".</p>
+    {% if nivel == 'master' %}
+    <p class="small">Use o botão <strong>+ Lançar Dias</strong> acima para registrar dias de eleição.</p>
+    {% endif %}
     {% endif %}
   </div>
 </div>
+{% endif %}
+
+<!-- ─── Modal: Lançar Crédito Rápido (master) ─────────────────────────────── -->
+{% if nivel == 'master' %}
+<div class="modal fade" id="modalLancarCredito" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header text-white" style="background:#78350f;">
+        <h5 class="modal-title"><i class="bi bi-calendar2-plus me-2"></i>Lançar Dias de Eleição</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Busca de servidor -->
+        <div class="mb-3" id="etapa1">
+          <label class="form-label fw-semibold">Buscar Servidor</label>
+          <input type="text" id="buscaServidor" class="form-control" placeholder="Digite matrícula ou nome..."
+                 autocomplete="off">
+          <div id="resultadosBusca" class="border rounded mt-1 shadow-sm d-none"
+               style="max-height:220px; overflow-y:auto; background:#fff; position:relative; z-index:10;"></div>
+        </div>
+
+        <!-- Banner servidor selecionado -->
+        <div id="bannerServidor" class="alert py-2 px-3 d-none mb-3"
+             style="background:#fef3c7; border:1.5px solid #d97706; border-radius:.5rem;">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-person-badge" style="color:#b45309; font-size:1.2rem"></i>
+            <div>
+              <div class="fw-bold" style="color:#78350f" id="nomeServidorSel"></div>
+              <div class="small text-muted" id="infoServidorSel"></div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" onclick="limparSelecao()">
+              <i class="bi bi-x"></i> Trocar
+            </button>
+          </div>
+        </div>
+
+        <!-- Formulário de crédito -->
+        <form id="formCredito" action="" method="post" class="d-none">
+          <input type="hidden" name="acao" value="add_credito">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Referência da Eleição <span class="text-danger">*</span></label>
+            <input type="text" name="referencia_eleicao" class="form-control"
+                   placeholder="Ex: Eleições Municipais 2024 – 1º Turno" required>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Quantidade de Dias <span class="text-danger">*</span></label>
+              <input type="number" name="quantidade_dias" class="form-control" min="1" max="30" value="1" required>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label fw-semibold">Trabalho Realizado / Observação</label>
+              <input type="text" name="observacao" class="form-control"
+                     placeholder="Ex: Mesário Titular – Seção 123">
+            </div>
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn text-white fw-semibold px-4" style="background:#b45309;">
+              <i class="bi bi-check-lg me-1"></i>Salvar Lançamento
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const _servidores = [
+  {% for s in todos_servidores %}
+  { mat: "{{ s.matricula }}", nome: "{{ s.nome|e }}", sec: "{{ (s.secretaria or '')|e }}", set: "{{ (s.setor or '')|e }}" },
+  {% endfor %}
+];
+
+function abrirLancamento(mat, nome) {
+  const modal = new bootstrap.Modal(document.getElementById('modalLancarCredito'));
+  modal.show();
+  if (mat) {
+    const srv = _servidores.find(s => s.mat === mat);
+    if (srv) selecionarServidor(srv);
+  }
+}
+
+document.getElementById('buscaServidor').addEventListener('input', function() {
+  const q = this.value.trim().toLowerCase();
+  const box = document.getElementById('resultadosBusca');
+  if (q.length < 2) { box.classList.add('d-none'); box.innerHTML = ''; return; }
+  const matches = _servidores.filter(s =>
+    s.nome.toLowerCase().includes(q) || s.mat.toLowerCase().includes(q)
+  ).slice(0, 10);
+  if (!matches.length) { box.innerHTML = '<div class="p-2 text-muted small">Nenhum resultado.</div>'; box.classList.remove('d-none'); return; }
+  box.innerHTML = matches.map(s =>
+    `<div class="p-2 border-bottom" style="cursor:pointer" onmousedown="selecionarServidor(${JSON.stringify(s)})">`+
+    `<strong>${s.mat}</strong> – ${s.nome}`+
+    `${s.sec ? '<br><small class="text-muted">'+s.sec+(s.set?' | '+s.set:'')+'</small>' : ''}`+
+    `</div>`
+  ).join('');
+  box.classList.remove('d-none');
+});
+
+function selecionarServidor(srv) {
+  document.getElementById('buscaServidor').value = '';
+  document.getElementById('resultadosBusca').classList.add('d-none');
+  document.getElementById('nomeServidorSel').textContent = srv.nome;
+  const info = [srv.mat, srv.sec, srv.set].filter(Boolean).join(' · ');
+  document.getElementById('infoServidorSel').textContent = info;
+  document.getElementById('bannerServidor').classList.remove('d-none');
+  document.getElementById('etapa1').classList.add('d-none');
+  const form = document.getElementById('formCredito');
+  form.action = '/eleicao/' + srv.mat;
+  form.classList.remove('d-none');
+}
+
+function limparSelecao() {
+  document.getElementById('bannerServidor').classList.add('d-none');
+  document.getElementById('etapa1').classList.remove('d-none');
+  document.getElementById('formCredito').classList.add('d-none');
+  document.getElementById('buscaServidor').value = '';
+}
+
+// Reseta modal ao fechar
+document.getElementById('modalLancarCredito').addEventListener('hidden.bs.modal', limparSelecao);
+</script>
 {% endif %}
 
 {% endblock %}
