@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h4 class="mb-1"><i class="bi bi-database-down me-2 text-primary"></i>Backup</h4>
+    <div class="text-muted small">Exporte uma cópia completa das informações do sistema em Excel.</div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card p-4">
+      <h6 class="fw-bold mb-2">Backup completo do sistema</h6>
+      <p class="text-muted small mb-3">
+        O arquivo gerado contém servidores ativos, arquivados, cadastros, acessos, banco de horas,
+        histórico completo, banco de dias de eleição, importações, auditoria e visualizações.
+      </p>
+      <a id="btnBackup" href="/admin/backup/excel" class="btn btn-primary">
+        <i class="bi bi-file-earmark-excel me-1"></i>Gerar Backup em Excel
+      </a>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card p-4">
+      <h6 class="fw-bold mb-2"><i class="bi bi-shield-check me-1 text-success"></i>Segurança</h6>
+      <p class="small text-muted mb-0">
+        Esta rotina apenas lê os dados e monta o arquivo Excel. Nenhum cadastro, lançamento ou histórico é alterado.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalBackup" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="bi bi-database-down me-2"></i>Gerando backup do sistema</h5>
+      </div>
+      <div class="modal-body">
+        <div class="progress mb-3" style="height:18px">
+          <div id="backupBarra" class="progress-bar progress-bar-striped progress-bar-animated" style="width:10%">10%</div>
+        </div>
+        <div id="backupMsg" class="small text-muted">Preparando backup do sistema...</div>
+        <div class="small mt-3 border rounded p-2 bg-light">
+          <strong>Etapa atual:</strong> <span id="backupEtapa">Iniciando exportação</span>
+        </div>
+        <div class="small text-muted mt-2">O download começará automaticamente quando o arquivo estiver pronto.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('btnBackup').addEventListener('click', () => {
+  const btn = document.getElementById('btnBackup');
+  btn.classList.add('disabled');
+  const modal = new bootstrap.Modal(document.getElementById('modalBackup'));
+  const etapas = [
+    ['Exportando servidores ativos...', 'Aba 1 de 10', 15],
+    ['Exportando servidores arquivados...', 'Aba 2 de 10', 25],
+    ['Exportando cargos e acessos...', 'Abas administrativas', 38],
+    ['Exportando banco de horas...', 'Saldos e movimentações', 52],
+    ['Exportando histórico completo do banco de horas...', 'Histórico RH', 65],
+    ['Exportando banco de dias de eleição...', 'Créditos e baixas', 78],
+    ['Exportando auditoria...', 'Histórico geral', 88],
+    ['Montando arquivo Excel...', 'Finalizando download', 95]
+  ];
+  modal.show();
+  let i = 0;
+  const timer = setInterval(() => {
+    const e = etapas[Math.min(i, etapas.length - 1)];
+    document.getElementById('backupMsg').textContent = e[0];
+    document.getElementById('backupEtapa').textContent = e[1];
+    const barra = document.getElementById('backupBarra');
+    barra.style.width = e[2] + '%';
+    barra.textContent = e[2] + '%';
+    i++;
+    if (i >= etapas.length) clearInterval(timer);
+  }, 650);
+  setTimeout(() => btn.classList.remove('disabled'), 6000);
+});
+</script>
+{% endblock %}

@@ -316,6 +316,47 @@ def _csv_response(filename, headers, rows):
     r.headers["Content-Disposition"] = f"attachment; filename={filename}.csv"
     return r
 
+def _csv_reader_upload(arquivo):
+    conteudo = arquivo.read().decode("utf-8-sig", errors="replace")
+    amostra = conteudo[:2048]
+    try:
+        dialect = csv.Sniffer().sniff(amostra, delimiters=";,")
+    except Exception:
+        dialect = csv.excel
+    return csv.DictReader(io.StringIO(conteudo), dialect=dialect)
+
+def _registrar_relatorio_importacao(tipo, arquivo, total, sucessos, erros, payload=None, atualizados=0):
+    """Persiste histórico da importação e prepara relatório visual pós-importação."""
+    db = get_db()
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    payload = payload or []
+    imp_id = db.insert("""INSERT INTO importacoes
+        (tipo,arquivo,usuario_id,usuario_nome,usuario_cpf,total_linhas,criados,atualizados,erros,payload,criado_em)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (tipo, arquivo, session.get("uid"), session.get("nome"), session.get("cpf"),
+         total, len(sucessos), atualizados, len(erros), json.dumps(payload, ensure_ascii=False), agora))
+    registrar_auditoria(db, f"Importou {tipo}", "importacao", imp_id, None, None,
+                        f"Arquivo {arquivo}; importados {len(sucessos)}; erros {len(erros)}.")
+    db.commit()
+    session["import_report"] = {
+        "tipo": tipo.replace("_", " ").title(),
+        "arquivo": arquivo,
+        "total": total,
+        "sucessos_qtd": len(sucessos),
+        "erros_qtd": len(erros),
+        "sucessos": sucessos[:30],
+        "erros": erros[:30],
+        "data_hora": agora,
+        "usuario": session.get("nome") or "-",
+    }
+    return imp_id
+
+def _erro_importacao(erros, linha, identificador, motivo):
+    erros.append({"linha": linha, "identificador": identificador or "-", "motivo": motivo})
+
+def _sucesso_importacao(sucessos, linha, identificador, detalhe):
+    sucessos.append({"linha": linha, "identificador": identificador or "-", "detalhe": detalhe})
+
 def _xlsx_response(filename, title, headers, rows):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
@@ -1384,7 +1425,8 @@ def admin_estornar_exclusao_servidor(exclusao_id):
 def admin_importacao():
     db = get_db()
     historico = db.execute("SELECT * FROM importacoes ORDER BY criado_em DESC, id DESC LIMIT 50").fetchall()
-    return render_template("admin/importacao.html", historico=historico)
+    relatorio = session.pop("import_report", None)
+    return render_template("admin/importacao.html", historico=historico, relatorio=relatorio)
 
 @app.route("/admin/importacao/modelo")
 @master_required
@@ -1413,6 +1455,32 @@ def admin_importacao_modelo_cadastros():
     r.headers["Content-Disposition"] = "attachment; filename=modelo_importacao_cadastros.csv"
     return r
 
+@app.route("/admin/importacao/modelo-banco-horas")
+@master_required
+def admin_importacao_modelo_banco_horas():
+    out = io.StringIO()
+    w = csv.writer(out, delimiter=";")
+    w.writerow(["matricula","nome","saldo_horas","competencia","data_lancamento","justificativa","observacoes"])
+    w.writerow(["12345","Nome do Servidor","12:30","04/2026","2026-04-30","Importação de saldo inicial","Conferido pela unidade"])
+    w.writerow(["67890","Outro Servidor","08:00","05/2026","","Ajuste autorizado","Data em branco usa a data atual"])
+    r = make_response("\ufeff" + out.getvalue())
+    r.headers["Content-Type"] = "text/csv; charset=utf-8"
+    r.headers["Content-Disposition"] = "attachment; filename=modelo_importacao_banco_horas.csv"
+    return r
+
+@app.route("/admin/importacao/modelo-eleicao")
+@master_required
+def admin_importacao_modelo_eleicao():
+    out = io.StringIO()
+    w = csv.writer(out, delimiter=";")
+    w.writerow(["matricula","nome","quantidade_dias","referencia","data_lancamento","justificativa","observacoes"])
+    w.writerow(["12345","Nome do Servidor","3","Eleições 2024","2026-04-30","Importação de saldo eleitoral","Portaria/registro interno"])
+    w.writerow(["67890","Outro Servidor","2","Convocação TRE 2024","","Ajuste autorizado","Data em branco usa a data atual"])
+    r = make_response("\ufeff" + out.getvalue())
+    r.headers["Content-Type"] = "text/csv; charset=utf-8"
+    r.headers["Content-Disposition"] = "attachment; filename=modelo_importacao_dias_eleicao.csv"
+    return r
+
 @app.route("/admin/importacao/servidores", methods=["POST"])
 @master_required
 def admin_importar_servidores():
@@ -1420,25 +1488,27 @@ def admin_importar_servidores():
     if not arquivo or not arquivo.filename:
         flash("Selecione um arquivo CSV.", "danger")
         return redirect(url_for("admin_importacao"))
-    conteudo = arquivo.read().decode("utf-8-sig", errors="replace")
-    leitor = csv.DictReader(io.StringIO(conteudo))
+    leitor = _csv_reader_upload(arquivo)
     campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
     if not {"matricula", "nome"}.issubset(campos):
         flash("CSV inválido. Campos obrigatórios: matricula e nome.", "danger")
         return redirect(url_for("admin_importacao"))
 
     db = get_db()
-    criados = atualizados = erros = total = 0
-    payload = []
+    total = 0
+    payload, sucessos, erros_lista = [], [], []
     for row in leitor:
         total += 1
+        linha = total + 1
         matricula = _valor_csv(row, "matricula", "matrícula")
         nome = _valor_csv(row, "nome")
         if not matricula or not nome:
-            erros += 1
+            _erro_importacao(erros_lista, linha, matricula, "Campo obrigatório não preenchido: matrícula e nome.")
             continue
         atual = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
-        antes = _snapshot_servidor_cadastro(atual)
+        if atual:
+            _erro_importacao(erros_lista, linha, matricula, "Servidor já cadastrado. O registro existente não foi alterado.")
+            continue
         dados = {
             "matricula": matricula, "nome": nome,
             "cpf": _valor_csv(row, "cpf"),
@@ -1452,32 +1522,17 @@ def admin_importar_servidores():
         _garantir_cadastro_auxiliar(db, "cargo", dados["cargo"])
         _garantir_cadastro_auxiliar(db, "secretaria", dados["secretaria"])
         _garantir_cadastro_auxiliar(db, "departamento", dados["setor"])
-        if atual:
-            db.execute("""UPDATE servidores
-                          SET nome=?,cpf=?,email=?,cargo=?,secretaria=?,setor=?,funcao_gratificada=?,arquivado=0
-                          WHERE matricula=?""",
-                       (dados["nome"], dados["cpf"], dados["email"], dados["cargo"], dados["secretaria"],
-                        dados["setor"], dados["funcao_gratificada"], matricula))
-            atualizados += 1; acao = "atualizado"
-        else:
-            db.execute("""INSERT INTO servidores
-                          (matricula,nome,cpf,email,cargo,secretaria,setor,funcao_gratificada,arquivado)
-                          VALUES (?,?,?,?,?,?,?,?,0)""",
-                       (dados["matricula"], dados["nome"], dados["cpf"], dados["email"], dados["cargo"],
-                        dados["secretaria"], dados["setor"], dados["funcao_gratificada"]))
-            criados += 1; acao = "criado"
-        payload.append({"acao": acao, "antes": antes, "depois": dados})
+        db.execute("""INSERT INTO servidores
+                      (matricula,nome,cpf,email,cargo,secretaria,setor,funcao_gratificada,arquivado)
+                      VALUES (?,?,?,?,?,?,?,?,0)""",
+                   (dados["matricula"], dados["nome"], dados["cpf"], dados["email"], dados["cargo"],
+                    dados["secretaria"], dados["setor"], dados["funcao_gratificada"]))
+        payload.append({"acao": "criado", "antes": None, "depois": dados})
+        _sucesso_importacao(sucessos, linha, matricula, f"Servidor criado: {nome}")
 
-    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    imp_id = db.insert("""INSERT INTO importacoes
-        (tipo,arquivo,usuario_id,usuario_nome,usuario_cpf,total_linhas,criados,atualizados,erros,payload,criado_em)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-        ("servidores", arquivo.filename, session.get("uid"), session.get("nome"), session.get("cpf"),
-         total, criados, atualizados, erros, json.dumps(payload, ensure_ascii=False), agora))
-    registrar_auditoria(db, "Importou servidores em lote", "importacao", imp_id, None, None,
-                        f"Arquivo {arquivo.filename}; criados {criados}; atualizados {atualizados}; erros {erros}.")
-    db.commit()
-    flash(f"Importação concluída: {criados} criado(s), {atualizados} atualizado(s), {erros} erro(s).", "success")
+    _registrar_relatorio_importacao("servidores", arquivo.filename, total, sucessos, erros_lista, payload)
+    limpar_cache()
+    flash(f"Importação concluída: {len(sucessos)} importado(s), {len(erros_lista)} erro(s).", "success")
     return redirect(url_for("admin_importacao"))
 
 def _normalizar_tipo_cadastro(valor):
@@ -1497,6 +1552,275 @@ def _normalizar_tipo_cadastro(valor):
     }
     return mapa.get(v, "")
 
+def _data_importacao(valor):
+    valor = (valor or "").strip()
+    if not valor:
+        return date.today().isoformat()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(valor, fmt).date().isoformat()
+        except ValueError:
+            pass
+    return ""
+
+def _texto_importacao(*partes):
+    return " | ".join(str(p).strip() for p in partes if str(p or "").strip())
+
+@app.route("/admin/importacao/banco-horas", methods=["POST"])
+@master_required
+def admin_importar_banco_horas():
+    arquivo = request.files.get("arquivo")
+    competencia_padrao = request.form.get("competencia", "").strip()
+    justificativa_padrao = request.form.get("justificativa", "").strip()
+    if not arquivo or not arquivo.filename:
+        flash("Selecione um arquivo CSV.", "danger")
+        return redirect(url_for("admin_importacao"))
+    leitor = _csv_reader_upload(arquivo)
+    campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
+    if "matricula" not in campos or not ({"saldo_horas", "horas", "saldo"} & campos):
+        flash("CSV inválido. Campos obrigatórios: matricula e saldo_horas.", "danger")
+        return redirect(url_for("admin_importacao"))
+
+    db = get_db()
+    total = 0
+    payload, sucessos, erros_lista = [], [], []
+    for row in leitor:
+        total += 1
+        linha = total + 1
+        matricula = _valor_csv(row, "matricula", "matrícula")
+        nome_csv = _valor_csv(row, "nome")
+        horas_txt = _valor_csv(row, "saldo_horas", "horas", "saldo")
+        competencia = _valor_csv(row, "competencia", "competência") or competencia_padrao
+        justificativa = _valor_csv(row, "justificativa") or justificativa_padrao
+        obs = _valor_csv(row, "observacoes", "observações", "obs")
+        data_lanc = _data_importacao(_valor_csv(row, "data_lancamento", "data"))
+        if not matricula or not horas_txt or not competencia or not justificativa:
+            _erro_importacao(erros_lista, linha, matricula, "Campo obrigatório não preenchido: matrícula, saldo_horas, competência e justificativa.")
+            continue
+        minutos = horas_para_minutos(horas_txt)
+        if minutos <= 0 or not data_lanc:
+            _erro_importacao(erros_lista, linha, matricula, "Formato inválido em saldo_horas ou data_lancamento.")
+            continue
+        srv = db.execute("SELECT nome FROM servidores WHERE matricula=? AND arquivado=0", (matricula,)).fetchone()
+        if not srv:
+            _erro_importacao(erros_lista, linha, matricula, "Matrícula não localizada em servidores ativos.")
+            continue
+        duplicado = db.execute("""
+            SELECT 1 FROM lancamentos
+            WHERE matricula=? AND descricao LIKE ? AND minutos_creditados=?
+            LIMIT 1
+        """, (matricula, f"%Competência: {competencia}%", minutos)).fetchone()
+        if duplicado:
+            _erro_importacao(erros_lista, linha, matricula, "Lançamento de banco de horas já existente para esta competência.")
+            continue
+        desc = _texto_importacao("Importação Banco de Horas", f"Competência: {competencia}", f"Justificativa: {justificativa}", obs)
+        lid = db.insert("""INSERT INTO lancamentos
+            (matricula,data,horas_base,minutos_base,percentual,minutos_creditados,descricao)
+            VALUES (?,?,?,?,?,?,?)""",
+            (matricula, data_lanc, minutos_para_horas(minutos), minutos, 0, minutos, desc))
+        payload.append({"acao": "criado_lancamento", "id": lid, "matricula": matricula})
+        _sucesso_importacao(sucessos, linha, matricula, f"{srv['nome'] or nome_csv}: {minutos_para_horas(minutos)} importado(s) na competência {competencia}")
+
+    _registrar_relatorio_importacao("banco_horas", arquivo.filename, total, sucessos, erros_lista, payload)
+    flash(f"Importação de banco de horas concluída: {len(sucessos)} importado(s), {len(erros_lista)} erro(s).", "success")
+    return redirect(url_for("admin_importacao"))
+
+@app.route("/admin/importacao/eleicao", methods=["POST"])
+@master_required
+def admin_importar_eleicao():
+    arquivo = request.files.get("arquivo")
+    referencia_padrao = request.form.get("referencia", "").strip()
+    justificativa_padrao = request.form.get("justificativa", "").strip()
+    if not arquivo or not arquivo.filename:
+        flash("Selecione um arquivo CSV.", "danger")
+        return redirect(url_for("admin_importacao"))
+    leitor = _csv_reader_upload(arquivo)
+    campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
+    if "matricula" not in campos or not ({"quantidade_dias", "dias"} & campos):
+        flash("CSV inválido. Campos obrigatórios: matricula e quantidade_dias.", "danger")
+        return redirect(url_for("admin_importacao"))
+
+    db = get_db()
+    total = 0
+    payload, sucessos, erros_lista = [], [], []
+    for row in leitor:
+        total += 1
+        linha = total + 1
+        matricula = _valor_csv(row, "matricula", "matrícula")
+        nome_csv = _valor_csv(row, "nome")
+        dias_txt = _valor_csv(row, "quantidade_dias", "dias")
+        referencia = _valor_csv(row, "referencia", "referência", "competencia", "competência") or referencia_padrao
+        justificativa = _valor_csv(row, "justificativa") or justificativa_padrao
+        obs = _valor_csv(row, "observacoes", "observações", "obs")
+        if not matricula or not dias_txt or not referencia or not justificativa:
+            _erro_importacao(erros_lista, linha, matricula, "Campo obrigatório não preenchido: matrícula, quantidade_dias, referência e justificativa.")
+            continue
+        try:
+            dias = int(str(dias_txt).strip())
+        except ValueError:
+            dias = 0
+        if dias <= 0:
+            _erro_importacao(erros_lista, linha, matricula, "Formato inválido em quantidade_dias.")
+            continue
+        srv = db.execute("SELECT nome FROM servidores WHERE matricula=? AND arquivado=0", (matricula,)).fetchone()
+        if not srv:
+            _erro_importacao(erros_lista, linha, matricula, "Matrícula não localizada em servidores ativos.")
+            continue
+        duplicado = db.execute("""
+            SELECT 1 FROM eleicao_creditos
+            WHERE matricula=? AND referencia_eleicao=? AND quantidade_dias=?
+            LIMIT 1
+        """, (matricula, referencia, dias)).fetchone()
+        if duplicado:
+            _erro_importacao(erros_lista, linha, matricula, "Lançamento de banco de dias de eleição já existente para esta referência.")
+            continue
+        observacao = _texto_importacao("Importação Banco de Dias de Eleição", f"Justificativa: {justificativa}", obs)
+        cid = db.insert("""INSERT INTO eleicao_creditos
+            (matricula,referencia_eleicao,quantidade_dias,observacao,criado_por)
+            VALUES (?,?,?,?,?)""",
+            (matricula, referencia, dias, observacao, session.get("nome")))
+        payload.append({"acao": "criado_eleicao_credito", "id": cid, "matricula": matricula})
+        _sucesso_importacao(sucessos, linha, matricula, f"{srv['nome'] or nome_csv}: {dias} dia(s) importado(s) na referência {referencia}")
+
+    _registrar_relatorio_importacao("banco_dias_eleicao", arquivo.filename, total, sucessos, erros_lista, payload)
+    flash(f"Importação de dias de eleição concluída: {len(sucessos)} importado(s), {len(erros_lista)} erro(s).", "success")
+    return redirect(url_for("admin_importacao"))
+
+@app.route("/admin/backup")
+@master_required
+def admin_backup():
+    return render_template("admin/backup.html")
+
+@app.route("/admin/backup/excel")
+@master_required
+def admin_backup_excel():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    db = get_db()
+    wb = Workbook()
+    azul = "1A3A6B"
+    claro = "D9EAF7"
+
+    def v(row, key, default=""):
+        try:
+            return row[key]
+        except Exception:
+            try:
+                return row.get(key, default)
+            except Exception:
+                return default
+
+    def add_sheet(nome, headers, rows):
+        ws = wb.active if len(wb.sheetnames) == 1 and wb.active.max_row == 1 and wb.active["A1"].value is None else wb.create_sheet()
+        ws.title = nome[:31]
+        ws.append(headers)
+        for c in ws[1]:
+            c.font = Font(bold=True, color="FFFFFF")
+            c.fill = PatternFill("solid", fgColor=azul)
+            c.alignment = Alignment(horizontal="center")
+        for row in rows:
+            ws.append(row)
+        if ws.max_row > 1:
+            for c in ws[ws.max_row]:
+                if str(c.value or "").startswith("TOTAL"):
+                    c.font = Font(bold=True)
+                    c.fill = PatternFill("solid", fgColor=claro)
+        ws.freeze_panes = "A2"
+        for col in range(1, len(headers) + 1):
+            mx = max(len(str(ws.cell(r, col).value or "")) for r in range(1, ws.max_row + 1))
+            ws.column_dimensions[get_column_letter(col)].width = min(max(mx + 2, 12), 55)
+        return ws
+
+    servidores_headers = ["Matrícula","Nome","CPF","E-mail","Cargo","Secretaria","Departamento","FG","Arquivado"]
+    servidores_rows = lambda arq: [
+        [s["matricula"], s["nome"], v(s, "cpf"), v(s, "email"), v(s, "cargo"),
+         v(s, "secretaria"), v(s, "setor"), "Sim" if v(s, "funcao_gratificada", 0) else "Não", v(s, "arquivado", 0)]
+        for s in db.execute("SELECT * FROM servidores WHERE arquivado=? ORDER BY nome", (arq,)).fetchall()
+    ]
+    add_sheet("Servidores Ativos", servidores_headers, servidores_rows(0))
+    add_sheet("Servidores Arquivados", servidores_headers, servidores_rows(1))
+    add_sheet("Cargos", ["Tipo","Nome","Ativo","Criado em"], [
+        [r["tipo"], r["nome"], "Sim" if r["ativo"] else "Não", v(r, "criado_em")]
+        for r in db.execute("SELECT * FROM cadastros_auxiliares ORDER BY tipo,nome").fetchall()
+    ])
+    add_sheet("Acessos concedidos", ["Nome","CPF","E-mail","Nível","Matrícula","Vínculos","Ativo","Último acesso"], [
+        [u["nome"], u["cpf"], v(u, "email"), u["nivel"], v(u, "matricula"), ", ".join(get_vinculos(u)),
+         "Sim" if u["ativo"] else "Não", v(u, "ultimo_acesso")]
+        for u in db.execute("SELECT * FROM usuarios ORDER BY nivel,nome").fetchall()
+    ])
+
+    saldo_rows = []
+    for s in db.execute("SELECT * FROM servidores ORDER BY arquivado,nome").fetchall():
+        credito = db.execute("SELECT COALESCE(SUM(minutos_creditados),0) v FROM lancamentos WHERE matricula=?", (s["matricula"],)).fetchone()["v"] or 0
+        usado = db.execute("""SELECT COALESCE(SUM(c.minutos),0) v FROM consumos c
+                              JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=?""", (s["matricula"],)).fetchone()["v"] or 0
+        saldo_rows.append([s["matricula"], s["nome"], v(s, "secretaria"), v(s, "setor"),
+                           "Arquivado" if v(s, "arquivado", 0) else "Ativo",
+                           minutos_para_horas(credito), minutos_para_horas(usado), minutos_para_horas(credito - usado)])
+    add_sheet("Banco de Horas", ["Matrícula","Servidor","Secretaria","Departamento","Status","Total creditado","Total baixado","Saldo"], saldo_rows)
+
+    hist_bh = []
+    for r in db.execute("""SELECT l.*,s.nome,s.secretaria,s.setor,s.arquivado FROM lancamentos l
+                           LEFT JOIN servidores s ON s.matricula=l.matricula ORDER BY l.data,l.id""").fetchall():
+        hist_bh.append([r["matricula"], v(r, "nome"), "Lançamento", r["data"], r["horas_base"], r["percentual"],
+                        minutos_para_horas(r["minutos_creditados"]), "", v(r, "descricao"), v(r, "criado_em"),
+                        "Arquivado" if v(r, "arquivado", 0) else "Ativo"])
+    for r in db.execute("""SELECT c.*,s.nome,s.secretaria,s.setor,s.arquivado FROM compensacoes c
+                           LEFT JOIN servidores s ON s.matricula=c.matricula ORDER BY c.data,c.id""").fetchall():
+        hist_bh.append([r["matricula"], v(r, "nome"), "Compensação", r["data"], "", "",
+                        "", minutos_para_horas(r["minutos_compensados"]), v(r, "descricao"), v(r, "criado_em"),
+                        "Arquivado" if v(r, "arquivado", 0) else "Ativo"])
+    for r in db.execute("""SELECT p.*,s.nome,s.arquivado FROM pagamentos p
+                           LEFT JOIN servidores s ON s.matricula=p.matricula ORDER BY p.data_pagamento,p.id""").fetchall():
+        hist_bh.append([r["matricula"], v(r, "nome"), "Pagamento", r["data_pagamento"], "", "",
+                        "", "", v(r, "descricao"), v(r, "criado_em"), "Arquivado" if v(r, "arquivado", 0) else "Ativo"])
+    add_sheet("Histórico Banco de Horas", ["Matrícula","Servidor","Tipo","Data","H.Base","%","Crédito","Débito","Justificativa/Descrição","Criado em","Status"], hist_bh)
+
+    eleicao_saldo = []
+    for s in db.execute("SELECT * FROM servidores ORDER BY arquivado,nome").fetchall():
+        cred = db.execute("SELECT COALESCE(SUM(quantidade_dias),0) v FROM eleicao_creditos WHERE matricula=?", (s["matricula"],)).fetchone()["v"] or 0
+        baix = db.execute("SELECT COUNT(*) v FROM eleicao_baixas WHERE matricula=?", (s["matricula"],)).fetchone()["v"] or 0
+        eleicao_saldo.append([s["matricula"], s["nome"], v(s, "secretaria"), v(s, "setor"),
+                              "Arquivado" if v(s, "arquivado", 0) else "Ativo", cred, baix, cred - baix])
+    add_sheet("Banco Dias Eleição", ["Matrícula","Servidor","Secretaria","Departamento","Status","Dias concedidos","Dias utilizados","Saldo"], eleicao_saldo)
+
+    hist_el = []
+    for r in db.execute("""SELECT e.*,s.nome,s.arquivado FROM eleicao_creditos e
+                           LEFT JOIN servidores s ON s.matricula=e.matricula ORDER BY e.criado_em,e.id""").fetchall():
+        hist_el.append([r["matricula"], v(r, "nome"), "Crédito", r["referencia_eleicao"], r["quantidade_dias"], "",
+                        v(r, "observacao"), v(r, "criado_por"), v(r, "criado_em"),
+                        "Arquivado" if v(r, "arquivado", 0) else "Ativo"])
+    for r in db.execute("""SELECT b.*,s.nome,s.arquivado FROM eleicao_baixas b
+                           LEFT JOIN servidores s ON s.matricula=b.matricula ORDER BY b.data,b.id""").fetchall():
+        hist_el.append([r["matricula"], v(r, "nome"), "Baixa", r["data"], "", 1,
+                        v(r, "observacao"), v(r, "criado_por"), v(r, "criado_em"),
+                        "Arquivado" if v(r, "arquivado", 0) else "Ativo"])
+    add_sheet("Histórico Dias Eleição", ["Matrícula","Servidor","Tipo","Referência/Data","Dias concedidos","Dias utilizados","Justificativa/Observação","Usuário","Criado em","Status"], hist_el)
+
+    add_sheet("Importações", ["ID","Tipo","Arquivo","Usuário","Total","Importados","Atualizados","Erros","Criado em","Estornado"], [
+        [i["id"], i["tipo"], v(i, "arquivo"), v(i, "usuario_nome"), i["total_linhas"], i["criados"], i["atualizados"], i["erros"], i["criado_em"], "Sim" if i["estornado"] else "Não"]
+        for i in db.execute("SELECT * FROM importacoes ORDER BY criado_em,id").fetchall()
+    ])
+    add_sheet("Auditoria", ["Data","Usuário","CPF","Ação","Entidade","ID","Matrícula","Servidor","Detalhe"], [
+        [a["criado_em"], v(a, "usuario_nome"), v(a, "usuario_cpf"), a["acao"], a["entidade"],
+         v(a, "entidade_id"), v(a, "matricula"), v(a, "servidor_nome"), v(a, "detalhe")]
+        for a in db.execute("SELECT * FROM auditoria ORDER BY criado_em,id").fetchall()
+    ])
+    add_sheet("Visualizações", ["Data","Usuário","CPF","Tela","Caminho","Título"], [
+        [vis["criado_em"], v(vis, "usuario_nome"), v(vis, "usuario_cpf"), v(vis, "endpoint"), v(vis, "caminho"), v(vis, "titulo")]
+        for vis in db.execute("SELECT * FROM visualizacoes ORDER BY criado_em,id").fetchall()
+    ])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    resp = make_response(buf.getvalue())
+    resp.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    resp.headers["Content-Disposition"] = f"attachment; filename=backup_banco_horas_{date.today().isoformat()}.xlsx"
+    return resp
+
 @app.route("/admin/importacao/cadastros", methods=["POST"])
 @master_required
 def admin_importar_cadastros_auxiliares():
@@ -1504,55 +1828,44 @@ def admin_importar_cadastros_auxiliares():
     if not arquivo or not arquivo.filename:
         flash("Selecione um arquivo CSV.", "danger")
         return redirect(url_for("admin_importacao"))
-    conteudo = arquivo.read().decode("utf-8-sig", errors="replace")
-    leitor = csv.DictReader(io.StringIO(conteudo))
+    leitor = _csv_reader_upload(arquivo)
     campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
     if not {"tipo", "nome"}.issubset(campos):
         flash("CSV inválido. Campos obrigatórios: tipo e nome.", "danger")
         return redirect(url_for("admin_importacao"))
 
     db = get_db()
-    criados = atualizados = erros = total = 0
-    payload = []
+    total = 0
+    payload, sucessos, erros_lista = [], [], []
     vistos = set()
     for row in leitor:
         total += 1
+        linha = total + 1
         tipo = _normalizar_tipo_cadastro(_valor_csv(row, "tipo"))
         nome = _valor_csv(row, "nome", "descrição", "descricao")
         if tipo not in CADASTROS_TIPOS or not nome:
-            erros += 1
+            _erro_importacao(erros_lista, linha, nome, "Campo obrigatório não preenchido ou tipo inválido.")
             continue
         chave = (tipo, nome.strip().lower())
         if chave in vistos:
+            _erro_importacao(erros_lista, linha, nome, "Registro duplicado na própria planilha.")
             continue
         vistos.add(chave)
 
         atual = db.execute("SELECT * FROM cadastros_auxiliares WHERE tipo=? AND nome=?", (tipo, nome)).fetchone()
-        antes = dict(atual) if atual else None
         if atual:
-            if not atual["ativo"]:
-                db.execute("UPDATE cadastros_auxiliares SET ativo=1 WHERE id=?", (atual["id"],))
-                atualizados += 1
-                payload.append({"acao": "reativado", "antes": antes, "depois": {"id": atual["id"], "tipo": tipo, "nome": nome, "ativo": 1}})
-        else:
-            cid = db.insert(
-                "INSERT INTO cadastros_auxiliares (tipo,nome,ativo) VALUES (?,?,1)",
-                (tipo, nome)
-            )
-            criados += 1
-            payload.append({"acao": "criado", "antes": None, "depois": {"id": cid, "tipo": tipo, "nome": nome, "ativo": 1}})
+            _erro_importacao(erros_lista, linha, nome, f"{CADASTROS_TIPOS[tipo]['label'][:-1]} já existente. O cadastro não foi alterado.")
+            continue
+        cid = db.insert(
+            "INSERT INTO cadastros_auxiliares (tipo,nome,ativo) VALUES (?,?,1)",
+            (tipo, nome)
+        )
+        payload.append({"acao": "criado", "antes": None, "depois": {"id": cid, "tipo": tipo, "nome": nome, "ativo": 1}})
+        _sucesso_importacao(sucessos, linha, nome, f"Cadastro criado em {tipo}: {nome}")
 
-    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    imp_id = db.insert("""INSERT INTO importacoes
-        (tipo,arquivo,usuario_id,usuario_nome,usuario_cpf,total_linhas,criados,atualizados,erros,payload,criado_em)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-        ("cadastros_auxiliares", arquivo.filename, session.get("uid"), session.get("nome"), session.get("cpf"),
-         total, criados, atualizados, erros, json.dumps(payload, ensure_ascii=False), agora))
-    registrar_auditoria(db, "Importou cadastros auxiliares", "importacao", imp_id, None, None,
-                        f"Arquivo {arquivo.filename}; criados {criados}; reativados {atualizados}; erros {erros}.")
-    db.commit()
+    _registrar_relatorio_importacao("cadastros_auxiliares", arquivo.filename, total, sucessos, erros_lista, payload)
     limpar_cache()
-    flash(f"Importação de cadastros concluída: {criados} criado(s), {atualizados} reativado(s), {erros} erro(s).", "success")
+    flash(f"Importação de cadastros concluída: {len(sucessos)} importado(s), {len(erros_lista)} erro(s).", "success")
     return redirect(url_for("admin_importacao"))
 
 @app.route("/admin/importacao/<int:importacao_id>/estornar", methods=["POST"])
@@ -1588,6 +1901,17 @@ def admin_estornar_importacao(importacao_id):
                 db.execute("UPDATE cadastros_auxiliares SET ativo=? WHERE tipo=? AND nome=?",
                            (antes.get("ativo", 0), tipo, nome))
                 restaurados += 1
+    elif imp["tipo"] == "banco_horas":
+        for item in reversed(payload):
+            if item.get("acao") == "criado_lancamento" and item.get("id"):
+                db.execute("DELETE FROM consumos WHERE lancamento_id=?", (item["id"],))
+                db.execute("DELETE FROM lancamentos WHERE id=?", (item["id"],))
+                removidos += 1
+    elif imp["tipo"] == "banco_dias_eleicao":
+        for item in reversed(payload):
+            if item.get("acao") == "criado_eleicao_credito" and item.get("id"):
+                db.execute("DELETE FROM eleicao_creditos WHERE id=?", (item["id"],))
+                removidos += 1
     else:
         for item in reversed(payload):
             acao = item.get("acao")

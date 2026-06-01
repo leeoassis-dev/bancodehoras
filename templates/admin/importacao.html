@@ -4,73 +4,83 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <h4 class="mb-1"><i class="bi bi-upload me-2 text-primary"></i>Importação</h4>
-    <div class="text-muted small">Importe servidores em lote por CSV, acompanhe o histórico e estorne importações quando necessário.</div>
+    <div class="text-muted small">Importe dados em lote por CSV, sem substituir registros já existentes.</div>
   </div>
-  <div class="d-flex gap-2">
-    <a href="/admin/importacao/modelo" class="btn btn-outline-primary btn-sm">
-      <i class="bi bi-filetype-csv me-1"></i>Modelo servidores
-    </a>
-    <a href="/admin/importacao/modelo-cadastros" class="btn btn-outline-success btn-sm">
-      <i class="bi bi-filetype-csv me-1"></i>Modelo cadastros
-    </a>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/admin/importacao/modelo" class="btn btn-outline-primary btn-sm"><i class="bi bi-filetype-csv me-1"></i>Modelo servidores</a>
+    <a href="/admin/importacao/modelo-cadastros" class="btn btn-outline-success btn-sm"><i class="bi bi-filetype-csv me-1"></i>Modelo cadastros</a>
+    <a href="/admin/importacao/modelo-banco-horas" class="btn btn-outline-warning btn-sm"><i class="bi bi-filetype-csv me-1"></i>Modelo banco de horas</a>
+    <a href="/admin/importacao/modelo-eleicao" class="btn btn-outline-dark btn-sm"><i class="bi bi-filetype-csv me-1"></i>Modelo eleição</a>
   </div>
 </div>
 
+<div class="alert alert-info small">
+  <i class="bi bi-info-circle me-1"></i>
+  Registros já existentes são recusados individualmente e exibidos no relatório pós-importação. Os demais registros válidos são importados normalmente.
+</div>
+
 <div class="row g-3 mb-4">
-  <div class="col-lg-5">
-    <div class="card p-3">
+  <div class="col-xl-3 col-md-6">
+    <div class="card p-3 h-100">
       <h6 class="fw-bold mb-3"><i class="bi bi-people me-1 text-primary"></i>Importar Servidores</h6>
-      <form method="post" action="/admin/importacao/servidores" enctype="multipart/form-data">
+      <form method="post" action="/admin/importacao/servidores" enctype="multipart/form-data" data-process-form data-process-title="Importação de servidores">
         <label class="form-label small fw-semibold">Arquivo CSV</label>
         <input type="file" name="arquivo" class="form-control" accept=".csv,text/csv" required>
-        <div class="form-text">
-          Campos aceitos: matrícula, nome, CPF, e-mail, cargo, secretaria, setor/departamento e função gratificada.
-        </div>
-        <button class="btn btn-primary mt-3">
-          <i class="bi bi-upload me-1"></i>Importar
-        </button>
+        <div class="form-text">Matrícula, nome, CPF, e-mail, cargo, secretaria, departamento e FG.</div>
+        <button class="btn btn-primary mt-3"><i class="bi bi-upload me-1"></i>Importar</button>
       </form>
     </div>
   </div>
-  <div class="col-lg-5">
-    <div class="card p-3">
+  <div class="col-xl-3 col-md-6">
+    <div class="card p-3 h-100">
       <h6 class="fw-bold mb-3"><i class="bi bi-folder-check me-1 text-success"></i>Importar Cadastros</h6>
-      <form method="post" action="/admin/importacao/cadastros" enctype="multipart/form-data">
+      <form method="post" action="/admin/importacao/cadastros" enctype="multipart/form-data" data-process-form data-process-title="Importação de cadastros">
         <label class="form-label small fw-semibold">Arquivo CSV</label>
         <input type="file" name="arquivo" class="form-control" accept=".csv,text/csv" required>
-        <div class="form-text">
-          Campos obrigatórios: tipo e nome. Tipos aceitos: secretaria, departamento/local de trabalho e cargo.
-        </div>
-        <button class="btn btn-success mt-3">
-          <i class="bi bi-upload me-1"></i>Importar cadastros
-        </button>
+        <div class="form-text">Tipos aceitos: secretaria, departamento/local de trabalho e cargo.</div>
+        <button class="btn btn-success mt-3"><i class="bi bi-upload me-1"></i>Importar cadastros</button>
       </form>
     </div>
   </div>
-  <div class="col-lg-2">
-    <div class="card p-3">
-      <h6 class="fw-bold mb-2"><i class="bi bi-shield-check me-1 text-success"></i>Controle</h6>
-      <p class="small text-muted mb-2">
-        Cada importação salva um histórico com usuário, data, arquivo, quantidade de registros criados/atualizados e um pacote de estorno.
-      </p>
-      <p class="small text-muted mb-0">
-        O estorno remove servidores criados pela importação e restaura os dados anteriores dos servidores que foram atualizados.
-      </p>
+  <div class="col-xl-3 col-md-6">
+    <div class="card p-3 h-100">
+      <h6 class="fw-bold mb-3"><i class="bi bi-clock-history me-1 text-warning"></i>Importar Banco de Horas</h6>
+      <form method="post" action="/admin/importacao/banco-horas" enctype="multipart/form-data" data-process-form data-process-title="Importação de banco de horas">
+        <label class="form-label small fw-semibold">Arquivo CSV</label>
+        <input type="file" name="arquivo" class="form-control" accept=".csv,text/csv" required>
+        <label class="form-label small fw-semibold mt-2">Competência padrão</label>
+        <input type="text" name="competencia" class="form-control" placeholder="Ex: 04/2026">
+        <label class="form-label small fw-semibold mt-2">Justificativa padrão</label>
+        <textarea name="justificativa" class="form-control" rows="2" placeholder="Obrigatória se a linha não informar justificativa"></textarea>
+        <button class="btn btn-warning text-white mt-3"><i class="bi bi-upload me-1"></i>Importar horas</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-xl-3 col-md-6">
+    <div class="card p-3 h-100">
+      <h6 class="fw-bold mb-3"><i class="bi bi-calendar2-check me-1 text-dark"></i>Importar Dias de Eleição</h6>
+      <form method="post" action="/admin/importacao/eleicao" enctype="multipart/form-data" data-process-form data-process-title="Importação de dias de eleição">
+        <label class="form-label small fw-semibold">Arquivo CSV</label>
+        <input type="file" name="arquivo" class="form-control" accept=".csv,text/csv" required>
+        <label class="form-label small fw-semibold mt-2">Referência padrão</label>
+        <input type="text" name="referencia" class="form-control" placeholder="Ex: Eleições 2024">
+        <label class="form-label small fw-semibold mt-2">Justificativa padrão</label>
+        <textarea name="justificativa" class="form-control" rows="2" placeholder="Obrigatória se a linha não informar justificativa"></textarea>
+        <button class="btn btn-dark mt-3"><i class="bi bi-upload me-1"></i>Importar eleição</button>
+      </form>
     </div>
   </div>
 </div>
 
 <div class="card">
-  <div class="card-header bg-white fw-semibold">
-    <i class="bi bi-clock-history me-1"></i>Histórico de Importações
-  </div>
+  <div class="card-header bg-white fw-semibold"><i class="bi bi-clock-history me-1"></i>Histórico de Importações</div>
   {% if historico %}
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
       <thead class="table-dark">
         <tr>
           <th>Data</th><th>Arquivo</th><th>Usuário</th><th>Tipo</th>
-          <th class="text-center">Linhas</th><th class="text-center">Criados</th>
+          <th class="text-center">Linhas</th><th class="text-center">Importados</th>
           <th class="text-center">Atualizados</th><th class="text-center">Erros</th>
           <th>Status</th><th class="text-center">Ações</th>
         </tr>
@@ -80,10 +90,7 @@
         <tr>
           <td class="small text-nowrap">{{ imp.criado_em|fmt_datetime }}</td>
           <td class="fw-semibold">{{ imp.arquivo or '-' }}</td>
-          <td>
-            <div>{{ imp.usuario_nome or '-' }}</div>
-            <div class="text-muted small">CPF {{ imp.usuario_cpf or '-' }}</div>
-          </td>
+          <td><div>{{ imp.usuario_nome or '-' }}</div><div class="text-muted small">CPF {{ imp.usuario_cpf or '-' }}</div></td>
           <td><span class="badge bg-primary">{{ imp.tipo }}</span></td>
           <td class="text-center">{{ imp.total_linhas }}</td>
           <td class="text-center text-success fw-semibold">{{ imp.criados }}</td>
@@ -100,10 +107,8 @@
           <td class="text-center">
             {% if not imp.estornado %}
             <form method="post" action="/admin/importacao/{{ imp.id }}/estornar"
-                  onsubmit="return confirm('Estornar esta importação? Servidores criados serão removidos e servidores atualizados voltarão ao estado anterior.')">
-              <button class="btn btn-sm btn-outline-warning" title="Estornar importação">
-                <i class="bi bi-arrow-counterclockwise"></i>
-              </button>
+                  onsubmit="return confirm('Estornar esta importação? Os registros criados por ela serão removidos quando possível.')">
+              <button class="btn btn-sm btn-outline-warning" title="Estornar importação"><i class="bi bi-arrow-counterclockwise"></i></button>
             </form>
             {% else %}
               <span class="text-muted">-</span>
@@ -122,4 +127,121 @@
   {% endif %}
 </div>
 
+<div class="modal fade" id="modalProcessamento" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="procTitulo">Processamento em andamento</h5>
+      </div>
+      <div class="modal-body">
+        <div class="progress mb-3" style="height: 18px;">
+          <div id="procBarra" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 10%">10%</div>
+        </div>
+        <div id="procMensagem" class="small text-muted">Lendo arquivo enviado...</div>
+        <div class="small mt-3 border rounded p-2 bg-light">
+          <div><strong>Etapa atual:</strong> <span id="procEtapa">Preparando validação</span></div>
+          <div><strong>Status:</strong> botões bloqueados para evitar envio duplicado.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if relatorio %}
+<div class="modal fade" id="modalRelatorioImportacao" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="bi bi-clipboard-data me-2"></i>Relatório pós-importação</h5>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2 mb-3">
+          <div class="col-md-3"><div class="border rounded p-2"><div class="small text-muted">Tipo</div><strong>{{ relatorio.tipo }}</strong></div></div>
+          <div class="col-md-3"><div class="border rounded p-2"><div class="small text-muted">Registros lidos</div><strong>{{ relatorio.total }}</strong></div></div>
+          <div class="col-md-3"><div class="border rounded p-2"><div class="small text-muted">Importados</div><strong class="text-success">{{ relatorio.sucessos_qtd }}</strong></div></div>
+          <div class="col-md-3"><div class="border rounded p-2"><div class="small text-muted">Não importados</div><strong class="text-danger">{{ relatorio.erros_qtd }}</strong></div></div>
+        </div>
+        <div class="small text-muted mb-3">Arquivo: {{ relatorio.arquivo }} · Data: {{ relatorio.data_hora }} · Usuário: {{ relatorio.usuario }}</div>
+
+        <h6 class="text-danger fw-bold"><i class="bi bi-exclamation-triangle me-1"></i>Registros com erro</h6>
+        {% if relatorio.erros %}
+        {% if relatorio.erros_qtd > relatorio.erros|length %}
+        <div class="alert alert-warning py-2 small">Exibindo os primeiros {{ relatorio.erros|length }} erros de {{ relatorio.erros_qtd }} registro(s) não importado(s).</div>
+        {% endif %}
+        <div class="table-responsive mb-4">
+          <table class="table table-sm table-bordered align-middle">
+            <thead class="table-danger"><tr><th>Linha</th><th>Identificador</th><th>Motivo</th></tr></thead>
+            <tbody>
+              {% for e in relatorio.erros %}
+              <tr><td>{{ e.linha }}</td><td>{{ e.identificador }}</td><td>{{ e.motivo }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+          <p class="text-muted small">Nenhum erro encontrado.</p>
+        {% endif %}
+
+        <h6 class="text-success fw-bold"><i class="bi bi-check-circle me-1"></i>Registros importados com sucesso</h6>
+        {% if relatorio.sucessos %}
+        {% if relatorio.sucessos_qtd > relatorio.sucessos|length %}
+        <div class="alert alert-info py-2 small">Exibindo os primeiros {{ relatorio.sucessos|length }} sucessos de {{ relatorio.sucessos_qtd }} registro(s) importado(s).</div>
+        {% endif %}
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle">
+            <thead class="table-success"><tr><th>Linha</th><th>Identificador</th><th>Detalhe</th></tr></thead>
+            <tbody>
+              {% for s in relatorio.sucessos %}
+              <tr><td>{{ s.linha }}</td><td>{{ s.identificador }}</td><td>{{ s.detalhe }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+          <p class="text-muted small">Nenhum registro importado.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('[data-process-form]').forEach(form => {
+  form.addEventListener('submit', () => {
+    const modal = new bootstrap.Modal(document.getElementById('modalProcessamento'));
+    const titulo = form.dataset.processTitle || 'Processamento em andamento';
+    const etapas = [
+      ['Lendo arquivo enviado...', 'Validando estrutura da planilha', 18],
+      ['Conferindo servidores e cadastros...', 'Conferindo registros cadastrados', 38],
+      ['Verificando registros duplicados...', 'Validando conflitos', 58],
+      ['Registrando informações no histórico...', 'Processando registros válidos', 78],
+      ['Gerando relatório da importação...', 'Finalizando', 92]
+    ];
+    document.getElementById('procTitulo').textContent = titulo;
+    form.querySelectorAll('button,input,textarea').forEach(el => el.disabled = true);
+    modal.show();
+    let i = 0;
+    const timer = setInterval(() => {
+      const etapa = etapas[Math.min(i, etapas.length - 1)];
+      document.getElementById('procMensagem').textContent = etapa[0];
+      document.getElementById('procEtapa').textContent = etapa[1];
+      const barra = document.getElementById('procBarra');
+      barra.style.width = etapa[2] + '%';
+      barra.textContent = etapa[2] + '%';
+      i++;
+      if (i >= etapas.length) clearInterval(timer);
+    }, 700);
+  });
+});
+{% if relatorio %}
+document.addEventListener('DOMContentLoaded', () => {
+  new bootstrap.Modal(document.getElementById('modalRelatorioImportacao')).show();
+});
+{% endif %}
+</script>
 {% endblock %}
