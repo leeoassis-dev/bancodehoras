@@ -622,13 +622,13 @@ def usuario_pode_ver_matricula(db, matricula):
     nivel = session.get('nivel')
     if nivel == 'master':
         return True
-    if nivel == 'servidor':
-        if session.get('matricula') != matricula:
-            return False
+    if session.get('matricula') == matricula:
         return bool(db.execute(
             "SELECT 1 FROM servidores WHERE matricula=? AND arquivado=0",
             (matricula,)
         ).fetchone())
+    if nivel == 'servidor':
+        return False
     if nivel in ('secretario', 'chefia'):
         vinculos = session.get('vinculos') or []
         if not vinculos:
@@ -642,6 +642,21 @@ def usuario_pode_ver_matricula(db, matricula):
         campo = srv['secretaria'] if nivel == 'secretario' else srv['setor']
         return campo in vinculos
     return False
+
+def filtro_consulta_vinculos(nivel, vinculos, matricula_propria, alias='s'):
+    """Retorna filtro para consulta: vínculos concedidos ou próprio servidor logado."""
+    partes, params = [], []
+    if nivel in ('secretario', 'chefia') and vinculos:
+        ph = ','.join('?' * len(vinculos))
+        campo = 'secretaria' if nivel == 'secretario' else 'setor'
+        partes.append(f"{alias}.{campo} IN ({ph})")
+        params.extend(vinculos)
+    if matricula_propria:
+        partes.append(f"{alias}.matricula=?")
+        params.append(matricula_propria)
+    if not partes:
+        return " AND 1=0", []
+    return " AND (" + " OR ".join(partes) + ")", params
 
 def ultimos_n_meses(n=6):
     hoje = date.today()
@@ -2300,18 +2315,13 @@ def consulta():
     set_ = request.args.get('setor','').strip()
 
     vinculos = session.get('vinculos', [])
+    matricula_propria = session.get('matricula') or ''
     filtro = "WHERE s.arquivado=0"
     params = []
 
-    if vinculos:
-        ph = ','.join('?' * len(vinculos))
-        if nivel == 'secretario':
-            filtro += f" AND s.secretaria IN ({ph})"; params.extend(vinculos)
-        elif nivel == 'chefia':
-            filtro += f" AND s.setor IN ({ph})";      params.extend(vinculos)
-    else:
-        # Sem vínculo configurado → nenhum servidor visível
-        filtro += " AND 1=0"
+    acesso_sql, acesso_params = filtro_consulta_vinculos(nivel, vinculos, matricula_propria)
+    filtro += acesso_sql
+    params.extend(acesso_params)
 
     if busca:
         filtro += " AND (s.matricula LIKE ? OR s.nome LIKE ?)"; params += [f"%{busca}%",f"%{busca}%"]
@@ -2331,14 +2341,9 @@ def consulta():
         FROM servidores s {filtro} ORDER BY s.nome""", params).fetchall()
     filtro_base = "WHERE s.arquivado=0"
     params_base = []
-    if vinculos:
-        ph = ','.join('?' * len(vinculos))
-        if nivel == 'secretario':
-            filtro_base += f" AND s.secretaria IN ({ph})"; params_base.extend(vinculos)
-        elif nivel == 'chefia':
-            filtro_base += f" AND s.setor IN ({ph})"; params_base.extend(vinculos)
-    else:
-        filtro_base += " AND 1=0"
+    acesso_base_sql, acesso_base_params = filtro_consulta_vinculos(nivel, vinculos, matricula_propria)
+    filtro_base += acesso_base_sql
+    params_base.extend(acesso_base_params)
     secretarias = [r[0] for r in db.execute(f"SELECT DISTINCT s.secretaria FROM servidores s {filtro_base} AND s.secretaria IS NOT NULL AND s.secretaria!='' ORDER BY s.secretaria", params_base).fetchall()]
     setores = [r[0] for r in db.execute(f"SELECT DISTINCT s.setor FROM servidores s {filtro_base} AND s.setor IS NOT NULL AND s.setor!='' ORDER BY s.setor", params_base).fetchall()]
 
@@ -2816,19 +2821,15 @@ def eleicao_index():
 
     # Restrição de vínculo para secretario/chefia
     vinculos = session.get('vinculos', []) if nivel in ('secretario', 'chefia') else []
+    matricula_propria = session.get('matricula') or ''
 
     filtro = "WHERE s.arquivado=0"
     params = []
 
     if nivel in ('secretario', 'chefia'):
-        if not vinculos:
-            filtro += " AND 1=0"
-        else:
-            ph = ','.join('?' * len(vinculos))
-            if nivel == 'secretario':
-                filtro += f" AND s.secretaria IN ({ph})"; params.extend(vinculos)
-            else:
-                filtro += f" AND s.setor IN ({ph})"; params.extend(vinculos)
+        acesso_sql, acesso_params = filtro_consulta_vinculos(nivel, vinculos, matricula_propria)
+        filtro += acesso_sql
+        params.extend(acesso_params)
     else:
         # master: só mostra quem tem registro de eleição
         filtro += """ AND (EXISTS (SELECT 1 FROM eleicao_creditos WHERE matricula=s.matricula)
@@ -2856,12 +2857,10 @@ def eleicao_index():
     # Listas de filtro
     base_filtro = "WHERE s.arquivado=0"
     base_params = []
-    if nivel in ('secretario', 'chefia') and vinculos:
-        ph = ','.join('?' * len(vinculos))
-        if nivel == 'secretario':
-            base_filtro += f" AND s.secretaria IN ({ph})"; base_params.extend(vinculos)
-        else:
-            base_filtro += f" AND s.setor IN ({ph})"; base_params.extend(vinculos)
+    if nivel in ('secretario', 'chefia'):
+        acesso_base_sql, acesso_base_params = filtro_consulta_vinculos(nivel, vinculos, matricula_propria)
+        base_filtro += acesso_base_sql
+        base_params.extend(acesso_base_params)
     secs  = [r[0] for r in db.execute(f"SELECT DISTINCT s.secretaria FROM servidores s {base_filtro} AND s.secretaria IS NOT NULL AND s.secretaria!='' ORDER BY s.secretaria", base_params).fetchall()]
     sets_ = [r[0] for r in db.execute(f"SELECT DISTINCT s.setor FROM servidores s {base_filtro} AND s.setor IS NOT NULL AND s.setor!='' ORDER BY s.setor", base_params).fetchall()]
 
