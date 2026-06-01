@@ -401,6 +401,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById('modalConfirmacao');
     if (el) {
       const m = new bootstrap.Modal(el);
+      el.addEventListener('shown.bs.modal', () => {
+        if (document.getElementById('modalRelatorioImportacao')) {
+          el.style.zIndex = '1075';
+          const backdrops = document.querySelectorAll('.modal-backdrop');
+          const lastBackdrop = backdrops[backdrops.length - 1];
+          if (lastBackdrop) lastBackdrop.style.zIndex = '1070';
+        }
+      }, { once: true });
       m.show();
       document.getElementById('btnConfirmacaoOk')?.addEventListener('click', () => m.hide());
     }
