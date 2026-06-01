@@ -1,74 +1,374 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Login — Banco de Horas Ibiporã</title>
+  <title>Acesso ao Sistema — Prefeitura Municipal de Ibiporã</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <style>
-    body { background:#1a3a6b; min-height:100vh; display:flex; align-items:center; }
-    .card { border:none; box-shadow:0 8px 32px rgba(0,0,0,.25); border-radius:16px; }
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f2244;
+    }
+
+    /* ── Painel esquerdo ──────────────────────────────────── */
+    .painel-esquerdo {
+      flex: 1.15;
+      background: linear-gradient(155deg, #0f2244 0%, #1a3a6b 55%, #1e4a8a 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 3rem 3.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Ondas decorativas */
+    .painel-esquerdo::before {
+      content: '';
+      position: absolute;
+      bottom: -120px; right: -120px;
+      width: 420px; height: 420px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.04);
+    }
+    .painel-esquerdo::after {
+      content: '';
+      position: absolute;
+      top: -80px; left: -80px;
+      width: 300px; height: 300px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.03);
+    }
+
+    .brasao-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 1.1rem;
+      margin-bottom: 2.8rem;
+      position: relative; z-index: 1;
+    }
+    .brasao-img {
+      width: 72px; height: 72px;
+      object-fit: contain;
+      filter: drop-shadow(0 2px 8px rgba(0,0,0,.35));
+    }
+    .brasao-fallback {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.12);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2rem; color: #fff;
+      border: 2px solid rgba(255,255,255,.2);
+    }
+    .prefeitura-nome {
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: .01em;
+    }
+    .prefeitura-uf {
+      color: rgba(255,255,255,.6);
+      font-size: .8rem;
+      font-weight: 400;
+      margin-top: .1rem;
+    }
+
+    .sistema-titulo {
+      position: relative; z-index: 1;
+    }
+    .sistema-titulo h1 {
+      color: #fff;
+      font-size: 2.4rem;
+      font-weight: 800;
+      line-height: 1.15;
+      margin: 0 0 .4rem;
+    }
+    .sistema-titulo h1 span {
+      color: #60a5fa;
+    }
+    .sistema-titulo p {
+      color: rgba(255,255,255,.65);
+      font-size: .95rem;
+      margin: 0 0 2rem;
+    }
+
+    /* Cards de módulos */
+    .modulo-card {
+      display: flex;
+      align-items: flex-start;
+      gap: .9rem;
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: .75rem;
+      padding: .9rem 1.1rem;
+      margin-bottom: .8rem;
+      transition: background .2s;
+    }
+    .modulo-card:hover { background: rgba(255,255,255,.1); }
+    .modulo-icon {
+      width: 40px; height: 40px; border-radius: .5rem;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.15rem; flex-shrink: 0;
+    }
+    .modulo-icon.horas   { background: rgba(96,165,250,.2); color: #93c5fd; }
+    .modulo-icon.eleicao { background: rgba(217,119,6,.2);  color: #fde68a; }
+    .modulo-text strong  { color: #fff; font-size: .88rem; display: block; }
+    .modulo-text span    { color: rgba(255,255,255,.55); font-size: .78rem; }
+
+    /* Rodapé esquerdo */
+    .painel-footer {
+      position: relative; z-index: 1;
+      margin-top: 2.5rem;
+    }
+    .painel-footer .lema {
+      color: rgba(255,255,255,.35);
+      font-size: .75rem;
+      font-style: italic;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+    .painel-footer .ano {
+      color: rgba(255,255,255,.22);
+      font-size: .7rem;
+      margin-top: .25rem;
+    }
+
+    /* ── Painel direito ───────────────────────────────────── */
+    .painel-direito {
+      flex: 0 0 420px;
+      background: #f4f6f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2.5rem 2rem;
+    }
+
+    .login-box {
+      width: 100%;
+      max-width: 360px;
+    }
+
+    .login-box .topo {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .login-box .topo .avatar {
+      width: 60px; height: 60px;
+      background: #1a3a6b;
+      border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 1.6rem; color: #fff;
+      margin-bottom: .8rem;
+      box-shadow: 0 4px 16px rgba(26,58,107,.3);
+    }
+    .login-box .topo h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #1a3a6b;
+      margin: 0;
+    }
+    .login-box .topo p {
+      color: #6b7280;
+      font-size: .82rem;
+      margin: .25rem 0 0;
+    }
+
+    .card-form {
+      background: #fff;
+      border-radius: 1rem;
+      padding: 2rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,.08);
+    }
+
+    .form-label { font-size: .85rem; font-weight: 600; color: #374151; }
+    .form-control {
+      border: 1.5px solid #e5e7eb;
+      border-radius: .6rem;
+      font-size: .95rem;
+      padding: .65rem .9rem;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .form-control:focus {
+      border-color: #1a3a6b;
+      box-shadow: 0 0 0 3px rgba(26,58,107,.12);
+    }
+
+    .btn-entrar {
+      background: #1a3a6b;
+      color: #fff;
+      border: none;
+      border-radius: .65rem;
+      width: 100%;
+      padding: .75rem;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: .02em;
+      transition: background .18s, transform .12s;
+    }
+    .btn-entrar:hover { background: #1e4a8a; transform: translateY(-1px); }
+    .btn-entrar:active { transform: translateY(0); }
+
+    .links-bottom {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 1.1rem;
+      font-size: .8rem;
+    }
+    .links-bottom a { color: #6b7280; text-decoration: none; }
+    .links-bottom a:hover { color: #1a3a6b; }
+    .links-bottom a.criar { color: #1a3a6b; font-weight: 600; }
+
+    /* Responsivo */
+    @media (max-width: 768px) {
+      body { flex-direction: column; }
+      .painel-esquerdo {
+        padding: 2rem 1.5rem 1.8rem;
+        flex: 0 0 auto;
+      }
+      .painel-esquerdo::before, .painel-esquerdo::after { display: none; }
+      .sistema-titulo h1 { font-size: 1.7rem; }
+      .painel-direito { flex: 1; padding: 2rem 1.25rem; }
+    }
   </style>
 </head>
 <body>
-<div class="container">
-  <div class="row justify-content-center">
-    <div class="col-md-5 col-lg-4">
 
-      <div class="text-center mb-4">
-        <i class="bi bi-clock-history text-white" style="font-size:3rem"></i>
-        <h4 class="text-white mt-2 mb-0">Banco de Horas</h4>
-        <p class="text-white-50 small">Prefeitura Municipal de Ibiporã</p>
-      </div>
+<!-- ── Painel Esquerdo ─────────────────────────────────────────────────────── -->
+<div class="painel-esquerdo">
 
-      <div class="card p-4">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% for cat, msg in messages %}
-            <div class="alert alert-{{ cat }} py-2 small">{{ msg }}</div>
-          {% endfor %}
-        {% endwith %}
-
-        <h5 class="mb-4 text-center fw-bold">Acesso ao Sistema</h5>
-
-        <form method="post" action="{{ url_for('login') }}">
-          <div class="mb-3">
-            <label class="form-label fw-semibold">CPF</label>
-            <input type="text" name="cpf" id="cpf" class="form-control form-control-lg"
-                   placeholder="000.000.000-00" maxlength="14" required autofocus>
-          </div>
-          <div class="mb-4">
-            <label class="form-label fw-semibold">Senha</label>
-            <input type="password" name="senha" class="form-control form-control-lg"
-                   placeholder="Sua senha" required>
-          </div>
-          <button type="submit" class="btn btn-primary w-100 btn-lg fw-semibold">
-            <i class="bi bi-box-arrow-in-right me-2"></i>Entrar
-          </button>
-        </form>
-
-        <div class="text-center mt-3 d-flex justify-content-between">
-          <a href="{{ url_for('recuperar_senha') }}" class="text-muted small">
-            <i class="bi bi-key me-1"></i>Esqueci minha senha
-          </a>
-          <a href="{{ url_for('criar_conta') }}" class="text-primary small fw-semibold">
-            <i class="bi bi-person-plus me-1"></i>Criar conta
-          </a>
-        </div>
-      </div>
-
+  <!-- Identidade da prefeitura -->
+  <div class="brasao-wrapper">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Bras%C3%A3o_de_Ibipor%C3%A3_%28Paran%C3%A1%29.png/100px-Bras%C3%A3o_de_Ibipor%C3%A3_%28Paran%C3%A1%29.png"
+         alt="Brasão de Ibiporã" class="brasao-img"
+         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+    <div class="brasao-fallback" style="display:none"><i class="bi bi-building"></i></div>
+    <div>
+      <div class="prefeitura-nome">Prefeitura Municipal<br>de Ibiporã</div>
+      <div class="prefeitura-uf">Estado do Paraná &nbsp;·&nbsp; Brasil</div>
     </div>
   </div>
+
+  <!-- Título do sistema -->
+  <div class="sistema-titulo">
+    <h1>Sistema de<br><span>Gestão de</span><br>Banco de Horas</h1>
+    <p>Controle integrado de horas extras, compensações e trabalho eleitoral dos servidores municipais.</p>
+
+    <!-- Módulos disponíveis -->
+    <div class="modulo-card">
+      <div class="modulo-icon horas">
+        <i class="bi bi-clock-history"></i>
+      </div>
+      <div class="modulo-text">
+        <strong>Banco de Horas</strong>
+        <span>Lançamento, compensação e pagamento de horas extras com FIFO automático</span>
+      </div>
+    </div>
+
+    <div class="modulo-card">
+      <div class="modulo-icon eleicao">
+        <i class="bi bi-calendar2-check"></i>
+      </div>
+      <div class="modulo-text">
+        <strong>Banco de Dias de Eleição</strong>
+        <span>Registro e controle de dias por trabalho eleitoral — Eleições 2020, 2022 e 2024</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rodapé esquerdo -->
+  <div class="painel-footer">
+    <div class="lema"><i class="bi bi-quote me-1"></i>Pax et Labor — Paz e Trabalho</div>
+    <div class="ano">Município de Ibiporã · Fundado em 08/11/1947 · Paraná</div>
+  </div>
+
 </div>
+
+<!-- ── Painel Direito (formulário) ────────────────────────────────────────── -->
+<div class="painel-direito">
+  <div class="login-box">
+
+    <div class="topo">
+      <div class="avatar"><i class="bi bi-person-lock"></i></div>
+      <h2>Acesso ao Sistema</h2>
+      <p>Entre com suas credenciais para continuar</p>
+    </div>
+
+    <div class="card-form">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}
+          <div class="alert alert-{{ cat }} py-2 small mb-3">{{ msg }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      <form method="post" action="{{ url_for('login') }}">
+        <div class="mb-3">
+          <label class="form-label">CPF</label>
+          <input type="text" name="cpf" id="cpf" class="form-control"
+                 placeholder="000.000.000-00" maxlength="14" required autofocus>
+        </div>
+        <div class="mb-4">
+          <label class="form-label">Senha</label>
+          <div class="position-relative">
+            <input type="password" name="senha" id="senha" class="form-control"
+                   placeholder="Sua senha" required style="padding-right:2.8rem">
+            <button type="button" class="btn btn-link position-absolute end-0 top-50 translate-middle-y pe-2 text-muted"
+                    style="border:none; background:none; font-size:1rem;"
+                    onclick="toggleSenha()" tabindex="-1" title="Mostrar/ocultar senha">
+              <i class="bi bi-eye" id="iconeOlho"></i>
+            </button>
+          </div>
+        </div>
+        <button type="submit" class="btn-entrar">
+          <i class="bi bi-box-arrow-in-right me-2"></i>Entrar
+        </button>
+      </form>
+
+      <div class="links-bottom">
+        <a href="{{ url_for('recuperar_senha') }}">
+          <i class="bi bi-key me-1"></i>Esqueci minha senha
+        </a>
+        <a href="{{ url_for('criar_conta') }}" class="criar">
+          <i class="bi bi-person-plus me-1"></i>Criar conta
+        </a>
+      </div>
+    </div>
+
+    <p class="text-center mt-3" style="color:#9ca3af; font-size:.72rem;">
+      Secretaria de Gestão de Pessoas &nbsp;·&nbsp; Prefeitura de Ibiporã
+    </p>
+
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 document.getElementById('cpf').addEventListener('input', function () {
-  let v = this.value.replace(/\D/g, '').slice(0,11);
-  if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');
-  else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{0,3})/,'$1.$2.$3');
-  else if (v.length > 3) v = v.replace(/(\d{3})(\d{0,3})/,'$1.$2');
+  let v = this.value.replace(/\D/g, '').slice(0, 11);
+  if (v.length > 9)      v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{0,3})/, '$1.$2.$3');
+  else if (v.length > 3) v = v.replace(/(\d{3})(\d{0,3})/, '$1.$2');
   this.value = v;
 });
+
+function toggleSenha() {
+  const campo = document.getElementById('senha');
+  const icone = document.getElementById('iconeOlho');
+  if (campo.type === 'password') {
+    campo.type = 'text';
+    icone.className = 'bi bi-eye-slash';
+  } else {
+    campo.type = 'password';
+    icone.className = 'bi bi-eye';
+  }
+}
 </script>
 </body>
 </html>
