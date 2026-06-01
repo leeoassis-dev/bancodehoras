@@ -234,11 +234,54 @@
 
 <div class="container-fluid px-4 pb-5 {% if u_nivel %}pt-4{% endif %}">
   {% with messages = get_flashed_messages(with_categories=true) %}
+    {% set success_msgs = [] %}
     {% for cat, msg in messages %}
-      <div class="alert alert-{{ cat }} alert-dismissible fade show">
-        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-      </div>
+      {% if cat == 'success' %}
+        {% if success_msgs.append(msg) %}{% endif %}
+      {% else %}
+        <div class="alert alert-{{ cat }} alert-dismissible fade show">
+          {{ msg|safe }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endif %}
     {% endfor %}
+
+    {% if success_msgs %}
+    <!-- Modal de confirmação de registro -->
+    <div class="modal fade" id="modalConfirmacao" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border:none; border-radius:.9rem; overflow:hidden;">
+          <div class="modal-header py-3 text-white" style="background:#198754;">
+            <div class="d-flex align-items-center gap-2 w-100">
+              <i class="bi bi-check-circle-fill fs-4"></i>
+              <h5 class="modal-title mb-0 fw-bold">Registro Confirmado</h5>
+            </div>
+          </div>
+          <div class="modal-body py-4 px-4">
+            {% for msg in success_msgs %}
+            {% set partes = msg.split('\n') %}
+            <div class="{{ 'mb-3 pb-3 border-bottom' if not loop.last }}">
+              {% if partes|length > 1 %}
+                <div class="fw-bold fs-6 text-dark mb-1">{{ partes[0] }}</div>
+                {% for linha in partes[1:] %}
+                  <div class="text-muted">{{ linha }}</div>
+                {% endfor %}
+              {% else %}
+                <div class="text-dark">{{ msg }}</div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          <div class="modal-footer justify-content-center py-3 border-0">
+            <button type="button" class="btn btn-success px-5 fw-bold"
+                    data-bs-dismiss="modal" id="btnConfirmacaoOk">
+              <i class="bi bi-check-lg me-1"></i>OK
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>window.__showConfirmModal = true;</script>
+    {% endif %}
   {% endwith %}
   {% block content %}{% endblock %}
 </div>
@@ -263,6 +306,16 @@ function fmtDatetimeBR(s) {
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+  // ── Modal de confirmação de registro ─────────────────────────────────────
+  if (window.__showConfirmModal) {
+    const el = document.getElementById('modalConfirmacao');
+    if (el) {
+      const m = new bootstrap.Modal(el);
+      m.show();
+      document.getElementById('btnConfirmacaoOk')?.addEventListener('click', () => m.hide());
+    }
+  }
+
   const body = document.body;
   const sidebarToggle = document.getElementById('sidebarToggle');
   const mobileSidebarToggle = document.getElementById('mobileSidebarToggle');

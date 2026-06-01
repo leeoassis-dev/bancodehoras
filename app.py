@@ -984,7 +984,7 @@ def lancamentos(matricula):
                 f"Data {data}; horas base {hrs}; adicional {pct}%; crédito {minutos_para_horas(mc)}; descrição: {desc or '-'}"
             )
             db.commit()
-            flash(f"Lançamento: {hrs} + {pct}% = {minutos_para_horas(mc)}","success")
+            flash(f"{srv['nome']} ({matricula})\nLançamento de {hrs} + {pct}% = {minutos_para_horas(mc)} creditado no banco.","success")
             if request.form.get('_source') == 'dashboard':
                 return redirect(url_for("dashboard"))
             return redirect(url_for("lancamentos", matricula=matricula))
@@ -1035,9 +1035,9 @@ def compensacoes(matricula):
             db.commit()
             novo_saldo = saldo - mc
             if novo_saldo < 0:
-                flash(f"Compensação registrada. Atenção: o saldo ficou negativo em {minutos_para_horas(novo_saldo)}.", "warning")
+                flash(f"{srv['nome']} ({matricula})\nCompensação de {minutos_para_horas(mc)} registrada. Atenção: saldo ficou negativo em {minutos_para_horas(novo_saldo)}.", "warning")
             else:
-                flash(f"Compensação de {minutos_para_horas(mc)} registrada (FIFO).", "success")
+                flash(f"{srv['nome']} ({matricula})\nCompensação de {minutos_para_horas(mc)} registrada com sucesso.", "success")
             if request.form.get('_source') == 'dashboard':
                 return redirect(url_for("dashboard"))
             return redirect(url_for("compensacoes", matricula=matricula))
@@ -1186,8 +1186,9 @@ def registrar_pagamento(matricula):
         f"Data {data_pag}; horas base para folha {minutos_para_horas(total_base)}; itens pagos {len(pag_itens)}; descrição: {desc_final or '-'}"
     )
     db.commit()
-    aviso = f" ⚠️ Total {minutos_para_horas(total_base)} ultrapassa 45h." if total_base>LIMITE_PAGAMENTO_MINUTOS else ""
-    flash(f"Pagamento registrado! Horas base: {minutos_para_horas(total_base)}.{aviso}","success")
+    aviso = f"\n⚠️ Total {minutos_para_horas(total_base)} ultrapassa o limite de 45h." if total_base>LIMITE_PAGAMENTO_MINUTOS else ""
+    nome_srv = srv["nome"] if srv else matricula
+    flash(f"{nome_srv} ({matricula})\nPagamento de {minutos_para_horas(total_base)} horas base registrado na folha.{aviso}","success")
     source = request.form.get('_source', 'servidor')
     if source == 'index':
         return redirect(url_for("pagamentos_index"))
@@ -2843,7 +2844,7 @@ def eleicao_servidor(matricula):
                                     matricula=matricula, servidor_nome=srv['nome'],
                                     detalhe=f"{qtd} dia(s) – {ref}")
                 db.commit()
-                flash(f"{qtd} dia(s) de eleição creditado(s) com sucesso.", "success")
+                flash(f"{srv['nome']} ({matricula})\n{qtd} dia(s) de eleição creditado(s) — {ref}", "success")
 
         elif acao == 'add_baixa':
             data_baixa = request.form.get('data', '').strip()
@@ -2862,7 +2863,7 @@ def eleicao_servidor(matricula):
                                     matricula=matricula, servidor_nome=srv['nome'],
                                     detalhe=f"Folga em {data_baixa}")
                 db.commit()
-                flash("Dia de folga registrado com sucesso.", "success")
+                flash(f"{srv['nome']} ({matricula})\nDia de folga eleitoral registrado em {data_baixa}.", "success")
 
         return redirect(url_for('eleicao_servidor', matricula=matricula))
 
