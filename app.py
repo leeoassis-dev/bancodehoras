@@ -3299,11 +3299,78 @@ def admin_acessos():
     sets = _cadastros_nomes(db, "departamento")
     srvs = db.execute("SELECT matricula,nome,cpf FROM servidores WHERE arquivado=0 ORDER BY nome").fetchall()
 
+    # ── Painel de vínculos ────────────────────────────────────────────────────
+    # Carrega todos os usuários ativos de nível chefia/secretario com seus vínculos
+    usuarios_vinc = db.execute(
+        "SELECT id, nome, nivel, vinculos FROM usuarios WHERE ativo=1 AND nivel IN ('chefia','secretario')"
+    ).fetchall()
+    # mapa: setor → lista de chefias; secretaria → lista de secretarios
+    _mapa_chefia = {}
+    _mapa_secretario = {}
+    for u in usuarios_vinc:
+        try:
+            vs = json.loads(u['vinculos'] or '[]')
+        except Exception:
+            vs = []
+        entry = {'id': u['id'], 'nome': u['nome']}
+        if u['nivel'] == 'chefia':
+            for v in vs:
+                _mapa_chefia.setdefault(v, []).append(entry)
+        else:
+            for v in vs:
+                _mapa_secretario.setdefault(v, []).append(entry)
+
+    # Para cada setor, descobre a secretaria pai (pelo cadastro de servidores)
+    _setor_secretaria = {}
+    for row in db.execute(
+        "SELECT DISTINCT setor, secretaria FROM servidores WHERE setor IS NOT NULL AND setor!='' AND arquivado=0"
+    ).fetchall():
+        if row['setor'] and row['setor'] not in _setor_secretaria and row['secretaria']:
+            _setor_secretaria[row['setor']] = row['secretaria']
+
+    # Conta servidores por setor (para exibir no painel)
+    _servidores_por_setor = {}
+    for row in db.execute(
+        "SELECT setor, COUNT(*) AS qtd FROM servidores WHERE setor IS NOT NULL AND setor!='' AND arquivado=0 GROUP BY setor"
+    ).fetchall():
+        _servidores_por_setor[row['setor']] = row['qtd']
+
+    # Conta servidores por secretaria
+    _servidores_por_sec = {}
+    for row in db.execute(
+        "SELECT secretaria, COUNT(*) AS qtd FROM servidores WHERE secretaria IS NOT NULL AND secretaria!='' AND arquivado=0 GROUP BY secretaria"
+    ).fetchall():
+        _servidores_por_sec[row['secretaria']] = row['qtd']
+
+    painel_secretarias = []
+    for sec in sorted(secs):
+        painel_secretarias.append({
+            'nome': sec,
+            'secretarios': _mapa_secretario.get(sec, []),
+            'qtd_servidores': _servidores_por_sec.get(sec, 0),
+            'ok': bool(_mapa_secretario.get(sec)),
+        })
+
+    painel_setores = []
+    for s in sorted(sets):
+        secretaria_pai = _setor_secretaria.get(s, '')
+        painel_setores.append({
+            'nome': s,
+            'secretaria': secretaria_pai,
+            'chefias': _mapa_chefia.get(s, []),
+            'qtd_servidores': _servidores_por_setor.get(s, 0),
+            'sec_ok': bool(_mapa_secretario.get(secretaria_pai)) if secretaria_pai else False,
+            'ok': bool(_mapa_chefia.get(s)),
+        })
+    # ──────────────────────────────────────────────────────────────────────────
+
     return render_template('admin/acessos.html',
                             usuarios=usuarios, contadores=contadores,
                             pre_autorizacoes=pre, ultimos=ultimos,
                             secretarias=secs, setores=sets, servidores=srvs,
-                            busca=busca, filtro_nivel=filtro_nivel, departamento=departamento)
+                            busca=busca, filtro_nivel=filtro_nivel, departamento=departamento,
+                            painel_secretarias=painel_secretarias,
+                            painel_setores=painel_setores)
 
 
 @app.route('/admin/acessos/pre/novo', methods=['POST'])

@@ -65,6 +65,13 @@
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAcessos">
     <i class="bi bi-activity me-1"></i>Últimos Acessos
   </button></li>
+  <li class="nav-item">
+    {% set sem_vinculo = (painel_setores|selectattr('ok','equalto',false)|list|length) + (painel_secretarias|selectattr('ok','equalto',false)|list|length) %}
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPainel" id="btnTabPainel">
+      <i class="bi bi-diagram-3 me-1"></i>Painel de Vínculos
+      {% if sem_vinculo > 0 %}<span class="badge bg-danger ms-1">{{ sem_vinculo }} sem vínculo</span>{% endif %}
+    </button>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -233,6 +240,131 @@
       {% endif %}
     </div>
   </div>
+
+  <!-- Aba: Painel de Vínculos -->
+  <div class="tab-pane fade" id="tabPainel">
+
+    {% set setores_sem = painel_setores|selectattr('ok','equalto',false)|list %}
+    {% set secs_sem    = painel_secretarias|selectattr('ok','equalto',false)|list %}
+    {% if setores_sem or secs_sem %}
+    <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">
+      <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+      <div>
+        <strong>Atenção:</strong>
+        {% if setores_sem %}{{ setores_sem|length }} departamento(s) sem chefia vinculada{% endif %}
+        {% if setores_sem and secs_sem %} e {% endif %}
+        {% if secs_sem %}{{ secs_sem|length }} secretaria(s) sem secretário vinculado{% endif %}
+        — solicitações desses setores não terão aprovador disponível.
+      </div>
+    </div>
+    {% else %}
+    <div class="alert alert-success d-flex align-items-center gap-2 mb-3">
+      <i class="bi bi-check-circle-fill fs-5"></i>
+      <strong>Todos os setores e secretarias possuem pelo menos um usuário vinculado.</strong>
+    </div>
+    {% endif %}
+
+    <div class="row g-3">
+
+      <!-- Secretarias -->
+      <div class="col-lg-5">
+        <div class="card h-100">
+          <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-building me-1 text-primary"></i>Secretarias</span>
+            <span class="small text-muted">{{ painel_secretarias|length }} cadastrada(s)</span>
+          </div>
+          <div class="list-group list-group-flush" style="max-height:600px;overflow-y:auto">
+            {% for sec in painel_secretarias %}
+            <div class="list-group-item px-3 py-2">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="flex-grow-1">
+                  <div class="d-flex align-items-center gap-2 mb-1">
+                    {% if sec.ok %}
+                    <i class="bi bi-check-circle-fill text-success" title="Secretário vinculado"></i>
+                    {% else %}
+                    <i class="bi bi-exclamation-circle-fill text-danger" title="Sem secretário"></i>
+                    {% endif %}
+                    <span class="fw-semibold small">{{ sec.nome }}</span>
+                  </div>
+                  {% if sec.secretarios %}
+                    {% for u in sec.secretarios %}
+                    <span class="badge bg-primary me-1 mb-1">
+                      <i class="bi bi-person-badge me-1"></i>{{ u.nome }}
+                    </span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="badge bg-danger">Sem secretário vinculado</span>
+                  {% endif %}
+                </div>
+                <div class="text-end text-muted small text-nowrap">
+                  {{ sec.qtd_servidores }} servidor(es)
+                </div>
+              </div>
+            </div>
+            {% else %}
+            <div class="list-group-item text-muted small text-center py-4">Nenhuma secretaria cadastrada.</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Departamentos -->
+      <div class="col-lg-7">
+        <div class="card h-100">
+          <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-diagram-3 me-1 text-info"></i>Departamentos / Setores</span>
+            <span class="small text-muted">{{ painel_setores|length }} cadastrado(s)</span>
+          </div>
+          <div class="list-group list-group-flush" style="max-height:600px;overflow-y:auto">
+            {% for s in painel_setores %}
+            <div class="list-group-item px-3 py-2 {{ 'list-group-item-danger' if not s.ok else '' }}">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="flex-grow-1">
+                  <div class="d-flex align-items-center gap-2 mb-1">
+                    {% if s.ok %}
+                    <i class="bi bi-check-circle-fill text-success" title="Chefia vinculada"></i>
+                    {% else %}
+                    <i class="bi bi-exclamation-circle-fill text-danger" title="Sem chefia"></i>
+                    {% endif %}
+                    <span class="fw-semibold small">{{ s.nome }}</span>
+                    {% if s.secretaria %}
+                    <span class="badge bg-light text-dark border small">
+                      {% if s.sec_ok %}<i class="bi bi-check text-success me-1"></i>{% else %}<i class="bi bi-exclamation text-danger me-1"></i>{% endif %}
+                      {{ s.secretaria }}
+                    </span>
+                    {% endif %}
+                  </div>
+                  {% if s.chefias %}
+                    {% for c in s.chefias %}
+                    <span class="badge bg-info text-dark me-1 mb-1">
+                      <i class="bi bi-person-fill me-1"></i>{{ c.nome }}
+                    </span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="badge bg-danger">Sem chefia vinculada — solicitações sem aprovador</span>
+                  {% endif %}
+                </div>
+                <div class="text-end text-muted small text-nowrap">
+                  {{ s.qtd_servidores }} servidor(es)
+                </div>
+              </div>
+            </div>
+            {% else %}
+            <div class="list-group-item text-muted small text-center py-4">Nenhum departamento cadastrado.</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /row -->
+
+    <div class="mt-3 small text-muted">
+      <i class="bi bi-info-circle me-1"></i>
+      Para vincular um usuário a um setor ou secretaria, edite o nível de acesso na aba <strong>Contas Ativas</strong>.
+      O ícone <i class="bi bi-check text-success"></i> na secretaria indica que ela também tem secretário vinculado para receber solicitações das chefias.
+    </div>
+
+  </div><!-- /tabPainel -->
 
 </div>
 
