@@ -156,6 +156,7 @@ def injetar_usuario():
         'pendentes_aprovacao': 0,
         'u_mat_servidor': None,
         'u_sol_habilitado': False,
+        'u_visao_master': session.get('visao_master', 'master') if session.get('nivel') == 'master' else '',
     }
     uid   = session.get('uid')
     nivel = session.get('nivel')
@@ -177,6 +178,19 @@ def injetar_usuario():
                 ctx['pendentes_tarefas'] = db.execute(
                     "SELECT COUNT(*) FROM solicitacoes WHERE status='autorizado'"
                 ).fetchone()[0] or 0
+                visao = ctx['u_visao_master']
+                if visao in ('secretario', 'chefia'):
+                    vinculos = vinculos_por_visao(db, uid, visao)
+                    if vinculos:
+                        ph = ','.join('?' * len(vinculos))
+                        campo = 'secretaria' if visao == 'secretario' else 'setor'
+                        ctx['pendentes_aprovacao'] = db.execute(
+                            f"""SELECT COUNT(*) FROM solicitacoes sol
+                                JOIN servidores s ON s.matricula=sol.matricula
+                                WHERE sol.status='solicitado' AND s.{campo} IN ({ph})
+                                AND sol.criado_por_uid != ?""",
+                            vinculos + [uid]
+                        ).fetchone()[0] or 0
             if nivel in ('chefia', 'secretario'):
                 vinculos = session.get('vinculos') or []
                 if vinculos:
@@ -717,6 +731,27 @@ def get_vinculos(obj):
     # Fallback para bases antigas que ainda usavam uma única secretaria/setor.
     v = (valor('secretaria') or valor('setor') or '').strip()
     return [v] if v else []
+
+def vinculos_por_visao(db, usuario_id, visao):
+    """Filtra vínculos do usuário Master conforme a visão operacional selecionada."""
+    if visao not in ("secretario", "chefia"):
+        return []
+    u = db.execute("SELECT secretaria,setor,vinculos FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
+    if not u:
+        return []
+    vinculos = get_vinculos(u)
+    if u["secretaria"]:
+        vinculos.append(u["secretaria"])
+    if u["setor"]:
+        vinculos.append(u["setor"])
+    tipo = "secretaria" if visao == "secretario" else "departamento"
+    validos = set(_cadastros_nomes(db, tipo))
+    vistos, filtrados = set(), []
+    for vinc in vinculos:
+        if vinc in validos and vinc not in vistos:
+            filtrados.append(vinc)
+            vistos.add(vinc)
+    return filtrados
 
 def _usuario_tem_servidor_ativo(db, usuario):
     """Usuários não-master só ficam ativos nas telas comuns se o servidor vinculado existir e estiver ativo."""
@@ -2874,8 +2909,23 @@ def recuperar_senha_token(token):
 @app.route('/portal')
 def portal():
     nivel = session.get('nivel')
-    if nivel == 'master':    return redirect(url_for('dashboard'))
+    if nivel == 'master':
+        if session.get('visao_master') in ('secretario', 'chefia'):
+            return redirect(url_for('consulta'))
+        return redirect(url_for('dashboard'))
     if nivel == 'servidor':  return redirect(url_for('meu_banco'))
+    return redirect(url_for('consulta'))
+
+
+@app.route('/admin/alternar-visao', methods=['POST'])
+@master_required
+def admin_alternar_visao():
+    visao = request.form.get('visao', 'master').strip()
+    if visao not in ('master', 'secretario', 'chefia'):
+        visao = 'master'
+    session['visao_master'] = visao
+    if visao == 'master':
+        return redirect(url_for('dashboard'))
     return redirect(url_for('consulta'))
 
 
@@ -2939,15 +2989,19 @@ def meu_banco():
 
 @app.route('/consulta')
 def consulta():
-    if 'uid' not in session or session.get('nivel') not in ('secretario','chefia'):
+    if 'uid' not in session:
         return redirect(url_for('login'))
+    nivel_sessao = session.get('nivel')
+    visao_master = session.get('visao_master', 'master') if nivel_sessao == 'master' else ''
+    if nivel_sessao not in ('secretario','chefia') and visao_master not in ('secretario','chefia'):
+        return redirect(url_for('portal'))
     db    = get_db()
-    nivel = session.get('nivel')
+    nivel = visao_master if nivel_sessao == 'master' else nivel_sessao
     busca = request.args.get('busca','').strip()
     sec = request.args.get('secretaria','').strip()
     set_ = request.args.get('setor','').strip()
 
-    vinculos = session.get('vinculos', [])
+    vinculos = vinculos_por_visao(db, session.get('uid'), nivel) if nivel_sessao == 'master' else session.get('vinculos', [])
     matricula_propria = session.get('matricula') or ''
     filtro = "WHERE s.arquivado=0"
     params = []

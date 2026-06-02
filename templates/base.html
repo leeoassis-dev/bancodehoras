@@ -180,6 +180,14 @@
     {% if u_nivel == 'master' %}
       <div class="sidebar-section-title">Operação</div>
       <a class="sidebar-link {% if request.path == '/' %}active{% endif %}" href="/" title="Dashboard"><i class="bi bi-speedometer2"></i><span class="sidebar-link-text">Dashboard</span></a>
+      {% if u_visao_master in ('secretario','chefia') %}
+      <a class="sidebar-link {% if request.path.startswith('/consulta') %}active{% endif %}" href="/consulta" title="Consulta Operacional">
+        <i class="bi bi-eye"></i>
+        <span class="sidebar-link-text">Consulta {{ 'Secretário' if u_visao_master == 'secretario' else 'Chefia' }}
+          {% if pendentes_aprovacao > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pendentes_aprovacao }}</span>{% endif %}
+        </span>
+      </a>
+      {% endif %}
       <a class="sidebar-link {% if request.path.startswith('/servidores') %}active{% endif %}" href="/servidores" title="Servidores"><i class="bi bi-people"></i><span class="sidebar-link-text">Servidores</span></a>
       <a class="sidebar-link {% if request.path.startswith('/pagamentos') %}active{% endif %}" href="/pagamentos" title="Pagamentos"><i class="bi bi-cash-coin"></i><span class="sidebar-link-text">Pagamentos</span></a>
       <a class="sidebar-link {% if request.path.startswith('/relatorios') %}active{% endif %}" href="/relatorios" title="Relatórios"><i class="bi bi-file-earmark-text"></i><span class="sidebar-link-text">Relatórios</span></a>
@@ -244,6 +252,30 @@
       <span class="fw-semibold text-primary">Banco de Horas - Prefeitura Municipal de Ibiporã</span>
     </div>
     <div class="d-flex align-items-center gap-3">
+      {% if u_nivel == 'master' %}
+      <div class="btn-group btn-group-sm d-none d-md-inline-flex" role="group" aria-label="Alternar visão do Master">
+        <form method="post" action="/admin/alternar-visao" class="d-inline">
+          <input type="hidden" name="visao" value="master">
+          <button class="btn {{ 'btn-primary' if u_visao_master == 'master' else 'btn-outline-primary' }}" title="Visualizar como Master">
+            <i class="bi bi-shield-lock me-1"></i>Master
+          </button>
+        </form>
+        <form method="post" action="/admin/alternar-visao" class="d-inline">
+          <input type="hidden" name="visao" value="secretario">
+          <button class="btn {{ 'btn-primary' if u_visao_master == 'secretario' else 'btn-outline-primary' }}" title="Visualizar consulta como Secretário">
+            <i class="bi bi-building me-1"></i>Secretário
+            {% if u_visao_master == 'secretario' and pendentes_aprovacao > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pendentes_aprovacao }}</span>{% endif %}
+          </button>
+        </form>
+        <form method="post" action="/admin/alternar-visao" class="d-inline">
+          <input type="hidden" name="visao" value="chefia">
+          <button class="btn {{ 'btn-primary' if u_visao_master == 'chefia' else 'btn-outline-primary' }}" title="Visualizar consulta como Chefia">
+            <i class="bi bi-person-check me-1"></i>Chefia
+            {% if u_visao_master == 'chefia' and pendentes_aprovacao > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pendentes_aprovacao }}</span>{% endif %}
+          </button>
+        </form>
+      </div>
+      {% endif %}
       {% if u_sol_habilitado and u_mat_servidor %}
       <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalSolGlobal" id="btnSolGlobal">
         <i class="bi bi-send me-1"></i><span class="d-none d-sm-inline">Solicitar Compensação</span><span class="d-inline d-sm-none"><i class="bi bi-send"></i></span>
