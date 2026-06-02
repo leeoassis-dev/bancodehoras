@@ -304,6 +304,13 @@ def fmt_datetime(valor):
     except Exception:
         return s
 
+@app.template_filter('fmt_cpf')
+def fmt_cpf(valor):
+    d = somente_digitos(valor)
+    if len(d) != 11:
+        return valor or '–'
+    return f"{d[:3]}.{d[3:6]}.{d[6:9]}-{d[9:]}"
+
 def calcular_saldo_eleicao(db, matricula):
     creditos = db.execute(
         "SELECT COALESCE(SUM(quantidade_dias),0) FROM eleicao_creditos WHERE matricula=?",
@@ -758,22 +765,22 @@ def _usuario_tem_servidor_ativo(db, usuario):
         return False
     try:
         nivel = usuario["nivel"]
-        cpf = (usuario["cpf"] or "").strip()
+        cpf = somente_digitos(usuario["cpf"] or "")
         matricula = (usuario["matricula"] or "").strip()
     except Exception:
         nivel = usuario.get("nivel")
-        cpf = (usuario.get("cpf") or "").strip()
+        cpf = somente_digitos(usuario.get("cpf") or "")
         matricula = (usuario.get("matricula") or "").strip()
 
     if nivel == "master":
         return True
     if not cpf and not matricula:
         return False
-    return bool(db.execute("""
+    return bool(db.execute(f"""
         SELECT 1
         FROM servidores
         WHERE arquivado=0
-          AND ((?<>'' AND cpf=?) OR (?<>'' AND matricula=?))
+          AND ((?<>'' AND {cpf_sem_pontuacao_sql('cpf')}=?) OR (?<>'' AND matricula=?))
         LIMIT 1
     """, (cpf, cpf, matricula, matricula)).fetchone())
 
@@ -782,17 +789,17 @@ def _inativar_vinculos_servidor(db, servidor):
     if not servidor:
         return 0
     matricula = (servidor["matricula"] or "").strip()
-    cpf = (servidor["cpf"] or "").strip()
+    cpf = somente_digitos(servidor["cpf"] or "")
     params = [matricula, matricula, cpf, cpf]
-    cur = db.execute("""
+    cur = db.execute(f"""
         UPDATE usuarios
         SET ativo=0
-        WHERE ((?<>'' AND matricula=?) OR (?<>'' AND cpf=?))
+        WHERE ((?<>'' AND matricula=?) OR (?<>'' AND {cpf_sem_pontuacao_sql('cpf')}=?))
           AND nivel<>'master'
     """, params)
-    db.execute("""
+    db.execute(f"""
         DELETE FROM pre_autorizacoes
-        WHERE (?<>'' AND matricula=?) OR (?<>'' AND cpf=?)
+        WHERE (?<>'' AND matricula=?) OR (?<>'' AND {cpf_sem_pontuacao_sql('cpf')}=?)
     """, params)
     return cur.rowcount or 0
 
@@ -1066,7 +1073,7 @@ def novo_servidor():
             _garantir_cadastro_auxiliar(db, "secretaria", secretaria)
             db.execute(
                 "INSERT INTO servidores (matricula,nome,cpf,email,cargo,setor,secretaria,funcao_gratificada) VALUES (?,?,?,?,?,?,?,?)",
-                (mat, request.form["nome"].strip(), request.form["cpf"].strip(),
+                (mat, request.form["nome"].strip(), somente_digitos(request.form["cpf"]),
                  request.form["email"].strip(), cargo, setor, secretaria, fg))
             db.commit()
             flash("Servidor cadastrado!", "success")
@@ -1088,7 +1095,7 @@ def editar_servidor(matricula):
         _garantir_cadastro_auxiliar(db, "departamento", setor)
         _garantir_cadastro_auxiliar(db, "secretaria", secretaria)
         db.execute("UPDATE servidores SET nome=?,cpf=?,email=?,cargo=?,setor=?,secretaria=?,funcao_gratificada=? WHERE matricula=?",
-                   (request.form["nome"].strip(), request.form["cpf"].strip(), request.form["email"].strip(),
+                   (request.form["nome"].strip(), somente_digitos(request.form["cpf"]), request.form["email"].strip(),
                     cargo, setor, secretaria, fg, matricula))
         db.commit()
         flash("Dados atualizados.", "success")
@@ -1379,8 +1386,9 @@ def api_servidor_info(matricula):
         (matricula,)).fetchone()
     if not srv:
         return jsonify({"encontrado": False})
+    cpf_norm = somente_digitos(srv['cpf'])
     ja_tem_conta = bool(db.execute(
-        "SELECT 1 FROM usuarios WHERE cpf=? AND ativo=1", (srv['cpf'] or '',)).fetchone())
+        f"SELECT 1 FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND ativo=1", (cpf_norm,)).fetchone())
     return jsonify({
         "encontrado": True,
         "nome": srv['nome'],
@@ -1667,7 +1675,7 @@ def admin_importar_servidores():
             continue
         dados = {
             "matricula": matricula, "nome": nome,
-            "cpf": _valor_csv(row, "cpf"),
+            "cpf": somente_digitos(_valor_csv(row, "cpf")),
             "email": _valor_csv(row, "email", "e-mail"),
             "cargo": _valor_csv(row, "cargo"),
             "secretaria": _valor_csv(row, "secretaria", "secretária"),
@@ -1860,6 +1868,57 @@ def admin_importar_eleicao():
 @master_required
 def admin_backup():
     return render_template("admin/backup.html")
+
+@app.route("/admin/saude")
+@master_required
+def admin_saude():
+    db = get_db()
+    smtp = obter_config_smtp()
+    smtp_ok = bool(smtp.get("smtp_host") and smtp.get("smtp_user") and smtp.get("smtp_pass") and smtp.get("smtp_from"))
+    contadores = {
+        "servidores_ativos": db.execute("SELECT COUNT(*) FROM servidores WHERE arquivado=0").fetchone()[0] or 0,
+        "servidores_arquivados": db.execute("SELECT COUNT(*) FROM servidores WHERE arquivado=1").fetchone()[0] or 0,
+        "usuarios_ativos": db.execute("SELECT COUNT(*) FROM usuarios WHERE ativo=1").fetchone()[0] or 0,
+        "pre_autorizacoes": db.execute("SELECT COUNT(*) FROM pre_autorizacoes").fetchone()[0] or 0,
+        "solicitacoes_pendentes": db.execute("SELECT COUNT(*) FROM solicitacoes WHERE status IN ('solicitado','autorizado')").fetchone()[0] or 0,
+        "importacoes": db.execute("SELECT COUNT(*) FROM importacoes").fetchone()[0] or 0,
+    }
+    ultimo_backup = db.execute("""
+        SELECT criado_em, usuario_nome, detalhe
+        FROM auditoria
+        WHERE entidade='backup'
+        ORDER BY criado_em DESC, id DESC
+        LIMIT 1
+    """).fetchone()
+    ultimo_erro = db.execute("""
+        SELECT criado_em, usuario_nome, detalhe
+        FROM auditoria
+        WHERE acao LIKE '%negado%' OR acao LIKE '%Falha%'
+        ORDER BY criado_em DESC, id DESC
+        LIMIT 1
+    """).fetchone()
+    cpf_duplicados = db.execute(f"""
+        SELECT {cpf_sem_pontuacao_sql('cpf')} AS cpf_norm, COUNT(*) AS qtd
+        FROM usuarios
+        WHERE cpf IS NOT NULL AND cpf!=''
+        GROUP BY {cpf_sem_pontuacao_sql('cpf')}
+        HAVING COUNT(*) > 1
+        ORDER BY qtd DESC
+    """).fetchall()
+    cpf_sem_padrao = db.execute("""
+        SELECT COUNT(*) FROM usuarios
+        WHERE cpf IS NOT NULL AND cpf!='' AND (cpf LIKE '%.%' OR cpf LIKE '%-%' OR cpf LIKE '% %')
+    """).fetchone()[0] or 0
+    sem_vinculo = db.execute("""
+        SELECT COUNT(*) FROM usuarios
+        WHERE ativo=1 AND nivel IN ('secretario','chefia') AND (vinculos IS NULL OR vinculos='' OR vinculos='[]')
+    """).fetchone()[0] or 0
+    return render_template("admin/saude.html",
+                           banco="PostgreSQL/Neon" if IS_POSTGRES else "SQLite local",
+                           smtp=smtp, smtp_ok=smtp_ok, contadores=contadores,
+                           ultimo_backup=ultimo_backup, ultimo_erro=ultimo_erro,
+                           cpf_duplicados=cpf_duplicados, cpf_sem_padrao=cpf_sem_padrao,
+                           sem_vinculo=sem_vinculo)
 
 @app.route("/admin/backup/excel")
 @master_required
@@ -2659,7 +2718,7 @@ def setup():
     if db.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] > 0:
         return redirect(url_for('login'))
     if request.method == 'POST':
-        cpf   = request.form['cpf'].strip()
+        cpf   = somente_digitos(request.form['cpf'])
         nome  = request.form['nome'].strip()
         email = request.form['email'].strip()
         senha = request.form['senha']
@@ -2686,18 +2745,18 @@ def login():
         return redirect(url_for('setup'))
 
     if request.method == 'POST':
-        cpf   = request.form['cpf'].strip()
+        cpf   = somente_digitos(request.form['cpf'])
         senha = request.form['senha']
-        u = db.execute("SELECT * FROM usuarios WHERE cpf=? AND ativo=1", (cpf,)).fetchone()
+        u = db.execute(f"SELECT * FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND ativo=1", (cpf,)).fetchone()
 
         # ── Primeiro acesso: auto-cria conta para servidores cadastrados ─────
         if not u:
             srv = db.execute(
-                "SELECT * FROM servidores WHERE cpf=? AND arquivado=0", (cpf,)).fetchone()
+                f"SELECT * FROM servidores WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND arquivado=0", (cpf,)).fetchone()
             if srv:
                 try:
                     pre = db.execute(
-                        "SELECT * FROM pre_autorizacoes WHERE cpf=?", (cpf,)).fetchone()
+                        f"SELECT * FROM pre_autorizacoes WHERE {cpf_sem_pontuacao_sql('cpf')}=?", (cpf,)).fetchone()
                     nivel_auto     = pre['nivel']     if pre else 'servidor'
                     vinculos_auto  = get_vinculos(pre) if pre else []
                     matricula_auto = (pre['matricula'] or srv['matricula']) if pre else srv['matricula']
@@ -2710,11 +2769,11 @@ def login():
                           nivel_auto, matricula_auto, json.dumps(vinculos_auto)))
                     db.commit()
                     u = db.execute(
-                        "SELECT * FROM usuarios WHERE cpf=? AND ativo=1", (cpf,)).fetchone()
+                        f"SELECT * FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND ativo=1", (cpf,)).fetchone()
                 except Exception:
                     db.commit()
                     u = db.execute(
-                        "SELECT * FROM usuarios WHERE cpf=? AND ativo=1", (cpf,)).fetchone()
+                        f"SELECT * FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND ativo=1", (cpf,)).fetchone()
 
         if not u or not check_password_hash(u['senha_hash'], senha):
             msg_senha = (
@@ -2845,9 +2904,9 @@ def meu_cadastro():
 @app.route('/recuperar-senha', methods=['GET','POST'])
 def recuperar_senha():
     if request.method == 'POST':
-        cpf = request.form['cpf'].strip()
+        cpf = somente_digitos(request.form['cpf'])
         db  = get_db()
-        u   = db.execute("SELECT * FROM usuarios WHERE cpf=? AND ativo=1", (cpf,)).fetchone()
+        u   = db.execute(f"SELECT * FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND ativo=1", (cpf,)).fetchone()
         if u and u['email']:
             token  = secrets.token_urlsafe(32)
             expiry = (datetime.now() + timedelta(hours=1)).isoformat()
@@ -3144,7 +3203,7 @@ def admin_usuarios():
 def admin_novo_usuario():
     db = get_db()
     if request.method == 'POST':
-        cpf   = request.form['cpf'].strip()
+        cpf   = somente_digitos(request.form['cpf'])
         nome  = request.form['nome'].strip()
         email = request.form['email'].strip()
         nivel = request.form['nivel']
@@ -3153,7 +3212,7 @@ def admin_novo_usuario():
         set_  = vinculos[0] if nivel == 'chefia' and vinculos else request.form.get('setor','').strip()
         mat   = request.form.get('matricula','').strip()
 
-        if db.execute("SELECT 1 FROM usuarios WHERE cpf=?", (cpf,)).fetchone():
+        if db.execute(f"SELECT 1 FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=?", (cpf,)).fetchone():
             flash("CPF já cadastrado.", "danger")
         else:
             senha_temp = gerar_senha_temp()
@@ -3287,21 +3346,21 @@ def admin_config_email():
 @master_required
 def api_verificar_cpf():
     """AJAX: verifica CPF e retorna dados para o formulário de cadastro."""
-    cpf = request.args.get('cpf','').strip()
+    cpf = somente_digitos(request.args.get('cpf',''))
     db  = get_db()
 
     # Já tem conta?
-    u = db.execute("SELECT ativo FROM usuarios WHERE cpf=?", (cpf,)).fetchone()
+    u = db.execute(f"SELECT ativo FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=?", (cpf,)).fetchone()
     if u:
         msg = "Você já possui acesso. Faça login." if u['ativo'] else "Seu acesso está desativado. Contate o RH."
         return jsonify({"ok": False, "msg": msg})
 
     # Busca pre-autorização
-    pre = db.execute("SELECT * FROM pre_autorizacoes WHERE cpf=?", (cpf,)).fetchone()
+    pre = db.execute(f"SELECT * FROM pre_autorizacoes WHERE {cpf_sem_pontuacao_sql('cpf')}=?", (cpf,)).fetchone()
 
     # Busca servidor pelo CPF. Sem pré-autorização, o servidor pode criar conta
     # automaticamente como nível "servidor", usando a própria matrícula.
-    srv = db.execute("SELECT * FROM servidores WHERE cpf=? AND arquivado=0", (cpf,)).fetchone()
+    srv = db.execute(f"SELECT * FROM servidores WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND arquivado=0", (cpf,)).fetchone()
 
     if not srv and not pre:
         return jsonify({"ok": False, "msg": "CPF não encontrado no sistema. Solicite liberação de acesso ao RH."})
@@ -3326,7 +3385,7 @@ def api_verificar_cpf():
 @master_required
 def criar_conta():
     if request.method == 'POST':
-        cpf       = request.form['cpf'].strip()
+        cpf       = somente_digitos(request.form['cpf'])
         nome_conf = request.form.get('nome_confirmado','').strip()
         email     = request.form['email'].strip()
         senha     = request.form['senha']
@@ -3337,7 +3396,7 @@ def criar_conta():
 
         db = get_db()
 
-        if db.execute('SELECT 1 FROM usuarios WHERE cpf=?', (cpf,)).fetchone():
+        if db.execute(f"SELECT 1 FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=?", (cpf,)).fetchone():
             flash('CPF ja possui acesso. Faca login.', 'warning')
             return redirect(url_for('login'))
         if senha != conf:
@@ -3347,8 +3406,8 @@ def criar_conta():
             flash('Minimo 8 caracteres.', 'danger')
             return render_template('criar_conta.html')
 
-        pre = db.execute("SELECT * FROM pre_autorizacoes WHERE cpf=?", (cpf,)).fetchone()
-        srv = db.execute("SELECT * FROM servidores WHERE cpf=? AND arquivado=0", (cpf,)).fetchone()
+        pre = db.execute(f"SELECT * FROM pre_autorizacoes WHERE {cpf_sem_pontuacao_sql('cpf')}=?", (cpf,)).fetchone()
+        srv = db.execute(f"SELECT * FROM servidores WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND arquivado=0", (cpf,)).fetchone()
         if not pre and not srv:
             flash('CPF não encontrado no cadastro de servidores. Contate o RH.', 'danger')
             return render_template('criar_conta.html')
@@ -3558,12 +3617,12 @@ def admin_nova_pre_autorizacao():
         flash(f'Matrícula {mat} não encontrada no cadastro de servidores.', 'danger')
         return redirect(url_for('admin_acessos'))
 
-    cpf = (srv['cpf'] or '').strip()
+    cpf = somente_digitos(srv['cpf'])
     if not cpf:
         flash(f'O servidor {srv["nome"]} não possui CPF cadastrado. Atualize o cadastro antes de pré-autorizar.', 'warning')
         return redirect(url_for('admin_acessos'))
 
-    if db.execute('SELECT 1 FROM usuarios WHERE cpf=? AND ativo=1', (cpf,)).fetchone():
+    if db.execute(f"SELECT 1 FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND ativo=1", (cpf,)).fetchone():
         flash(f'{srv["nome"]} já possui conta ativa no sistema.', 'warning')
         return redirect(url_for('admin_acessos'))
 
@@ -3748,7 +3807,7 @@ def admin_remover_vinculo_rapido():
     if usuario['matricula']:
         srv = db.execute("SELECT matricula, nome FROM servidores WHERE matricula=? AND arquivado=0", (usuario['matricula'],)).fetchone()
     if not srv and usuario['cpf']:
-        srv = db.execute("SELECT matricula, nome FROM servidores WHERE cpf=? AND arquivado=0", (usuario['cpf'],)).fetchone()
+        srv = db.execute(f"SELECT matricula, nome FROM servidores WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND arquivado=0", (somente_digitos(usuario['cpf']),)).fetchone()
 
     matricula = srv['matricula'] if srv else (usuario['matricula'] or '')
     nome = srv['nome'] if srv else usuario['nome']

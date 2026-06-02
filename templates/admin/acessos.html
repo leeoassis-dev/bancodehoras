@@ -102,7 +102,7 @@
                 <td class="fw-semibold">{{ u.nome }}
                   {% if u.senha_temporaria %}<span class="badge bg-warning text-dark ms-1 small">Temp.</span>{% endif %}
                 </td>
-                <td class="small">{{ u.cpf }}</td>
+                <td class="small">{{ u.cpf|fmt_cpf }}</td>
                 <td class="small text-muted">{{ u.email or '–' }}</td>
                 <td class="small text-muted">
                   {% if u.nivel in ['secretario','chefia'] %}
@@ -178,7 +178,7 @@
           <tbody>
             {% for p in pre_autorizacoes %}
             <tr>
-              <td class="fw-semibold">{{ p.cpf }}</td>
+              <td class="fw-semibold">{{ p.cpf|fmt_cpf }}</td>
               <td class="text-muted">{{ p.nome_servidor or '(não encontrado)' }}</td>
               <td><span class="badge bg-{{ cores.get(p.nivel,'secondary') }}">{{ labels.get(p.nivel,p.nivel) }}</span></td>
               <td class="small text-muted">
@@ -227,7 +227,7 @@
             {% for u in ultimos %}
             <tr>
               <td class="fw-semibold">{{ u.nome }}</td>
-              <td class="text-muted small">{{ u.cpf }}</td>
+              <td class="text-muted small">{{ u.cpf|fmt_cpf }}</td>
               <td><span class="badge bg-{{ cores.get(u.nivel,'secondary') }}">{{ labels.get(u.nivel,u.nivel) }}</span></td>
               <td>{{ u.ultimo_acesso|fmt_datetime if u.ultimo_acesso else 'Nunca' }}</td>
             </tr>

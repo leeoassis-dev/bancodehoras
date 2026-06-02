@@ -48,7 +48,7 @@
           <td class="fw-semibold">{{ u.nome }}
             {% if u.senha_temporaria %}<span class="badge bg-warning text-dark ms-1 small">Temp.</span>{% endif %}
           </td>
-          <td>{{ u.cpf }}</td>
+          <td>{{ u.cpf|fmt_cpf }}</td>
           <td>{{ u.email or '–' }}</td>
           <td>
             {% set cores = {'master':'danger','secretario':'primary','chefia':'info','servidor':'secondary'} %}

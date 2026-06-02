@@ -52,7 +52,7 @@
         <tr class="text-muted">
           <td><span class="badge bg-secondary">{{ s.matricula }}</span></td>
           <td class="fw-semibold">{{ s.nome }}</td>
-          <td class="small">{{ s.cpf or '–' }}</td>
+          <td class="small">{{ s.cpf|fmt_cpf }}</td>
           <td class="small">{{ s.secretaria or '–' }}</td>
           <td class="small">{{ s.setor or '–' }}</td>
           <td class="small">{{ s.cargo or '–' }}</td>

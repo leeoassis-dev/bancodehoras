@@ -19,7 +19,7 @@
         </div>
         <div class="col-md-5">
           <label class="form-label small fw-semibold mb-1">CPF</label>
-          <input type="text" class="form-control bg-light" value="{{ usuario.cpf }}" readonly>
+          <input type="text" class="form-control bg-light" value="{{ usuario.cpf|fmt_cpf }}" readonly>
         </div>
         <div class="col-md-6">
           <label class="form-label small fw-semibold mb-1">Perfil de acesso</label>
