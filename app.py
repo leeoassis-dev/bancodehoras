@@ -7,7 +7,6 @@ from functools import wraps
 import os, json, io, csv, secrets, string, smtplib, time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from database import six_months_ago, five_months_ago
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ibipora_banco_horas_2024_seguro")
@@ -3476,10 +3475,7 @@ def admin_acessos():
     _mapa_chefia = {}
     _mapa_secretario = {}
     for u in usuarios_vinc:
-        try:
-            vs = json.loads(u['vinculos'] or '[]')
-        except Exception:
-            vs = []
+        vs = get_vinculos(u)
         entry = {'id': u['id'], 'nome': u['nome']}
         if u['nivel'] == 'chefia':
             for v in vs:
@@ -3661,10 +3657,7 @@ def admin_vincular_rapido():
         LIMIT 1
     """, (cpf_norm, cpf_norm, matricula, matricula, matricula)).fetchone()
     if usuario:
-        try:
-            vinculos_atuais = json.loads(usuario['vinculos'] or '[]')
-        except Exception:
-            vinculos_atuais = []
+        vinculos_atuais = get_vinculos(usuario)
         if vinculo not in vinculos_atuais:
             vinculos_atuais.append(vinculo)
         novo_nivel = usuario['nivel'] if usuario['nivel'] == 'master' else nivel
@@ -3687,10 +3680,7 @@ def admin_vincular_rapido():
             LIMIT 1
         """, (cpf_norm, cpf_norm, matricula, matricula)).fetchone()
         if pre:
-            try:
-                vinculos_atuais = json.loads(pre['vinculos'] or '[]')
-            except Exception:
-                vinculos_atuais = []
+            vinculos_atuais = get_vinculos(pre)
             if vinculo not in vinculos_atuais:
                 vinculos_atuais.append(vinculo)
             sec = vinculo if tipo == 'secretaria' else ''
@@ -4230,10 +4220,7 @@ def _aprovadores_para_servidor(db, matricula):
     ).fetchall()
     result = []
     for u in users:
-        try:
-            vinculos = json.loads(u['vinculos'] or '[]')
-        except Exception:
-            vinculos = []
+        vinculos = get_vinculos(u)
         if u['nivel'] == 'chefia' and setor and setor in vinculos:
             result.append(dict(u))
         elif u['nivel'] == 'secretario' and secretaria and secretaria in vinculos:
@@ -4249,10 +4236,7 @@ def _secretarios_para_chefia(db, chefia_uid):
         return []
     secretaria = (chefia['secretaria'] or '').strip()
     if not secretaria:
-        try:
-            vinculos = json.loads(chefia['vinculos'] or '[]')
-        except Exception:
-            vinculos = []
+        vinculos = get_vinculos(chefia)
         for setor in vinculos:
             row = db.execute(
                 "SELECT secretaria FROM servidores WHERE setor=? AND arquivado=0 LIMIT 1", (setor,)
@@ -4267,10 +4251,7 @@ def _secretarios_para_chefia(db, chefia_uid):
     ).fetchall()
     result = []
     for u in users:
-        try:
-            vinculos = json.loads(u['vinculos'] or '[]')
-        except Exception:
-            vinculos = []
+        vinculos = get_vinculos(u)
         if secretaria in vinculos:
             result.append(dict(u))
     return result
