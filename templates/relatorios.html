@@ -1,48 +1,53 @@
 ﻿{% extends "base.html" %}
 {% block content %}
 
-<div class="row g-0" style="min-height:70vh">
+<style>
+  .relatorio-card {
+    border-left:4px solid var(--bs-primary);
+    background:#fff;
+  }
+  .relatorio-card .relatorio-links a {
+    display:inline-flex;
+    align-items:center;
+    gap:.35rem;
+    margin:.15rem .25rem .15rem 0;
+  }
+</style>
 
-  <!-- ── Sidebar ── -->
-  <div class="col-md-2 border-end pe-0">
-    <div class="sticky-top pt-1" style="top:20px">
-      <p class="text-muted small px-3 mb-1 mt-2 fw-semibold text-uppercase" style="font-size:.7rem;letter-spacing:.05em">Relatórios</p>
-      <div class="nav flex-column nav-pills px-2 gap-1">
-        <a class="nav-link {% if aba=='saldos' %}active{% endif %} text-start"
-           href="/relatorios?aba=saldos&{{ filtros_qs }}">
-          <i class="bi bi-bar-chart-fill me-2"></i>Saldo em Aberto
-        </a>
-        <a class="nav-link {% if aba=='historico' %}active{% endif %} text-start"
-           href="/relatorios?aba=historico&{{ filtros_qs }}">
-          <i class="bi bi-list-ul me-2"></i>Histórico Completo
-        </a>
-        <a class="nav-link {% if aba=='pagamentos' %}active{% endif %} text-start"
-           href="/relatorios?aba=pagamentos&{{ filtros_qs }}">
-          <i class="bi bi-receipt me-2"></i>Pagamentos
-        </a>
-        <a class="nav-link {% if aba=='competencia' %}active{% endif %} text-start"
-           href="/relatorios?aba=competencia&{{ filtros_qs }}">
-          <i class="bi bi-calendar3 me-2"></i>Por Competência
-        </a>
-        <a class="nav-link {% if aba=='vencimentos' %}active{% endif %} text-start"
-           href="/relatorios?aba=vencimentos&{{ filtros_qs }}">
-          <i class="bi bi-hourglass-split me-2"></i>A Vencer / Vencidas
-        </a>
-      </div>
+<div class="mb-3">
+  <h4 class="mb-1"><i class="bi bi-file-earmark-text me-2 text-primary"></i>Relatórios</h4>
+  <div class="text-muted small">Relatórios organizados por assunto, todos com emissão em CSV, Excel e PDF quando gerados.</div>
+</div>
 
-      <hr class="mx-3">
-      <p class="text-muted small px-3 mb-1 fw-semibold text-uppercase" style="font-size:.7rem;letter-spacing:.05em">Assuntos</p>
-      <div class="px-3 small text-muted">
-        <div class="mb-2"><i class="bi bi-clock-history me-1 text-primary"></i>Banco de Horas</div>
-        <div class="mb-2"><i class="bi bi-calendar2-check me-1" style="color:#d97706"></i>Dias de Eleição</div>
-        <div class="mb-2"><i class="bi bi-list-check me-1 text-info"></i>Tarefas e Solicitações</div>
-        <div><i class="bi bi-shield-check me-1 text-success"></i>Auditoria e Administração</div>
+<div class="row g-3 mb-4">
+  {% for grupo in grupos_relatorios %}
+  <div class="col-xl-4 col-md-6">
+    <div class="card relatorio-card h-100" style="border-left-color:var(--bs-{{ grupo.cor }})">
+      <div class="card-body">
+        <div class="d-flex gap-3 align-items-start">
+          <div class="rounded bg-{{ grupo.cor }} bg-opacity-10 text-{{ grupo.cor }} d-grid place-items-center" style="width:42px;height:42px;display:grid;place-items:center">
+            <i class="bi {{ grupo.icone }} fs-5"></i>
+          </div>
+          <div class="flex-grow-1">
+            <h6 class="fw-bold mb-1">{{ grupo.titulo }}</h6>
+            <div class="text-muted small mb-2">{{ grupo.descricao }}</div>
+            <div class="relatorio-links">
+              {% for rel_aba, rel_label in grupo.abas %}
+              <a href="/relatorios?aba={{ rel_aba }}&{{ filtros_qs }}"
+                 class="btn btn-sm {{ 'btn-' ~ grupo.cor if aba == rel_aba else 'btn-outline-' ~ grupo.cor }}">
+                {{ rel_label }}
+              </a>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
+  {% endfor %}
+</div>
 
-  <!-- ── Conteúdo ── -->
-  <div class="col-md-10 ps-4">
+<div>
 
     <!-- Filtros comuns -->
     <form method="get" class="card p-3 mb-4 mt-2">
@@ -105,7 +110,7 @@
           <input type="number" name="ano" class="form-control form-control-sm"
                  value="{{ filtros.ano }}" min="2000" max="2099">
         </div>
-        {% elif aba != 'saldos' %}
+        {% elif aba in ('historico','pagamentos','vencimentos','tarefas','administracao') %}
         <div class="col-md-1">
           <label class="form-label small fw-semibold mb-1">{{ 'Venc. de' if aba=='vencimentos' else 'De' }}</label>
           <input type="date" name="data_ini" class="form-control form-control-sm" value="{{ filtros.data_ini }}">
@@ -393,7 +398,7 @@
             <tbody>
               {% for r in itens %}
               <tr>
-                <td class="fw-semibold">{{ r.vencimento }}</td>
+                <td class="fw-semibold">{{ r.vencimento|fmt_data }}</td>
                 <td>{{ r.data|fmt_data }}</td>
                 <td>{{ r.nome }} <span class="text-muted small">({{ r.matricula }})</span></td>
                 <td class="small text-muted">{{ r.secretaria or '–' }}</td>
@@ -421,6 +426,121 @@
         <i class="bi bi-inbox" style="font-size:2.5rem"></i>
         <p class="mt-3">Nenhuma hora com saldo encontrada para os filtros.</p>
       </div>
+    {% endif %}
+
+    {% elif aba == 'eleicao' %}
+    <h5 class="mb-1"><i class="bi bi-calendar2-check me-2 text-warning"></i>Dias de Eleição</h5>
+    <p class="text-muted mb-3">Créditos, baixas/fruições, reservas em solicitações e saldo atual por servidor.</p>
+    <div class="card">
+      {% if data.eleicao %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-dark">
+            <tr>
+              <th>Matrícula</th><th>Servidor</th><th>Secretaria</th><th>Departamento</th>
+              <th class="text-center">Créditos</th><th class="text-center">Baixas/Fruições</th>
+              <th class="text-center">Reservados</th><th class="text-center">Saldo Atual</th><th class="text-center">Solicitações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for grupo, itens in data.grupos.items() %}
+            <tr class="table-primary"><td colspan="9" class="fw-bold"><i class="bi bi-folder2 me-1"></i>{{ grupo }}</td></tr>
+            {% for s in itens %}
+            {% set saldo_eleicao = (s.creditos|int) - (s.baixas|int) - (s.reservados|int) %}
+            <tr>
+              <td><span class="badge bg-secondary">{{ s.matricula }}</span></td>
+              <td class="fw-semibold">{{ s.nome }}</td>
+              <td class="small text-muted">{{ s.secretaria or '–' }}</td>
+              <td class="small text-muted">{{ s.setor or '–' }}</td>
+              <td class="text-center fw-semibold text-success">{{ s.creditos }}</td>
+              <td class="text-center fw-semibold text-warning">{{ s.baixas }}</td>
+              <td class="text-center fw-semibold text-info">{{ s.reservados }}</td>
+              <td class="text-center fw-bold {{ 'text-success' if saldo_eleicao >= 0 else 'text-danger' }}">{{ saldo_eleicao }}</td>
+              <td class="text-center">{{ s.solicitacoes_total }}</td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:2rem"></i><p class="mt-2">Nenhum registro eleitoral encontrado.</p></div>
+      {% endif %}
+    </div>
+
+    {% elif aba == 'tarefas' %}
+    <h5 class="mb-1"><i class="bi bi-list-check me-2 text-info"></i>Tarefas e Solicitações</h5>
+    <p class="text-muted mb-3">Pedidos pendentes, autorizados, lançados, indeferidos, cancelados e estornados.</p>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      {% for st, qtd in data.totais_status.items() %}
+      <span class="badge bg-light text-dark border">{{ st|capitalize }}: {{ qtd }}</span>
+      {% endfor %}
+    </div>
+    <div class="card">
+      {% if data.solicitacoes %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-dark">
+            <tr>
+              <th>ID</th><th>Solicitado em</th><th>Servidor</th><th>Tipo</th><th>Quantidade</th><th>Período</th><th>Status</th><th>Aprovador</th><th>Lançado por</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for grupo, itens in data.grupos.items() %}
+            <tr class="table-primary"><td colspan="9" class="fw-bold"><i class="bi bi-folder2 me-1"></i>{{ grupo }}</td></tr>
+            {% for s in itens %}
+            <tr>
+              <td>{{ s.id }}</td>
+              <td>{{ s.criado_em|fmt_datetime }}</td>
+              <td class="fw-semibold">{{ s.nome }} <span class="text-muted small">({{ s.matricula }})</span></td>
+              <td>{{ 'Banco de Horas' if s.tipo == 'banco_horas' else 'Dias de Eleição' }}</td>
+              <td>{% if s.tipo == 'banco_horas' %}{{ fmt(s.quantidade) }}{% else %}{{ s.quantidade }} dia(s){% endif %}</td>
+              <td>{{ s.data_pretendida|fmt_data }}{% if s.data_fim and s.data_fim != s.data_pretendida %} a {{ s.data_fim|fmt_data }}{% endif %}</td>
+              <td><span class="badge bg-secondary">{{ s.status }}</span></td>
+              <td class="small text-muted">{{ s.aprovador_nome or '–' }}</td>
+              <td class="small text-muted">{{ s.rh_nome or '–' }}</td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:2rem"></i><p class="mt-2">Nenhuma solicitação encontrada.</p></div>
+      {% endif %}
+    </div>
+
+    {% elif aba == 'administracao' %}
+    <h5 class="mb-1"><i class="bi bi-shield-check me-2 text-secondary"></i>Auditoria e Administração</h5>
+    <p class="text-muted mb-3">Usuários, acessos, backups, importações e alterações registradas no sistema.</p>
+    {% if data.grupos_admin %}
+      {% for grupo, itens in data.grupos_admin.items() %}
+      <div class="card mb-3">
+        <div class="card-header bg-primary bg-opacity-10 d-flex justify-content-between">
+          <span class="fw-bold"><i class="bi bi-folder2 me-1"></i>{{ grupo }}</span>
+          <span class="badge bg-secondary">{{ itens|length }} registro(s)</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th>Data</th><th>Tipo</th><th>Usuário</th><th>Referência</th><th>Detalhe</th><th>Status</th></tr></thead>
+            <tbody>
+              {% for e in itens %}
+              <tr>
+                <td class="text-nowrap">{{ e.data|fmt_datetime }}</td>
+                <td>{{ e.tipo }}</td>
+                <td>{{ e.usuario or '–' }}</td>
+                <td class="small text-muted">{{ e.referencia or '–' }}</td>
+                <td class="small text-muted">{{ e.detalhe or '–' }}</td>
+                <td>{{ e.status or '–' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:2rem"></i><p class="mt-2">Nenhum registro administrativo encontrado.</p></div>
     {% endif %}
 
     <!-- ══ ABA: Por Competência ══ -->
@@ -508,6 +628,5 @@
     {% endif %}
     {% endif %}
 
-  </div><!-- /col conteúdo -->
-</div><!-- /row -->
+</div>
 {% endblock %}

@@ -2486,7 +2486,7 @@ def admin_cadastro_aux_excluir(cid):
 @master_required
 def relatorios():
     db  = get_db()
-    aba = request.args.get("aba","saldos")
+    aba = request.args.get("aba","historico")
     fmt_out = request.args.get("fmt","html")
     mat = request.args.get("matricula","").strip()
     servidor_busca = request.args.get("servidor","").strip()
@@ -2498,6 +2498,8 @@ def relatorios():
     mes = request.args.get("mes","")
     ano = request.args.get("ano",str(date.today().year))
     agr = request.args.get("agrupar","servidor")
+    if aba == "competencia" and not mes:
+        mes = f"{date.today().month:02d}"
 
     if servidor_busca and " - " in servidor_busca:
         mat = servidor_busca.split(" - ", 1)[0].strip()
@@ -2512,6 +2514,43 @@ def relatorios():
     filtros = {"matricula":mat,"servidor":servidor_busca,"secretaria":sec,"setor":set_,"cargo":cargo,"data_ini":di,"data_fim":df,"mes":mes,"ano":ano,"agrupar":agr}
     filtros_qs = urlencode({k:v for k,v in filtros.items() if v})
     data = {}
+    grupos_relatorios = [
+        {
+            "titulo": "Geral",
+            "icone": "bi-list-ul",
+            "cor": "primary",
+            "descricao": "Histórico completo consolidado de lançamentos, compensações e pagamentos.",
+            "abas": [("historico", "Histórico Completo")],
+        },
+        {
+            "titulo": "Banco de Horas",
+            "icone": "bi-clock-history",
+            "cor": "success",
+            "descricao": "Saldos, lançamentos, compensações, pagamentos e vencimentos.",
+            "abas": [("saldos", "Saldos"), ("competencia", "Lançamentos"), ("historico", "Compensações"), ("pagamentos", "Pagamentos"), ("vencimentos", "Vencimentos")],
+        },
+        {
+            "titulo": "Dias de Eleição",
+            "icone": "bi-calendar2-check",
+            "cor": "warning",
+            "descricao": "Créditos, baixas/fruições, saldos eleitorais e solicitações.",
+            "abas": [("eleicao", "Resumo Eleitoral")],
+        },
+        {
+            "titulo": "Tarefas e Solicitações",
+            "icone": "bi-list-check",
+            "cor": "info",
+            "descricao": "Pedidos pendentes, autorizados, lançados e indeferidos.",
+            "abas": [("tarefas", "Solicitações")],
+        },
+        {
+            "titulo": "Auditoria e Administração",
+            "icone": "bi-shield-check",
+            "cor": "secondary",
+            "descricao": "Usuários, acessos, backups, importações e alterações feitas no sistema.",
+            "abas": [("administracao", "Controle Administrativo")],
+        },
+    ]
 
     if aba == "saldos":
         data["servidores"] = db.execute(f"""
@@ -2743,9 +2782,124 @@ def relatorios():
             rows.append(["TOTAL GERAL", "", f"{total_qtd} lançamento(s)", "", "", "", "", "", "", "", minutos_para_horas(total_creditado), minutos_para_horas(total_base)])
             return _export_response(fmt_out, "vencimentos", "Relatório de Horas a Vencer/Vencidas", headers, rows)
 
+    elif aba == "eleicao":
+        data["eleicao"] = db.execute(f"""
+            SELECT s.*,
+                   COALESCE((SELECT SUM(quantidade_dias) FROM eleicao_creditos WHERE matricula=s.matricula),0) AS creditos,
+                   COALESCE((SELECT COUNT(*) FROM eleicao_baixas WHERE matricula=s.matricula),0) AS baixas,
+                   COALESCE((SELECT SUM(quantidade) FROM solicitacoes WHERE matricula=s.matricula AND tipo='eleicao' AND status IN ('solicitado','autorizado')),0) AS reservados,
+                   COALESCE((SELECT COUNT(*) FROM solicitacoes WHERE matricula=s.matricula AND tipo='eleicao'),0) AS solicitacoes_total
+            FROM servidores s {filt_srv}
+            ORDER BY s.secretaria,s.setor,s.nome
+        """, params_srv).fetchall()
+        data["grupos"] = _agrupar_itens(data["eleicao"], agr)
+        if fmt_out in ("csv", "xlsx", "pdf"):
+            headers = ["Grupo","Matrícula","Servidor","Secretaria","Departamento","Cargo","Créditos","Baixas/Fruições","Reservados","Saldo Atual","Solicitações"]
+            rows = []
+            total = {"creditos":0,"baixas":0,"reservados":0,"saldo":0,"sol":0,"qtd":0}
+            for grupo, itens in data["grupos"].items():
+                subt = {"creditos":0,"baixas":0,"reservados":0,"saldo":0,"sol":0}
+                for s in itens:
+                    cred = int(s["creditos"] or 0); baix = int(s["baixas"] or 0); res = int(s["reservados"] or 0)
+                    saldo = cred - baix - res; sol_qtd = int(s["solicitacoes_total"] or 0)
+                    for k, v in (("creditos",cred),("baixas",baix),("reservados",res),("saldo",saldo),("sol",sol_qtd)):
+                        subt[k] += v; total[k] += v
+                    total["qtd"] += 1
+                    rows.append([grupo, s["matricula"], s["nome"], s["secretaria"] or "", s["setor"] or "", s["cargo"] or "", cred, baix, res, saldo, sol_qtd])
+                rows.append([f"TOTAL DO GRUPO: {grupo}", "", f"{len(itens)} servidor(es)", "", "", "", subt["creditos"], subt["baixas"], subt["reservados"], subt["saldo"], subt["sol"]])
+                rows.append(["", "", "", "", "", "", "", "", "", "", ""])
+            rows.append(["TOTAL GERAL", "", f"{total['qtd']} servidor(es)", "", "", "", total["creditos"], total["baixas"], total["reservados"], total["saldo"], total["sol"]])
+            return _export_response(fmt_out, "dias_eleicao", "Relatório de Dias de Eleição", headers, rows)
+
+    elif aba == "tarefas":
+        fs = f"WHERE sol.matricula IN (SELECT matricula FROM servidores s {filt_srv})"
+        ps = list(params_srv)
+        if di:
+            fs += " AND sol.criado_em>=?"; ps.append(di)
+        if df:
+            fs += " AND sol.criado_em<=?"; ps.append(df + " 23:59:59")
+        solicitacoes = db.execute(f"""
+            SELECT sol.*, s.nome, s.secretaria, s.setor, s.cargo
+            FROM solicitacoes sol
+            JOIN servidores s ON s.matricula=sol.matricula
+            {fs}
+            ORDER BY sol.criado_em DESC
+        """, ps).fetchall()
+        data["solicitacoes"] = solicitacoes
+        data["grupos"] = _agrupar_itens(solicitacoes, agr)
+        data["totais_status"] = {
+            st: sum(1 for s in solicitacoes if s["status"] == st)
+            for st in ("solicitado", "autorizado", "lancado", "indeferido", "cancelado", "estornado")
+        }
+        if fmt_out in ("csv", "xlsx", "pdf"):
+            headers = ["Grupo","ID","Data Solicitação","Matrícula","Servidor","Secretaria","Departamento","Tipo","Quantidade","Período","Status","Solicitante","Aprovador","Lançado por","Justificativa/Despacho"]
+            rows = []
+            total_qtd = 0
+            for grupo, itens in data["grupos"].items():
+                for s in itens:
+                    qtd = minutos_para_horas(s["quantidade"]) if s["tipo"] == "banco_horas" else f"{s['quantidade']} dia(s)"
+                    periodo = fmt_data(s["data_pretendida"])
+                    if s["data_fim"] and s["data_fim"] != s["data_pretendida"]:
+                        periodo += f" a {fmt_data(s['data_fim'])}"
+                    rows.append([grupo, s["id"], fmt_datetime(s["criado_em"]), s["matricula"], s["nome"], s["secretaria"] or "", s["setor"] or "",
+                                 "Banco de Horas" if s["tipo"]=="banco_horas" else "Dias de Eleição", qtd, periodo, s["status"], s["criado_por_nome"] or "",
+                                 s["aprovador_nome"] or "", s["rh_nome"] or "", s["justificativa"] or s["despacho_chefia"] or s["motivo_indeferimento"] or ""])
+                    total_qtd += 1
+                rows.append([f"TOTAL DO GRUPO: {grupo}", f"{len(itens)} solicitação(ões)", "", "", "", "", "", "", "", "", "", "", "", "", ""])
+                rows.append(["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""])
+            rows.append(["TOTAL GERAL", f"{total_qtd} solicitação(ões)", "", "", "", "", "", "", "", "", "", "", "", "", ""])
+            return _export_response(fmt_out, "tarefas_solicitacoes", "Relatório de Tarefas e Solicitações", headers, rows)
+
+    elif aba == "administracao":
+        eventos = []
+        if not di and not df:
+            limite_admin = (date.today() - timedelta(days=90)).isoformat()
+            filtro_data = "criado_em>=?"
+            params_data = [limite_admin]
+        else:
+            partes_data, params_data = [], []
+            if di:
+                partes_data.append("criado_em>=?"); params_data.append(di)
+            if df:
+                partes_data.append("criado_em<=?"); params_data.append(df + " 23:59:59")
+            filtro_data = " AND ".join(partes_data) if partes_data else "1=1"
+        for r in db.execute(f"SELECT * FROM auditoria WHERE {filtro_data} ORDER BY criado_em DESC LIMIT 1000", params_data).fetchall():
+            eventos.append({
+                "grupo": "Auditoria / Alterações", "data": r["criado_em"], "tipo": r["acao"], "usuario": r["usuario_nome"] or "",
+                "referencia": f"{r['entidade']} #{r['entidade_id'] or ''}", "detalhe": r["detalhe"] or "", "status": ""
+            })
+        for r in db.execute(f"SELECT * FROM importacoes WHERE {filtro_data} ORDER BY criado_em DESC LIMIT 1000", params_data).fetchall():
+            eventos.append({
+                "grupo": "Importações", "data": r["criado_em"], "tipo": r["tipo"], "usuario": r["usuario_nome"] or "",
+                "referencia": r["arquivo"] or "", "detalhe": f"linhas {r['total_linhas']} | criados {r['criados']} | atualizados {r['atualizados']} | erros {r['erros']}",
+                "status": "Estornada" if r["estornado"] else "Ativa"
+            })
+        for r in db.execute("SELECT id,nome,cpf,email,nivel,ativo,ultimo_acesso,criado_em FROM usuarios ORDER BY criado_em DESC LIMIT 1000").fetchall():
+            eventos.append({
+                "grupo": "Usuários e Acessos", "data": r["criado_em"] or "", "tipo": f"Usuário {r['nivel']}", "usuario": r["nome"],
+                "referencia": fmt_cpf(r["cpf"]), "detalhe": f"E-mail: {r['email'] or '-'} | Último acesso: {fmt_datetime(r['ultimo_acesso']) if r['ultimo_acesso'] else 'Nunca'}",
+                "status": "Ativo" if r["ativo"] else "Inativo"
+            })
+        eventos.sort(key=lambda e: e["data"] or "", reverse=True)
+        data["admin_eventos"] = eventos
+        data["grupos_admin"] = {}
+        for e in eventos:
+            data["grupos_admin"].setdefault(e["grupo"], []).append(e)
+        if fmt_out in ("csv", "xlsx", "pdf"):
+            headers = ["Grupo","Data","Tipo","Usuário","Referência","Detalhe","Status"]
+            rows = []
+            for grupo, itens in data["grupos_admin"].items():
+                for e in itens:
+                    rows.append([grupo, fmt_datetime(e["data"]), e["tipo"], e["usuario"], e["referencia"], e["detalhe"], e["status"]])
+                rows.append([f"TOTAL DO GRUPO: {grupo}", f"{len(itens)} registro(s)", "", "", "", "", ""])
+                rows.append(["", "", "", "", "", "", ""])
+            rows.append(["TOTAL GERAL", f"{len(eventos)} registro(s)", "", "", "", "", ""])
+            return _export_response(fmt_out, "administracao", "Relatório de Auditoria e Administração", headers, rows)
+
     return render_template("relatorios.html", aba=aba, data=data, fmt=minutos_para_horas,
                            secretarias=secs, setores=sets, cargos=cargos, servidores_lista=srvs_lista,
-                           meses=MESES_FULL, filtros=filtros, filtros_qs=filtros_qs)
+                           meses=MESES_FULL, filtros=filtros, filtros_qs=filtros_qs,
+                           grupos_relatorios=grupos_relatorios)
 
 # â”€â”€â”€ Auth: Setup / Login / Logout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
