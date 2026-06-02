@@ -3455,6 +3455,65 @@ def admin_revogar_acesso(uid):
     return redirect(url_for('admin_acessos'))
 
 
+@app.route('/admin/acessos/vincular-rapido', methods=['POST'])
+@master_required
+def admin_vincular_rapido():
+    db = get_db()
+    matricula = request.form.get('matricula', '').strip()
+    tipo      = request.form.get('tipo', '').strip()    # 'secretaria' ou 'setor'
+    vinculo   = request.form.get('vinculo', '').strip() # nome da secretaria/setor
+    if not matricula or not tipo or not vinculo:
+        return json.dumps({'erro': 'Dados incompletos.'}), 400, {'Content-Type': 'application/json'}
+    if tipo not in ('secretaria', 'setor'):
+        return json.dumps({'erro': 'Tipo inválido.'}), 400, {'Content-Type': 'application/json'}
+
+    nivel = 'secretario' if tipo == 'secretaria' else 'chefia'
+    srv = db.execute("SELECT nome, cpf FROM servidores WHERE matricula=? AND arquivado=0", (matricula,)).fetchone()
+    if not srv:
+        return json.dumps({'erro': 'Servidor não encontrado.'}), 404, {'Content-Type': 'application/json'}
+    cpf = (srv['cpf'] or '').strip()
+    if not cpf:
+        return json.dumps({'erro': 'Servidor sem CPF cadastrado. Atualize o cadastro antes de vincular.'}), 400, {'Content-Type': 'application/json'}
+
+    usuario = db.execute("SELECT id, nivel, vinculos FROM usuarios WHERE cpf=? AND ativo=1", (cpf,)).fetchone()
+    if usuario:
+        try:
+            vinculos_atuais = json.loads(usuario['vinculos'] or '[]')
+        except Exception:
+            vinculos_atuais = []
+        if vinculo not in vinculos_atuais:
+            vinculos_atuais.append(vinculo)
+        novo_nivel = usuario['nivel'] if usuario['nivel'] == 'master' else nivel
+        db.execute("UPDATE usuarios SET nivel=?, vinculos=? WHERE id=?",
+                   (novo_nivel, json.dumps(vinculos_atuais), usuario['id']))
+        acao = 'usuario_atualizado'
+        msg  = f'Vínculo adicionado ao usuário existente de {srv["nome"]}.'
+    else:
+        pre = db.execute("SELECT id, vinculos FROM pre_autorizacoes WHERE cpf=?", (cpf,)).fetchone()
+        if pre:
+            try:
+                vinculos_atuais = json.loads(pre['vinculos'] or '[]')
+            except Exception:
+                vinculos_atuais = []
+            if vinculo not in vinculos_atuais:
+                vinculos_atuais.append(vinculo)
+            db.execute("UPDATE pre_autorizacoes SET nivel=?, matricula=?, vinculos=? WHERE id=?",
+                       (nivel, matricula, json.dumps(vinculos_atuais), pre['id']))
+        else:
+            db.upsert(
+                "INSERT OR IGNORE INTO pre_autorizacoes (cpf,nivel,matricula,vinculos) VALUES (?,?,?,?)",
+                "INSERT INTO pre_autorizacoes (cpf,nivel,matricula,vinculos) VALUES (?,?,?,?) ON CONFLICT (cpf) DO NOTHING",
+                (cpf, nivel, matricula, json.dumps([vinculo]))
+            )
+        acao = 'pre_autorizacao'
+        msg  = f'Pré-autorização criada para {srv["nome"]}. Acesso liberado no próximo login.'
+
+    registrar_auditoria(db, "Vínculo rápido", "acessos", vinculo, matricula, srv['nome'],
+                        f"Tipo: {tipo}; Nível: {nivel}; Ação: {acao}")
+    db.commit()
+    return json.dumps({'ok': True, 'acao': acao, 'nome': srv['nome'], 'nivel': nivel, 'msg': msg}), 200, {'Content-Type': 'application/json'}
+
+
 # ─── Banco de Dias de Eleição ─────────────────────────────────────────────────
 
 @app.route('/eleicao')

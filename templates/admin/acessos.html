@@ -275,26 +275,34 @@
           </div>
           <div class="list-group list-group-flush" style="max-height:600px;overflow-y:auto">
             {% for sec in painel_secretarias %}
-            <div class="list-group-item px-3 py-2">
+            <div class="list-group-item px-3 py-2 {{ 'list-group-item-danger' if not sec.ok else '' }}">
               <div class="d-flex justify-content-between align-items-start gap-2">
-                <div class="flex-grow-1">
-                  <div class="d-flex align-items-center gap-2 mb-1">
-                    {% if sec.ok %}
-                    <i class="bi bi-check-circle-fill text-success" title="Secretário vinculado"></i>
+                <div class="d-flex align-items-start gap-2 flex-grow-1">
+                  <button class="btn btn-outline-primary btn-sm p-0 flex-shrink-0"
+                          style="width:26px;height:26px;line-height:1"
+                          title="Vincular secretário a {{ sec.nome }}"
+                          onclick="abrirVinculoRapido('secretaria','{{ sec.nome|replace("'","\\'")|e }}')">
+                    <i class="bi bi-plus-lg" style="font-size:.8rem"></i>
+                  </button>
+                  <div class="flex-grow-1">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                      {% if sec.ok %}
+                      <i class="bi bi-check-circle-fill text-success" title="Secretário vinculado"></i>
+                      {% else %}
+                      <i class="bi bi-exclamation-circle-fill text-danger" title="Sem secretário"></i>
+                      {% endif %}
+                      <span class="fw-semibold small">{{ sec.nome }}</span>
+                    </div>
+                    {% if sec.secretarios %}
+                      {% for u in sec.secretarios %}
+                      <span class="badge bg-primary me-1 mb-1">
+                        <i class="bi bi-person-badge me-1"></i>{{ u.nome }}
+                      </span>
+                      {% endfor %}
                     {% else %}
-                    <i class="bi bi-exclamation-circle-fill text-danger" title="Sem secretário"></i>
+                      <span class="badge bg-danger">Sem secretário vinculado</span>
                     {% endif %}
-                    <span class="fw-semibold small">{{ sec.nome }}</span>
                   </div>
-                  {% if sec.secretarios %}
-                    {% for u in sec.secretarios %}
-                    <span class="badge bg-primary me-1 mb-1">
-                      <i class="bi bi-person-badge me-1"></i>{{ u.nome }}
-                    </span>
-                    {% endfor %}
-                  {% else %}
-                    <span class="badge bg-danger">Sem secretário vinculado</span>
-                  {% endif %}
                 </div>
                 <div class="text-end text-muted small text-nowrap">
                   {{ sec.qtd_servidores }} servidor(es)
@@ -319,30 +327,38 @@
             {% for s in painel_setores %}
             <div class="list-group-item px-3 py-2 {{ 'list-group-item-danger' if not s.ok else '' }}">
               <div class="d-flex justify-content-between align-items-start gap-2">
-                <div class="flex-grow-1">
-                  <div class="d-flex align-items-center gap-2 mb-1">
-                    {% if s.ok %}
-                    <i class="bi bi-check-circle-fill text-success" title="Chefia vinculada"></i>
+                <div class="d-flex align-items-start gap-2 flex-grow-1">
+                  <button class="btn btn-outline-primary btn-sm p-0 flex-shrink-0"
+                          style="width:26px;height:26px;line-height:1"
+                          title="Vincular chefia a {{ s.nome }}"
+                          onclick="abrirVinculoRapido('setor','{{ s.nome|replace("'","\\'")|e }}')">
+                    <i class="bi bi-plus-lg" style="font-size:.8rem"></i>
+                  </button>
+                  <div class="flex-grow-1">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                      {% if s.ok %}
+                      <i class="bi bi-check-circle-fill text-success" title="Chefia vinculada"></i>
+                      {% else %}
+                      <i class="bi bi-exclamation-circle-fill text-danger" title="Sem chefia"></i>
+                      {% endif %}
+                      <span class="fw-semibold small">{{ s.nome }}</span>
+                      {% if s.secretaria %}
+                      <span class="badge bg-light text-dark border small">
+                        {% if s.sec_ok %}<i class="bi bi-check text-success me-1"></i>{% else %}<i class="bi bi-exclamation text-danger me-1"></i>{% endif %}
+                        {{ s.secretaria }}
+                      </span>
+                      {% endif %}
+                    </div>
+                    {% if s.chefias %}
+                      {% for c in s.chefias %}
+                      <span class="badge bg-info text-dark me-1 mb-1">
+                        <i class="bi bi-person-fill me-1"></i>{{ c.nome }}
+                      </span>
+                      {% endfor %}
                     {% else %}
-                    <i class="bi bi-exclamation-circle-fill text-danger" title="Sem chefia"></i>
-                    {% endif %}
-                    <span class="fw-semibold small">{{ s.nome }}</span>
-                    {% if s.secretaria %}
-                    <span class="badge bg-light text-dark border small">
-                      {% if s.sec_ok %}<i class="bi bi-check text-success me-1"></i>{% else %}<i class="bi bi-exclamation text-danger me-1"></i>{% endif %}
-                      {{ s.secretaria }}
-                    </span>
+                      <span class="badge bg-danger">Sem chefia vinculada — solicitações sem aprovador</span>
                     {% endif %}
                   </div>
-                  {% if s.chefias %}
-                    {% for c in s.chefias %}
-                    <span class="badge bg-info text-dark me-1 mb-1">
-                      <i class="bi bi-person-fill me-1"></i>{{ c.nome }}
-                    </span>
-                    {% endfor %}
-                  {% else %}
-                    <span class="badge bg-danger">Sem chefia vinculada — solicitações sem aprovador</span>
-                  {% endif %}
                 </div>
                 <div class="text-end text-muted small text-nowrap">
                   {{ s.qtd_servidores }} servidor(es)
@@ -703,5 +719,169 @@ document.getElementById('formNivel')?.addEventListener('submit', function(e) {
     alert('Selecione ao menos uma secretaria para o secretário.');
   }
 });
+
+// ── Vínculo Rápido ───────────────────────────────────────────────────────────
+let _vqTipo = '', _vqVinculo = '', _vqSrvCache = null, _vqDebounce = null;
+
+function abrirVinculoRapido(tipo, vinculo) {
+  _vqTipo    = tipo;
+  _vqVinculo = vinculo;
+  const nivelLabel = tipo === 'secretaria' ? 'Secretário' : 'Chefia';
+  document.getElementById('vqTitulo').textContent    = (tipo === 'secretaria' ? 'Secretaria' : 'Departamento') + ': ' + vinculo;
+  document.getElementById('vqNivelBadge').textContent = nivelLabel;
+  document.getElementById('vqNivelBadge').className   = 'badge ' + (tipo === 'secretaria' ? 'bg-primary' : 'bg-info text-dark');
+  document.getElementById('vqInput').value = '';
+  document.getElementById('vqBanner').classList.add('d-none');
+  document.getElementById('vqAlerta').classList.add('d-none');
+  document.getElementById('vqDrop').style.display = 'none';
+  document.getElementById('vqDrop').innerHTML = '';
+  document.getElementById('btnVqSalvar').disabled = true;
+  document.getElementById('btnVqSalvar').innerHTML = '<i class="bi bi-link-45deg me-1"></i>Vincular';
+  new bootstrap.Modal(document.getElementById('modalVinculoRapido')).show();
+}
+
+async function _vqCarregarSrvs() {
+  if (_vqSrvCache) return _vqSrvCache;
+  try { const r = await fetch('/api/servidores-lista'); _vqSrvCache = await r.json(); } catch(e) { _vqSrvCache = []; }
+  return _vqSrvCache;
+}
+
+function _norm(v) { return (v||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+
+const vqInput = document.getElementById('vqInput');
+const vqDrop  = document.getElementById('vqDrop');
+const vqBanner = document.getElementById('vqBanner');
+
+vqInput?.addEventListener('input', async () => {
+  const q = _norm(vqInput.value);
+  document.getElementById('btnVqSalvar').disabled = true;
+  vqBanner.classList.add('d-none');
+  if (q.length < 2) { vqDrop.style.display='none'; return; }
+  const srvs = await _vqCarregarSrvs();
+  const matches = srvs.filter(s => _norm(s.m).includes(q) || _norm(s.n).includes(q)).slice(0,8);
+  if (!matches.length) { vqDrop.innerHTML='<div class="px-3 py-2 text-muted small">Nenhum servidor encontrado.</div>'; vqDrop.style.display='block'; return; }
+  vqDrop.innerHTML = matches.map((s,i) =>
+    `<div class="__vq px-3 py-2 border-bottom" data-idx="${i}" style="cursor:pointer">
+       <span class="badge bg-secondary me-1">${s.m}</span><strong>${s.n}</strong>
+       ${s.i ? `<div class="text-muted" style="font-size:.72rem">${s.i}</div>` : ''}
+     </div>`
+  ).join('');
+  vqDrop.style.display = 'block';
+  let _matches = matches;
+  vqDrop.querySelectorAll('.__vq').forEach(el => {
+    el.addEventListener('mouseenter', () => el.style.background='#f0f7ff');
+    el.addEventListener('mouseleave', () => el.style.background='');
+    el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const s = _matches[+el.dataset.idx];
+      vqInput.value = s.m + ' – ' + s.n;
+      vqInput.dataset.mat = s.m;
+      vqDrop.style.display = 'none';
+      // Mostra banner
+      vqBanner.innerHTML = `<i class="bi bi-person-check-fill me-2 text-success"></i>
+        <strong>${s.n}</strong> <span class="badge bg-secondary ms-1">${s.m}</span>
+        <span class="ms-2 text-muted small">${s.i||''}</span>`;
+      vqBanner.classList.remove('d-none');
+      document.getElementById('btnVqSalvar').disabled = false;
+    });
+  });
+});
+vqInput?.addEventListener('blur', () => setTimeout(() => vqDrop.style.display='none', 160));
+
+document.getElementById('btnVqSalvar')?.addEventListener('click', async function() {
+  const mat = vqInput.dataset.mat;
+  const alertEl = document.getElementById('vqAlerta');
+  if (!mat) { alertEl.className='alert alert-danger mb-0'; alertEl.textContent='Selecione um servidor da lista.'; alertEl.classList.remove('d-none'); return; }
+  this.disabled=true; this.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Salvando...';
+  const fd = new FormData();
+  fd.append('matricula', mat);
+  fd.append('tipo', _vqTipo);
+  fd.append('vinculo', _vqVinculo);
+  try {
+    const res = await fetch('/admin/acessos/vincular-rapido', { method:'POST', body:fd });
+    const d = await res.json();
+    if (d.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('modalVinculoRapido'))?.hide();
+      // Mostra modal de confirmação
+      document.getElementById('vqConfNome').textContent   = d.nome;
+      document.getElementById('vqConfNivel').textContent  = d.nivel === 'secretario' ? 'Secretário' : 'Chefia';
+      document.getElementById('vqConfLocal').textContent  = _vqVinculo;
+      document.getElementById('vqConfMsg').textContent    = d.msg;
+      new bootstrap.Modal(document.getElementById('modalVinculoConfirmacao')).show();
+      setTimeout(() => location.reload(), 3000);
+    } else {
+      alertEl.className='alert alert-danger mb-0'; alertEl.textContent=d.erro||'Erro ao vincular.'; alertEl.classList.remove('d-none');
+      this.disabled=false; this.innerHTML='<i class="bi bi-link-45deg me-1"></i>Vincular';
+    }
+  } catch(e) {
+    alertEl.className='alert alert-danger mb-0'; alertEl.textContent='Erro de comunicação.'; alertEl.classList.remove('d-none');
+    this.disabled=false; this.innerHTML='<i class="bi bi-link-45deg me-1"></i>Vincular';
+  }
+});
 </script>
+
+<!-- Modal: Vínculo Rápido -->
+<div class="modal fade" id="modalVinculoRapido" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="bi bi-link-45deg me-2"></i>Vincular Usuário</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3 p-3 bg-light rounded d-flex align-items-center gap-3">
+          <div>
+            <div class="text-muted small">Vinculando a</div>
+            <div class="fw-semibold" id="vqTitulo"></div>
+          </div>
+          <div class="ms-auto">
+            <span id="vqNivelBadge" class="badge bg-primary fs-6"></span>
+          </div>
+        </div>
+        <div id="vqAlerta" class="alert d-none mb-3"></div>
+        <label class="form-label fw-semibold">Servidor <span class="text-danger">*</span></label>
+        <div style="position:relative">
+          <input type="text" class="form-control" id="vqInput"
+                 placeholder="Digite matrícula ou nome..." autocomplete="off">
+          <div id="vqDrop" class="bg-white border rounded shadow"
+               style="position:absolute;top:100%;left:0;right:0;z-index:1060;max-height:240px;overflow-y:auto;margin-top:2px;display:none"></div>
+        </div>
+        <div id="vqBanner" class="alert alert-success py-2 mt-2 d-none small"></div>
+        <div class="form-text mt-1">O servidor será vinculado com o nível indicado acima. Caso ainda não possua conta, será criada uma pré-autorização.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnVqSalvar" disabled>
+          <i class="bi bi-link-45deg me-1"></i>Vincular
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Confirmação de Vínculo -->
+<div class="modal fade" id="modalVinculoConfirmacao" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content" style="border-radius:.9rem;overflow:hidden">
+      <div class="modal-header py-3 text-white" style="background:#198754">
+        <div class="d-flex align-items-center gap-2 w-100">
+          <i class="bi bi-check-circle-fill fs-4"></i>
+          <h5 class="modal-title mb-0 fw-bold">Vínculo Confirmado</h5>
+        </div>
+      </div>
+      <div class="modal-body py-4 text-center">
+        <p class="mb-1"><strong id="vqConfNome"></strong></p>
+        <p class="mb-1 text-muted small">vinculado como <strong id="vqConfNivel"></strong> a</p>
+        <p class="fw-semibold mb-3" id="vqConfLocal"></p>
+        <p class="text-muted small mb-0" id="vqConfMsg"></p>
+      </div>
+      <div class="modal-footer justify-content-center border-0 py-3">
+        <button type="button" class="btn btn-success px-5 fw-bold" onclick="location.reload()">
+          <i class="bi bi-check-lg me-1"></i>OK
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
