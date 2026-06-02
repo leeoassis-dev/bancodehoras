@@ -1,13 +1,39 @@
 import unittest
 
-from app import app, fmt_cpf, somente_digitos
+from app import app
+from utils import (
+    calcular_data_fim_periodo,
+    datas_periodo_consecutivo,
+    formatar_cpf,
+    formatar_data_br,
+    formatar_datetime_br,
+    horas_para_minutos,
+    minutos_para_horas,
+    somente_digitos,
+)
 
 
 class BasicRegressionTests(unittest.TestCase):
     def test_cpf_helpers(self):
         self.assertEqual(somente_digitos("123.456.789-00"), "12345678900")
-        self.assertEqual(fmt_cpf("12345678900"), "123.456.789-00")
-        self.assertEqual(fmt_cpf(""), "\u2013")
+        self.assertEqual(formatar_cpf("12345678900"), "123.456.789-00")
+        self.assertEqual(formatar_cpf(""), "\u2013")
+
+    def test_date_and_hour_helpers(self):
+        self.assertEqual(formatar_data_br("2026-06-04"), "04/06/2026")
+        self.assertEqual(formatar_datetime_br("2026-06-04 09:35:10"), "04/06/2026 09:35")
+        self.assertEqual(horas_para_minutos("08:30"), 510)
+        self.assertEqual(horas_para_minutos("08:99"), 0)
+        self.assertEqual(minutos_para_horas(-90), "-01:30")
+
+    def test_eleicao_period_helpers(self):
+        self.assertEqual(calcular_data_fim_periodo("2026-06-04", 1, "eleicao"), "2026-06-04")
+        self.assertEqual(calcular_data_fim_periodo("2026-06-04", 2, "eleicao"), "2026-06-05")
+        self.assertEqual(calcular_data_fim_periodo("2026-06-04", 3, "banco_horas"), "2026-06-04")
+        self.assertEqual(
+            datas_periodo_consecutivo("2026-06-04", 3),
+            ["2026-06-04", "2026-06-05", "2026-06-06"],
+        )
 
     def test_no_duplicate_routes(self):
         routes = [str(rule.rule) for rule in app.url_map.iter_rules()]
@@ -19,6 +45,14 @@ class BasicRegressionTests(unittest.TestCase):
         response = client.post("/admin/alternar-visao", data={"visao": "chefia"})
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login", response.headers.get("Location", ""))
+
+    def test_old_status_route_redirects(self):
+        client = app.test_client()
+        with client.session_transaction() as sess:
+            sess.update({'uid': 1, 'nivel': 'master', 'nome': 'Master', 'cpf': '0', 'temp': False})
+        response = client.get("/admin/saude")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/admin/status", response.headers.get("Location", ""))
 
 
 if __name__ == "__main__":

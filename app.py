@@ -1,5 +1,16 @@
 ﻿from flask import Flask, render_template, request, redirect, url_for, flash, make_response, jsonify, session, g
 from database import init_db, get_db, _consumir_fifo_raw, six_months_ago, five_months_ago, IS_POSTGRES
+from utils import (
+    calcular_data_fim_periodo,
+    cpf_sem_pontuacao_sql,
+    datas_periodo_consecutivo,
+    formatar_cpf,
+    formatar_data_br,
+    formatar_datetime_br,
+    horas_para_minutos,
+    minutos_para_horas,
+    somente_digitos,
+)
 from datetime import datetime, date, timedelta
 from urllib.parse import urlencode
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -36,12 +47,6 @@ def cache_set(chave, valor, ttl=30):
 
 def limpar_cache():
     _CACHE.clear()
-
-def somente_digitos(valor):
-    return ''.join(ch for ch in str(valor or '') if ch.isdigit())
-
-def cpf_sem_pontuacao_sql(coluna):
-    return f"REPLACE(REPLACE(REPLACE(COALESCE({coluna},''),'.',''),'-',''),' ','')"
 
 # â”€â”€â”€ Auth helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -275,49 +280,22 @@ def invalidar_cache_em_gravacao(response):
 
 # â”€â”€â”€ Utilitários â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def horas_para_minutos(s):
-    try:
-        h, m = map(int, str(s).split(":")); return h*60+m
-    except: return 0
-
-def minutos_para_horas(m):
-    m = int(m or 0)
-    s = "-" if m < 0 else ""; m = abs(m)
-    return f"{s}{m//60:02d}:{m%60:02d}"
-
 def minutos_num(m):
     return int(m or 0)
 
 @app.template_filter('fmt_data')
 def fmt_data(valor):
     """YYYY-MM-DD → dd/mm/aaaa para exibição."""
-    if not valor:
-        return '–'
-    s = str(valor).strip()[:10]
-    try:
-        return date.fromisoformat(s).strftime('%d/%m/%Y')
-    except Exception:
-        return s
+    return formatar_data_br(valor)
 
 @app.template_filter('fmt_datetime')
 def fmt_datetime(valor):
     """YYYY-MM-DD HH:MM[:SS] → dd/mm/aaaa HH:MM para exibição."""
-    if not valor:
-        return '–'
-    s = str(valor).strip()
-    try:
-        if len(s) >= 16:
-            return datetime.strptime(s[:16], '%Y-%m-%d %H:%M').strftime('%d/%m/%Y %H:%M')
-        return date.fromisoformat(s[:10]).strftime('%d/%m/%Y')
-    except Exception:
-        return s
+    return formatar_datetime_br(valor)
 
 @app.template_filter('fmt_cpf')
 def fmt_cpf(valor):
-    d = somente_digitos(valor)
-    if len(d) != 11:
-        return valor or '–'
-    return f"{d[:3]}.{d[3:6]}.{d[6:9]}-{d[9:]}"
+    return formatar_cpf(valor)
 
 def contar_seguro(db, tabela, where="1=1", params=()):
     """Conta registros sem derrubar telas técnicas se uma tabela ainda não existir."""
@@ -4360,13 +4338,7 @@ def _paginar(total, page, per_page=20):
 
 def _calcular_data_fim(data_pretendida, quantidade, tipo):
     """Calcula data final do período de compensação."""
-    if tipo == 'eleicao' and quantidade > 1:
-        try:
-            d = date.fromisoformat(data_pretendida)
-            return (d + timedelta(days=quantidade - 1)).isoformat()
-        except Exception:
-            pass
-    return data_pretendida
+    return calcular_data_fim_periodo(data_pretendida, quantidade, tipo)
 
 # ─── Solicitações de Compensação ─────────────────────────────────────────────
 
@@ -4702,12 +4674,11 @@ def admin_tarefas_lancar(sid):
         saldo_sem_esta = saldo_real + sol['quantidade']
         if saldo_sem_esta < sol['quantidade']:
             return json.dumps({'erro': 'Saldo de dias insuficiente para lançar a fruição.'}), 400, {'Content-Type': 'application/json'}
-        try:
-            data_base = date.fromisoformat(data_lanc)
-        except Exception:
-            data_base = date.today()
         qtd_dias = max(1, int(sol['quantidade'] or 1))
-        datas_baixadas = [(data_base + timedelta(days=i)).isoformat() for i in range(qtd_dias)]
+        try:
+            datas_baixadas = datas_periodo_consecutivo(data_lanc, qtd_dias)
+        except Exception:
+            datas_baixadas = datas_periodo_consecutivo(date.today().isoformat(), qtd_dias)
         desc_base = f"Solicitação #{sid} — fruição autorizada por {sol['aprovador_nome'] or nome}"
         if qtd_dias > 1:
             desc_base += f" | Período: {fmt_data(datas_baixadas[0])} a {fmt_data(datas_baixadas[-1])} | Total: {qtd_dias} dias"
