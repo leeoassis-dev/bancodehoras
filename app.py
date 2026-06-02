@@ -1897,7 +1897,7 @@ def admin_backup_excel():
     ]
     add_sheet("Servidores Ativos", servidores_headers, servidores_rows(0))
     add_sheet("Servidores Arquivados", servidores_headers, servidores_rows(1))
-    add_sheet("Cargos", ["Tipo","Nome","Ativo","Criado em"], [
+    add_sheet("Cadastros Auxiliares", ["Tipo","Nome","Ativo","Criado em"], [
         [r["tipo"], r["nome"], "Sim" if r["ativo"] else "Não", v(r, "criado_em")]
         for r in db.execute("SELECT * FROM cadastros_auxiliares ORDER BY tipo,nome").fetchall()
     ])
@@ -1905,6 +1905,81 @@ def admin_backup_excel():
         [u["nome"], u["cpf"], v(u, "email"), u["nivel"], v(u, "matricula"), ", ".join(get_vinculos(u)),
          "Sim" if u["ativo"] else "Não", v(u, "ultimo_acesso")]
         for u in db.execute("SELECT * FROM usuarios ORDER BY nivel,nome").fetchall()
+    ])
+    add_sheet("Pré-autorizações", ["ID","CPF","Nome Servidor","Nível","Matrícula","Vínculos","Observação","Criado em"], [
+        [p["id"], p["cpf"], v(p, "nome_servidor"), p["nivel"], v(p, "matricula"),
+         ", ".join(get_vinculos(p)), v(p, "obs"), v(p, "criado_em")]
+        for p in db.execute("""
+            SELECT p.*, (SELECT nome FROM servidores WHERE arquivado=0 AND cpf=p.cpf LIMIT 1) AS nome_servidor
+            FROM pre_autorizacoes p
+            ORDER BY p.criado_em,p.id
+        """).fetchall()
+    ])
+
+    usuarios_vinc = db.execute("""
+        SELECT u.id,u.nome,u.cpf,u.nivel,u.matricula,u.vinculos
+        FROM usuarios u
+        WHERE u.ativo=1 AND u.nivel IN ('chefia','secretario')
+        ORDER BY u.nivel,u.nome
+    """).fetchall()
+    mapa_chefia, mapa_secretario = {}, {}
+    for u in usuarios_vinc:
+        item = f"{u['nome']} | CPF {u['cpf']} | ID {u['id']}"
+        for vinc in get_vinculos(u):
+            if u["nivel"] == "chefia":
+                mapa_chefia.setdefault(vinc, []).append(item)
+            elif u["nivel"] == "secretario":
+                mapa_secretario.setdefault(vinc, []).append(item)
+
+    setor_secretaria = {}
+    for row in db.execute("""
+        SELECT DISTINCT setor, secretaria
+        FROM servidores
+        WHERE arquivado=0 AND setor IS NOT NULL AND setor!=''
+        ORDER BY setor,secretaria
+    """).fetchall():
+        if row["setor"] and row["setor"] not in setor_secretaria:
+            setor_secretaria[row["setor"]] = row["secretaria"] or ""
+
+    qtd_por_setor = {
+        r["setor"]: r["qtd"] for r in db.execute("""
+            SELECT setor, COUNT(*) AS qtd
+            FROM servidores
+            WHERE arquivado=0 AND setor IS NOT NULL AND setor!=''
+            GROUP BY setor
+        """).fetchall()
+    }
+    qtd_por_secretaria = {
+        r["secretaria"]: r["qtd"] for r in db.execute("""
+            SELECT secretaria, COUNT(*) AS qtd
+            FROM servidores
+            WHERE arquivado=0 AND secretaria IS NOT NULL AND secretaria!=''
+            GROUP BY secretaria
+        """).fetchall()
+    }
+    painel_rows = []
+    for sec in _cadastros_nomes(db, "secretaria"):
+        vinculados = mapa_secretario.get(sec, [])
+        painel_rows.append([
+            "Secretaria", sec, "", qtd_por_secretaria.get(sec, 0),
+            "Com secretário" if vinculados else "Sem secretário vinculado",
+            " | ".join(vinculados), ""
+        ])
+    for setor in _cadastros_nomes(db, "departamento"):
+        secretaria_pai = setor_secretaria.get(setor, "")
+        vinculados = mapa_chefia.get(setor, [])
+        painel_rows.append([
+            "Departamento", setor, secretaria_pai, qtd_por_setor.get(setor, 0),
+            "Com chefia" if vinculados else "Sem chefia vinculada",
+            " | ".join(vinculados),
+            "Secretaria com secretário" if secretaria_pai and mapa_secretario.get(secretaria_pai)
+            else ("Secretaria sem secretário" if secretaria_pai else "")
+        ])
+    add_sheet("Painel de Vínculos", ["Tipo","Local","Secretaria vinculada","Servidores ativos","Status","Usuários vinculados","Observação"], painel_rows)
+
+    add_sheet("Configurações", ["Chave","Valor"], [
+        [c["chave"], c["valor"]]
+        for c in db.execute("SELECT * FROM config ORDER BY chave").fetchall()
     ])
 
     saldo_rows = []
@@ -1963,9 +2038,34 @@ def admin_backup_excel():
                         "Arquivado" if v(r, "arquivado", 0) else "Ativo"])
     add_sheet("Histórico Dias Eleição", ["Matrícula","Servidor","Tipo","Referência/Data","Dias concedidos","Dias utilizados","Justificativa/Observação","Usuário","Criado em","Status"], hist_el)
 
+    add_sheet("Tarefas Solicitações", [
+        "ID","Matrícula","Servidor","Secretaria","Departamento","Tipo","Quantidade","Data pretendida","Data fim",
+        "Justificativa","Status","Criado por","Criado em","Aprovador","Data autorização",
+        "Despacho chefia","Motivo indeferimento","Justificativa RH","RH","Data lançamento","Referência lançamento"
+    ], [
+        [sol["id"], sol["matricula"], v(sol, "servidor_nome"), v(sol, "secretaria"), v(sol, "setor"),
+         "Banco de Horas" if sol["tipo"] == "banco_horas" else "Dias de Eleição",
+         minutos_para_horas(sol["quantidade"]) if sol["tipo"] == "banco_horas" else sol["quantidade"],
+         sol["data_pretendida"], v(sol, "data_fim"), v(sol, "justificativa"), sol["status"],
+         v(sol, "criado_por_nome"), v(sol, "criado_em"), v(sol, "aprovador_nome"), v(sol, "data_autorizacao"),
+         v(sol, "despacho_chefia"), v(sol, "motivo_indeferimento"), v(sol, "justificativa_rh"),
+         v(sol, "rh_nome"), v(sol, "data_lancamento"), v(sol, "referencia_id")]
+        for sol in db.execute("""
+            SELECT sol.*, s.nome AS servidor_nome, s.secretaria, s.setor
+            FROM solicitacoes sol
+            LEFT JOIN servidores s ON s.matricula=sol.matricula
+            ORDER BY sol.criado_em,sol.id
+        """).fetchall()
+    ])
+
     add_sheet("Importações", ["ID","Tipo","Arquivo","Usuário","Total","Importados","Atualizados","Erros","Criado em","Estornado"], [
         [i["id"], i["tipo"], v(i, "arquivo"), v(i, "usuario_nome"), i["total_linhas"], i["criados"], i["atualizados"], i["erros"], i["criado_em"], "Sim" if i["estornado"] else "Não"]
         for i in db.execute("SELECT * FROM importacoes ORDER BY criado_em,id").fetchall()
+    ])
+    add_sheet("Exclusões Servidores", ["ID","Auditoria ID","Matrícula","Servidor","Criado em","Restaurado","Restaurado em","Payload"], [
+        [e["id"], v(e, "auditoria_id"), e["matricula"], v(e, "servidor_nome"), e["criado_em"],
+         "Sim" if e["restaurado"] else "Não", v(e, "restaurado_em"), v(e, "payload")]
+        for e in db.execute("SELECT * FROM exclusoes_servidores ORDER BY criado_em,id").fetchall()
     ])
     add_sheet("Auditoria", ["Data","Usuário","CPF","Ação","Entidade","ID","Matrícula","Servidor","Detalhe"], [
         [a["criado_em"], v(a, "usuario_nome"), v(a, "usuario_cpf"), a["acao"], a["entidade"],
