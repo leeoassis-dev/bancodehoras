@@ -38,6 +38,12 @@ def cache_set(chave, valor, ttl=30):
 def limpar_cache():
     _CACHE.clear()
 
+def somente_digitos(valor):
+    return ''.join(ch for ch in str(valor or '') if ch.isdigit())
+
+def cpf_sem_pontuacao_sql(coluna):
+    return f"REPLACE(REPLACE(REPLACE(COALESCE({coluna},''),'.',''),'-',''),' ','')"
+
 # â”€â”€â”€ Auth helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ROTAS_PUBLICAS = {'login','logout','recuperar_senha','recuperar_senha_token','setup','static'}
@@ -3575,7 +3581,17 @@ def admin_vincular_rapido():
     if not cpf:
         return json.dumps({'erro': 'Servidor sem CPF cadastrado. Atualize o cadastro antes de vincular.'}), 400, {'Content-Type': 'application/json'}
 
-    usuario = db.execute("SELECT id, nivel, vinculos FROM usuarios WHERE cpf=? AND ativo=1", (cpf,)).fetchone()
+    cpf_norm = somente_digitos(cpf)
+    usuario = db.execute(f"""
+        SELECT id, nome, cpf, nivel, matricula, secretaria, setor, vinculos
+        FROM usuarios
+        WHERE ativo=1 AND (
+            (?<>'' AND {cpf_sem_pontuacao_sql('cpf')}=?)
+            OR (?<>'' AND matricula=?)
+        )
+        ORDER BY CASE WHEN matricula=? THEN 0 ELSE 1 END
+        LIMIT 1
+    """, (cpf_norm, cpf_norm, matricula, matricula, matricula)).fetchone()
     if usuario:
         try:
             vinculos_atuais = json.loads(usuario['vinculos'] or '[]')
@@ -3584,12 +3600,24 @@ def admin_vincular_rapido():
         if vinculo not in vinculos_atuais:
             vinculos_atuais.append(vinculo)
         novo_nivel = usuario['nivel'] if usuario['nivel'] == 'master' else nivel
-        db.execute("UPDATE usuarios SET nivel=?, vinculos=? WHERE id=?",
-                   (novo_nivel, json.dumps(vinculos_atuais), usuario['id']))
+        nova_matricula = usuario['matricula'] or matricula
+        nova_secretaria = vinculo if tipo == 'secretaria' else (usuario['secretaria'] or '')
+        novo_setor = vinculo if tipo == 'setor' else (usuario['setor'] or '')
+        db.execute("""UPDATE usuarios
+                      SET nivel=?, matricula=?, secretaria=?, setor=?, vinculos=?
+                      WHERE id=?""",
+                   (novo_nivel, nova_matricula, nova_secretaria, novo_setor,
+                    json.dumps(vinculos_atuais, ensure_ascii=False), usuario['id']))
         acao = 'usuario_atualizado'
         msg  = f'Vínculo adicionado ao usuário existente de {srv["nome"]}.'
     else:
-        pre = db.execute("SELECT id, vinculos FROM pre_autorizacoes WHERE cpf=?", (cpf,)).fetchone()
+        pre = db.execute(f"""
+            SELECT id, vinculos
+            FROM pre_autorizacoes
+            WHERE (?<>'' AND {cpf_sem_pontuacao_sql('cpf')}=?)
+               OR (?<>'' AND matricula=?)
+            LIMIT 1
+        """, (cpf_norm, cpf_norm, matricula, matricula)).fetchone()
         if pre:
             try:
                 vinculos_atuais = json.loads(pre['vinculos'] or '[]')
@@ -3597,13 +3625,25 @@ def admin_vincular_rapido():
                 vinculos_atuais = []
             if vinculo not in vinculos_atuais:
                 vinculos_atuais.append(vinculo)
-            db.execute("UPDATE pre_autorizacoes SET nivel=?, matricula=?, vinculos=? WHERE id=?",
-                       (nivel, matricula, json.dumps(vinculos_atuais), pre['id']))
+            sec = vinculo if tipo == 'secretaria' else ''
+            set_ = vinculo if tipo == 'setor' else ''
+            db.execute("""UPDATE pre_autorizacoes
+                          SET nivel=?, matricula=?, secretaria=?, setor=?, vinculos=?
+                          WHERE id=?""",
+                       (nivel, matricula, sec, set_, json.dumps(vinculos_atuais, ensure_ascii=False), pre['id']))
         else:
             db.upsert(
-                "INSERT OR IGNORE INTO pre_autorizacoes (cpf,nivel,matricula,vinculos) VALUES (?,?,?,?)",
-                "INSERT INTO pre_autorizacoes (cpf,nivel,matricula,vinculos) VALUES (?,?,?,?) ON CONFLICT (cpf) DO NOTHING",
-                (cpf, nivel, matricula, json.dumps([vinculo]))
+                "INSERT OR IGNORE INTO pre_autorizacoes (cpf,nivel,secretaria,setor,matricula,vinculos) VALUES (?,?,?,?,?,?)",
+                """INSERT INTO pre_autorizacoes (cpf,nivel,secretaria,setor,matricula,vinculos)
+                   VALUES (?,?,?,?,?,?)
+                   ON CONFLICT (cpf) DO UPDATE SET
+                     nivel=EXCLUDED.nivel,
+                     secretaria=EXCLUDED.secretaria,
+                     setor=EXCLUDED.setor,
+                     matricula=EXCLUDED.matricula,
+                     vinculos=EXCLUDED.vinculos""",
+                (cpf, nivel, vinculo if tipo == 'secretaria' else '', vinculo if tipo == 'setor' else '',
+                 matricula, json.dumps([vinculo], ensure_ascii=False))
             )
         acao = 'pre_autorizacao'
         msg  = f'Pré-autorização criada para {srv["nome"]}. Acesso liberado no próximo login.'
@@ -3611,6 +3651,7 @@ def admin_vincular_rapido():
     registrar_auditoria(db, "Vínculo rápido", "acessos", vinculo, matricula, srv['nome'],
                         f"Tipo: {tipo}; Nível: {nivel}; Ação: {acao}")
     db.commit()
+    limpar_cache()
     return json.dumps({'ok': True, 'acao': acao, 'nome': srv['nome'], 'matricula': matricula, 'nivel': nivel, 'vinculo': vinculo, 'msg': msg}), 200, {'Content-Type': 'application/json'}
 
 
