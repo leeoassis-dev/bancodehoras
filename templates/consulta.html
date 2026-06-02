@@ -10,14 +10,20 @@
 
 <ul class="nav nav-tabs mb-3" id="tabsConsulta">
   <li class="nav-item">
-    <button class="nav-link {% if aba != 'solicitacoes' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tabServidores" id="btnTabServidores">
+    <button class="nav-link {% if aba not in ('solicitacoes','autorizadas') %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tabServidores" id="btnTabServidores">
       <i class="bi bi-people me-1"></i>Servidores
     </button>
   </li>
   <li class="nav-item">
     <button class="nav-link {% if aba == 'solicitacoes' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tabSolicitacoes" id="btnTabSolicitacoes">
-      <i class="bi bi-inbox-fill me-1"></i>Solicitações Pendentes
-      {% if sol_pendentes %}<span class="badge bg-warning text-dark ms-1">{{ sol_pendentes|length }}</span>{% endif %}
+      <i class="bi bi-inbox-fill me-1"></i>Pendentes de Autorização
+      {% if sol_pendentes_total > 0 %}<span class="badge bg-warning text-dark ms-1">{{ sol_pendentes_total }}</span>{% endif %}
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link {% if aba == 'autorizadas' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tabAutorizadas" id="btnTabAutorizadas">
+      <i class="bi bi-check2-circle me-1"></i>Autorizações (60 dias)
+      {% if sol_aut_total > 0 %}<span class="badge bg-success ms-1">{{ sol_aut_total }}</span>{% endif %}
     </button>
   </li>
 </ul>
@@ -116,11 +122,11 @@
 <div class="tab-pane fade {% if aba == 'solicitacoes' %}show active{% endif %}" id="tabSolicitacoes">
   {% if sol_pendentes %}
   <div class="card">
-    <div class="card-header bg-white small text-muted">{{ sol_pendentes|length }} solicitação(ões) aguardando autorização</div>
+    <div class="card-header bg-white small text-muted">{{ sol_pendentes_total }} solicitação(ões) aguardando autorização</div>
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0 small">
         <thead class="table-dark">
-          <tr><th>Servidor</th><th>Tipo</th><th>Quantidade</th><th>Data Pretendida</th><th>Solicitado em</th><th>Justificativa</th><th class="text-center">Ações</th></tr>
+          <tr><th>Servidor</th><th>Tipo</th><th>Quantidade</th><th>Período</th><th>Solicitado em</th><th>Justificativa</th><th class="text-center">Ações</th></tr>
         </thead>
         <tbody>
           {% for s in sol_pendentes %}
@@ -137,7 +143,10 @@
               {% if s.tipo == 'banco_horas' %}{{ fmt(s.quantidade) }}
               {% else %}{{ s.quantidade }} dia{{ 's' if s.quantidade != 1 else '' }}{% endif %}
             </td>
-            <td>{{ s.data_pretendida|fmt_data }}</td>
+            <td>
+              {{ s.data_pretendida|fmt_data }}
+              {% if s.data_fim and s.data_fim != s.data_pretendida %}<br><span class="text-muted" style="font-size:.72rem">até {{ s.data_fim|fmt_data }}</span>{% endif %}
+            </td>
             <td>{{ s.criado_em|fmt_datetime }}</td>
             <td class="text-muted">{{ s.justificativa or '–' }}</td>
             <td class="text-center">
@@ -155,6 +164,15 @@
         </tbody>
       </table>
     </div>
+    {% if sol_pendentes_pages > 1 %}
+    <div class="card-footer bg-white d-flex justify-content-between align-items-center small">
+      <span class="text-muted">Página {{ p_pend }} de {{ sol_pendentes_pages }}</span>
+      <div class="d-flex gap-1">
+        {% if p_pend > 1 %}<a href="?aba=solicitacoes&p_pend={{ p_pend-1 }}" class="btn btn-outline-secondary btn-sm">‹ Anterior</a>{% endif %}
+        {% if p_pend < sol_pendentes_pages %}<a href="?aba=solicitacoes&p_pend={{ p_pend+1 }}" class="btn btn-outline-secondary btn-sm">Próxima ›</a>{% endif %}
+      </div>
+    </div>
+    {% endif %}
   </div>
   {% else %}
   <div class="text-center py-5 text-muted">
@@ -163,6 +181,71 @@
   </div>
   {% endif %}
 </div><!-- /tabSolicitacoes -->
+
+<!-- Aba Solicitações Autorizadas (últimos 60 dias) -->
+<div class="tab-pane fade {% if aba == 'autorizadas' %}show active{% endif %}" id="tabAutorizadas">
+  {% if sol_autorizadas %}
+  <div class="card">
+    <div class="card-header bg-white small text-muted">
+      {{ sol_aut_total }} solicitação(ões) nos últimos 60 dias
+      {% if nivel == 'secretario' %}(toda a secretaria){% else %}(departamento vinculado){% endif %}
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 small">
+        <thead class="table-dark">
+          <tr><th>Servidor</th><th>Tipo</th><th>Qtd</th><th>Período</th><th>Solicitado em</th><th>Autorizado por</th><th>Data Autorização</th><th>Despacho</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for s in sol_autorizadas %}
+          <tr>
+            <td>
+              <div class="fw-semibold">{{ s.servidor_nome }}</div>
+              <div class="text-muted small">{{ s.matricula }}{% if nivel == 'secretario' %} | {{ s.setor or '–' }}{% endif %}</div>
+            </td>
+            <td>
+              {% if s.tipo == 'banco_horas' %}<span class="badge bg-primary">Horas</span>
+              {% else %}<span class="badge" style="background:#d97706">Eleição</span>{% endif %}
+            </td>
+            <td class="fw-semibold">
+              {% if s.tipo == 'banco_horas' %}{{ fmt(s.quantidade) }}
+              {% else %}{{ s.quantidade }}d{% endif %}
+            </td>
+            <td>
+              {{ s.data_pretendida|fmt_data }}
+              {% if s.data_fim and s.data_fim != s.data_pretendida %}<br><span class="text-muted" style="font-size:.72rem">até {{ s.data_fim|fmt_data }}</span>{% endif %}
+            </td>
+            <td>{{ s.criado_em|fmt_datetime }}</td>
+            <td class="small text-muted">{{ s.aprovador_nome or '–' }}</td>
+            <td>{{ s.data_autorizacao|fmt_datetime }}</td>
+            <td class="text-muted small" style="max-width:160px">{{ s.despacho_chefia or '–' }}</td>
+            <td>
+              {% if s.status == 'autorizado' %}<span class="badge bg-info text-dark">Aguard. RH</span>
+              {% elif s.status == 'lancado' %}<span class="badge bg-success">Lançado</span>
+              {% elif s.status == 'indeferido' %}<span class="badge bg-danger">Indeferido</span>
+              {% else %}<span class="badge bg-secondary">{{ s.status }}</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if sol_aut_pages > 1 %}
+    <div class="card-footer bg-white d-flex justify-content-between align-items-center small">
+      <span class="text-muted">Página {{ p_aut }} de {{ sol_aut_pages }}</span>
+      <div class="d-flex gap-1">
+        {% if p_aut > 1 %}<a href="?aba=autorizadas&p_aut={{ p_aut-1 }}" class="btn btn-outline-secondary btn-sm">‹ Anterior</a>{% endif %}
+        {% if p_aut < sol_aut_pages %}<a href="?aba=autorizadas&p_aut={{ p_aut+1 }}" class="btn btn-outline-secondary btn-sm">Próxima ›</a>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="text-center py-5 text-muted">
+    <i class="bi bi-check2-circle" style="font-size:3rem"></i>
+    <p class="mt-3">Nenhuma autorização nos últimos 60 dias.</p>
+  </div>
+  {% endif %}
+</div><!-- /tabAutorizadas -->
 </div><!-- /tab-content -->
 
 <!-- Modal: Autorizar Solicitação -->
@@ -182,7 +265,12 @@
           <div><strong>Data pretendida:</strong> <span id="autorData"></span></div>
           <div><strong>Justificativa:</strong> <span id="autorJust"></span></div>
         </div>
-        <p class="text-success small"><i class="bi bi-info-circle me-1"></i>Ao autorizar, a solicitação ficará disponível para lançamento pelo RH.</p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Despacho da Chefia</label>
+          <textarea class="form-control" id="autorDespacho" rows="2"
+                    placeholder="Opcional — ex: Autorizado conforme escala do setor..."></textarea>
+        </div>
+        <p class="text-success small mb-0"><i class="bi bi-info-circle me-1"></i>Ao autorizar, a solicitação ficará disponível para lançamento pelo RH.</p>
       </div>
       <input type="hidden" id="autorSid">
       <div class="modal-footer">
@@ -208,9 +296,14 @@
         <p>Indeferindo solicitação de <strong id="indefNome"></strong>.</p>
         <div class="mb-3">
           <label class="form-label fw-semibold">Motivo do indeferimento</label>
-          <textarea class="form-control" id="indefMotivo" rows="3" placeholder="Descreva o motivo (opcional)..."></textarea>
+          <textarea class="form-control" id="indefMotivo" rows="2" placeholder="Descreva o motivo (opcional)..."></textarea>
         </div>
-        <p class="text-danger small"><i class="bi bi-info-circle me-1"></i>O saldo reservado será devolvido ao servidor após o indeferimento.</p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Despacho da Chefia</label>
+          <textarea class="form-control" id="indefDespacho" rows="2"
+                    placeholder="Opcional — ex: Indeferido por necessidade de serviço na data..."></textarea>
+        </div>
+        <p class="text-danger small mb-0"><i class="bi bi-info-circle me-1"></i>O saldo reservado será devolvido ao servidor.</p>
       </div>
       <input type="hidden" id="indefSid">
       <div class="modal-footer">
@@ -252,6 +345,7 @@ function abrirAutorizacao(sid, nome, tipo, qtd, data, just) {
   document.getElementById('autorData').textContent = fmtDataBR(data);
   document.getElementById('autorJust').textContent = just || '–';
   document.getElementById('autorAlerta').classList.add('d-none');
+  document.getElementById('autorDespacho').value = '';
   new bootstrap.Modal(document.getElementById('modalAutorizar')).show();
 }
 
@@ -259,16 +353,20 @@ function abrirIndeferimento(sid, nome) {
   document.getElementById('indefSid').value = sid;
   document.getElementById('indefNome').textContent = nome;
   document.getElementById('indefMotivo').value = '';
+  document.getElementById('indefDespacho').value = '';
   document.getElementById('indefAlerta').classList.add('d-none');
   new bootstrap.Modal(document.getElementById('modalIndeferir')).show();
 }
 
 document.getElementById('btnConfAutorizar').addEventListener('click', async function() {
   const sid = document.getElementById('autorSid').value;
+  const despacho = document.getElementById('autorDespacho').value.trim();
   const alertEl = document.getElementById('autorAlerta');
   this.disabled = true;
   this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Autorizando...';
-  const res = await fetch(`/solicitacoes/${sid}/autorizar`, { method: 'POST', body: new FormData() });
+  const fd = new FormData();
+  if (despacho) fd.append('despacho_chefia', despacho);
+  const res = await fetch(`/solicitacoes/${sid}/autorizar`, { method: 'POST', body: fd });
   const d = await res.json();
   if (d.ok) {
     alertEl.className = 'alert alert-success mb-3';
@@ -287,10 +385,13 @@ document.getElementById('btnConfAutorizar').addEventListener('click', async func
 document.getElementById('btnConfIndeferir').addEventListener('click', async function() {
   const sid = document.getElementById('indefSid').value;
   const motivo = document.getElementById('indefMotivo').value.trim();
+  const despacho = document.getElementById('indefDespacho').value.trim();
   const alertEl = document.getElementById('indefAlerta');
   this.disabled = true;
   this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Indeferindo...';
-  const fd = new FormData(); fd.append('motivo', motivo);
+  const fd = new FormData();
+  fd.append('motivo', motivo);
+  if (despacho) fd.append('despacho_chefia', despacho);
   const res = await fetch(`/solicitacoes/${sid}/indeferir`, { method: 'POST', body: fd });
   const d = await res.json();
   if (d.ok) {
@@ -309,10 +410,9 @@ document.getElementById('btnConfIndeferir').addEventListener('click', async func
 
 // Ativa aba correta ao carregar
 document.addEventListener('DOMContentLoaded', () => {
-  const url = new URL(location.href);
-  if (url.searchParams.get('aba') === 'solicitacoes') {
-    document.getElementById('btnTabSolicitacoes')?.click();
-  }
+  const aba = new URL(location.href).searchParams.get('aba');
+  if (aba === 'solicitacoes') document.getElementById('btnTabSolicitacoes')?.click();
+  else if (aba === 'autorizadas') document.getElementById('btnTabAutorizadas')?.click();
 });
 
 function verHistorico(matricula, nome) {

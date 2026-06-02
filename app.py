@@ -148,12 +148,25 @@ def injetar_usuario():
         'u_cpf':   session.get('cpf'),
         'pendentes_tarefas': 0,
         'pendentes_aprovacao': 0,
+        'u_mat_servidor': None,
+        'u_sol_habilitado': False,
     }
-    uid  = session.get('uid')
+    uid   = session.get('uid')
     nivel = session.get('nivel')
     if uid:
         try:
             db = get_db()
+            # Matricula do servidor vinculado ao usuário (qualquer nível)
+            u_row = db.execute("SELECT matricula FROM usuarios WHERE id=?", (uid,)).fetchone()
+            if u_row and u_row['matricula']:
+                srv_row = db.execute(
+                    "SELECT matricula FROM servidores WHERE matricula=? AND arquivado=0",
+                    (u_row['matricula'],)).fetchone()
+                ctx['u_mat_servidor'] = srv_row['matricula'] if srv_row else None
+            elif nivel == 'servidor':
+                ctx['u_mat_servidor'] = session.get('matricula')
+            if ctx['u_mat_servidor']:
+                ctx['u_sol_habilitado'] = _solicitacoes_habilitado(db)
             if nivel == 'master':
                 ctx['pendentes_tarefas'] = db.execute(
                     "SELECT COUNT(*) FROM solicitacoes WHERE status='autorizado'"
@@ -212,8 +225,8 @@ def verificar_acesso():
     if nivel in ('secretario', 'chefia') and request.endpoint not in (
             'portal', 'consulta', 'api_historico', 'meu_cadastro', 'trocar_senha', 'logout',
             'eleicao_index', 'eleicao_servidor', 'eleicao_exportar',
-            'solicitacoes_autorizar', 'solicitacoes_indeferir', 'solicitacoes_cancelar',
-            'api_saldo_solicitacao'):
+            'solicitacoes_nova', 'solicitacoes_autorizar', 'solicitacoes_indeferir',
+            'solicitacoes_cancelar', 'api_saldo_solicitacao'):
         try:
             registrar_auditoria(get_db(), "Acesso negado", "seguranca", request.endpoint or request.path,
                                 session.get("matricula"), session.get("nome"),
@@ -2786,14 +2799,24 @@ def meu_banco():
     el_baixas = db.execute(
         "SELECT * FROM eleicao_baixas WHERE matricula=? ORDER BY data DESC", (mat,)).fetchall()
     saldo_eleicao = calcular_saldo_eleicao(db, mat)
+    p_sol = max(1, int(request.args.get('p_sol', 1) or 1))
+    sol_total = db.execute("SELECT COUNT(*) FROM solicitacoes WHERE matricula=?", (mat,)).fetchone()[0] or 0
+    p_sol, sol_pages, sol_offset = _paginar(sol_total, p_sol)
     solicitacoes_srv = db.execute(
-        "SELECT * FROM solicitacoes WHERE matricula=? ORDER BY criado_em DESC", (mat,)
+        "SELECT * FROM solicitacoes WHERE matricula=? ORDER BY criado_em DESC LIMIT 20 OFFSET ?",
+        (mat, sol_offset)
+    ).fetchall()
+    sol_pendentes_comp = db.execute(
+        "SELECT * FROM solicitacoes WHERE matricula=? AND status IN ('solicitado','autorizado') ORDER BY criado_em ASC",
+        (mat,)
     ).fetchall()
     return render_template('meu_banco.html', servidor=srv, saldo=saldo,
                            lancamentos=lancs, compensacoes=comps, pagamentos=pags,
                            el_creditos=el_creditos, el_baixas=el_baixas,
                            saldo_eleicao=saldo_eleicao,
                            solicitacoes_srv=solicitacoes_srv,
+                           sol_pendentes_comp=sol_pendentes_comp,
+                           sol_total=sol_total, p_sol=p_sol, sol_pages=sol_pages,
                            solicitacoes_habilitado=_solicitacoes_habilitado(db),
                            status_display=_status_display,
                            fmt=minutos_para_horas)
@@ -2844,19 +2867,52 @@ def consulta():
     secretarias = [r[0] for r in db.execute(f"SELECT DISTINCT s.secretaria FROM servidores s {filtro_base} AND s.secretaria IS NOT NULL AND s.secretaria!='' ORDER BY s.secretaria", params_base).fetchall()]
     setores = [r[0] for r in db.execute(f"SELECT DISTINCT s.setor FROM servidores s {filtro_base} AND s.setor IS NOT NULL AND s.setor!='' ORDER BY s.setor", params_base).fetchall()]
 
-    # Solicitações pendentes de autorização para este usuário
     uid = session.get('uid')
+    campo = 'secretaria' if nivel == 'secretario' else 'setor'
+
+    # Solicitações pendentes de autorização (paginadas)
+    p_pend = max(1, int(request.args.get('p_pend', 1) or 1))
     sol_pendentes = []
+    sol_pendentes_total = 0
+    sol_pendentes_pages = 1
     if vinculos:
         ph = ','.join('?' * len(vinculos))
-        campo = 'secretaria' if nivel == 'secretario' else 'setor'
+        sol_pendentes_total = db.execute(
+            f"""SELECT COUNT(*) FROM solicitacoes sol JOIN servidores s ON s.matricula=sol.matricula
+                WHERE sol.status='solicitado' AND s.{campo} IN ({ph}) AND sol.criado_por_uid != ?""",
+            vinculos + [uid]
+        ).fetchone()[0] or 0
+        p_pend, sol_pendentes_pages, offset_pend = _paginar(sol_pendentes_total, p_pend)
         sol_pendentes = db.execute(
             f"""SELECT sol.*, s.nome AS servidor_nome, s.secretaria, s.setor
                 FROM solicitacoes sol JOIN servidores s ON s.matricula=sol.matricula
-                WHERE sol.status='solicitado' AND s.{campo} IN ({ph})
-                AND sol.criado_por_uid != ?
-                ORDER BY sol.criado_em ASC""",
-            vinculos + [uid]
+                WHERE sol.status='solicitado' AND s.{campo} IN ({ph}) AND sol.criado_por_uid != ?
+                ORDER BY sol.criado_em ASC LIMIT 20 OFFSET ?""",
+            vinculos + [uid, offset_pend]
+        ).fetchall()
+
+    # Solicitações autorizadas nos últimos 60 dias (paginadas)
+    p_aut = max(1, int(request.args.get('p_aut', 1) or 1))
+    sol_autorizadas = []
+    sol_aut_total = 0
+    sol_aut_pages = 1
+    data_60_dias = (date.today() - timedelta(days=60)).isoformat()
+    if vinculos:
+        ph = ','.join('?' * len(vinculos))
+        sol_aut_total = db.execute(
+            f"""SELECT COUNT(*) FROM solicitacoes sol JOIN servidores s ON s.matricula=sol.matricula
+                WHERE sol.status IN ('autorizado','lancado','indeferido')
+                AND s.{campo} IN ({ph}) AND sol.data_autorizacao >= ?""",
+            vinculos + [data_60_dias]
+        ).fetchone()[0] or 0
+        p_aut, sol_aut_pages, offset_aut = _paginar(sol_aut_total, p_aut)
+        sol_autorizadas = db.execute(
+            f"""SELECT sol.*, s.nome AS servidor_nome, s.secretaria, s.setor
+                FROM solicitacoes sol JOIN servidores s ON s.matricula=sol.matricula
+                WHERE sol.status IN ('autorizado','lancado','indeferido')
+                AND s.{campo} IN ({ph}) AND sol.data_autorizacao >= ?
+                ORDER BY sol.data_autorizacao DESC LIMIT 20 OFFSET ?""",
+            vinculos + [data_60_dias, offset_aut]
         ).fetchall()
 
     aba = request.args.get('aba', '')
@@ -2865,6 +2921,13 @@ def consulta():
                            busca=busca, nivel=nivel, secretarias=secretarias, setores=setores,
                            secretaria_sel=sec, setor_sel=set_,
                            sol_pendentes=sol_pendentes,
+                           sol_pendentes_total=sol_pendentes_total,
+                           sol_pendentes_pages=sol_pendentes_pages,
+                           p_pend=p_pend,
+                           sol_autorizadas=sol_autorizadas,
+                           sol_aut_total=sol_aut_total,
+                           sol_aut_pages=sol_aut_pages,
+                           p_aut=p_aut,
                            aba=aba,
                            status_display=_status_display,
                            titulo=f"Secretaria(s): {titulo_vinculos}" if nivel=='secretario'
@@ -3742,6 +3805,22 @@ def eleicao_excluir_baixa(matricula, bid):
     return redirect(url_for('eleicao_servidor', matricula=matricula))
 
 
+def _paginar(total, page, per_page=20):
+    """Retorna (page_corrigida, total_pages, offset) para paginação server-side."""
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    return page, total_pages, (page - 1) * per_page
+
+def _calcular_data_fim(data_pretendida, quantidade, tipo):
+    """Calcula data final do período de compensação."""
+    if tipo == 'eleicao' and quantidade > 1:
+        try:
+            d = date.fromisoformat(data_pretendida)
+            return (d + timedelta(days=quantidade - 1)).isoformat()
+        except Exception:
+            pass
+    return data_pretendida
+
 # ─── Solicitações de Compensação ─────────────────────────────────────────────
 
 def _solicitacoes_habilitado(db):
@@ -3832,9 +3911,11 @@ def _status_display(sol):
 @login_required
 def api_saldo_solicitacao(matricula, tipo):
     db = get_db()
-    nivel = session.get('nivel')
-    mat_sessao = session.get('matricula')
-    if nivel == 'servidor' and mat_sessao != matricula:
+    uid = session.get('uid')
+    # Valida que o usuário está consultando apenas o próprio saldo
+    u_row = db.execute("SELECT matricula FROM usuarios WHERE id=?", (uid,)).fetchone()
+    mat_vinculada = (u_row['matricula'] if u_row else None) or session.get('matricula')
+    if mat_vinculada != matricula:
         return json.dumps({'erro': 'Acesso negado'}), 403
     if tipo == 'banco_horas':
         saldo = calcular_saldo(db, matricula)
@@ -3850,25 +3931,26 @@ def solicitacoes_nova():
     db = get_db()
     if not _solicitacoes_habilitado(db):
         return json.dumps({'erro': 'Funcionalidade desabilitada pelo RH.'}), 403, {'Content-Type': 'application/json'}
-    nivel = session.get('nivel')
-    uid   = session.get('uid')
-    nome  = session.get('nome')
-    matricula = request.form.get('matricula', '').strip()
+    uid  = session.get('uid')
+    nome = session.get('nome')
     tipo = request.form.get('tipo', '').strip()
     data_pretendida = request.form.get('data_pretendida', '').strip()
     justificativa = request.form.get('justificativa', '').strip()
 
-    if nivel == 'servidor':
-        matricula = session.get('matricula') or matricula
+    # Determina matricula vinculada ao usuário logado
+    u_row = db.execute("SELECT matricula FROM usuarios WHERE id=?", (uid,)).fetchone()
+    matricula = (u_row['matricula'] if u_row else None) or session.get('matricula') or ''
+    if not matricula:
+        return json.dumps({'erro': 'Não foi localizado cadastro de servidor vinculado ao usuário logado.'}), 400, {'Content-Type': 'application/json'}
 
-    if not matricula or not tipo or not data_pretendida or not justificativa:
+    if not tipo or not data_pretendida:
         return json.dumps({'erro': 'Preencha todos os campos obrigatórios.'}), 400, {'Content-Type': 'application/json'}
     if tipo not in ('banco_horas', 'eleicao'):
         return json.dumps({'erro': 'Tipo de solicitação inválido.'}), 400, {'Content-Type': 'application/json'}
 
     srv = db.execute("SELECT nome FROM servidores WHERE matricula=? AND arquivado=0", (matricula,)).fetchone()
     if not srv:
-        return json.dumps({'erro': 'Servidor não encontrado.'}), 404, {'Content-Type': 'application/json'}
+        return json.dumps({'erro': 'Não foi localizado cadastro de servidor vinculado ao usuário logado.'}), 404, {'Content-Type': 'application/json'}
 
     if tipo == 'banco_horas':
         horas_txt = request.form.get('quantidade', '').strip()
@@ -3878,6 +3960,7 @@ def solicitacoes_nova():
         saldo_disponivel = calcular_saldo(db, matricula)
         if quantidade > saldo_disponivel:
             return json.dumps({'erro': 'Quantidade de horas solicitada superior ao saldo disponível.'}), 400, {'Content-Type': 'application/json'}
+        data_fim = data_pretendida
     else:
         try:
             quantidade = int(request.form.get('quantidade', '0'))
@@ -3888,13 +3971,14 @@ def solicitacoes_nova():
         saldo_disponivel = calcular_saldo_eleicao(db, matricula)
         if quantidade > saldo_disponivel:
             return json.dumps({'erro': 'Quantidade de dias solicitada superior ao saldo disponível.'}), 400, {'Content-Type': 'application/json'}
+        data_fim = _calcular_data_fim(data_pretendida, quantidade, tipo)
 
     sid = db.insert("""
-        INSERT INTO solicitacoes (matricula, tipo, quantidade, data_pretendida, justificativa, status, criado_por_uid, criado_por_nome)
-        VALUES (?,?,?,?,?,?,?,?)
-    """, (matricula, tipo, quantidade, data_pretendida, justificativa, 'solicitado', uid, nome))
+        INSERT INTO solicitacoes (matricula, tipo, quantidade, data_pretendida, data_fim, justificativa, status, criado_por_uid, criado_por_nome)
+        VALUES (?,?,?,?,?,?,?,?,?)
+    """, (matricula, tipo, quantidade, data_pretendida, data_fim, justificativa or None, 'solicitado', uid, nome))
     registrar_auditoria(db, "Solicitação criada", "solicitacoes", sid, matricula, srv['nome'],
-                        f"Tipo: {tipo}; Quantidade: {quantidade}; Data pretendida: {data_pretendida}")
+                        f"Tipo: {tipo}; Quantidade: {quantidade}; Período: {data_pretendida} a {data_fim}")
     db.commit()
     return json.dumps({'ok': True, 'id': sid}), 200, {'Content-Type': 'application/json'}
 
@@ -3915,14 +3999,15 @@ def solicitacoes_autorizar(sid):
     justificativa_rh = request.form.get('justificativa_rh', '').strip()
     if nivel == 'master' and not justificativa_rh:
         return json.dumps({'erro': 'Justificativa obrigatória para autorização pelo RH.'}), 400, {'Content-Type': 'application/json'}
+    despacho = request.form.get('despacho_chefia', '').strip()
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     db.execute("""UPDATE solicitacoes SET status='autorizado', aprovador_uid=?, aprovador_nome=?,
-                  data_autorizacao=?, justificativa_rh=? WHERE id=?""",
-               (uid, nome, agora, justificativa_rh or None, sid))
+                  data_autorizacao=?, justificativa_rh=?, despacho_chefia=? WHERE id=?""",
+               (uid, nome, agora, justificativa_rh or None, despacho or None, sid))
     srv = db.execute("SELECT nome FROM servidores WHERE matricula=?", (sol['matricula'],)).fetchone()
     registrar_auditoria(db, "Solicitação autorizada", "solicitacoes", sid, sol['matricula'],
                         srv['nome'] if srv else None,
-                        f"Autorizado por: {nome} ({nivel}){' | Justificativa RH: ' + justificativa_rh if justificativa_rh else ''}")
+                        f"Autorizado por: {nome} ({nivel}){' | Despacho: ' + despacho if despacho else ''}{' | Justificativa RH: ' + justificativa_rh if justificativa_rh else ''}")
     db.commit()
     return json.dumps({'ok': True}), 200, {'Content-Type': 'application/json'}
 
@@ -3937,13 +4022,14 @@ def solicitacoes_indeferir(sid):
         return json.dumps({'erro': 'Solicitação não pode ser indeferida neste status.'}), 400, {'Content-Type': 'application/json'}
     if not _pode_autorizar_solicitacao(db, sol):
         return json.dumps({'erro': 'Sem permissão para indeferir esta solicitação.'}), 403, {'Content-Type': 'application/json'}
-    motivo = request.form.get('motivo', '').strip()
+    motivo   = request.form.get('motivo', '').strip()
+    despacho = request.form.get('despacho_chefia', '').strip()
     uid  = session.get('uid')
     nome = session.get('nome')
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     db.execute("""UPDATE solicitacoes SET status='indeferido', aprovador_uid=?, aprovador_nome=?,
-                  data_autorizacao=?, motivo_indeferimento=? WHERE id=?""",
-               (uid, nome, agora, motivo or None, sid))
+                  data_autorizacao=?, motivo_indeferimento=?, despacho_chefia=? WHERE id=?""",
+               (uid, nome, agora, motivo or None, despacho or None, sid))
     srv = db.execute("SELECT nome FROM servidores WHERE matricula=?", (sol['matricula'],)).fetchone()
     registrar_auditoria(db, "Solicitação indeferida", "solicitacoes", sid, sol['matricula'],
                         srv['nome'] if srv else None,
@@ -4001,6 +4087,12 @@ def admin_tarefas():
         where.append("sol.criado_em <= ?"); params.append(f_dt_fim + " 23:59:59")
 
     clausula = ("WHERE " + " AND ".join(where)) if where else ""
+    total = db.execute(f"""
+        SELECT COUNT(*) FROM solicitacoes sol
+        JOIN servidores s ON s.matricula = sol.matricula {clausula}
+    """, params).fetchone()[0] or 0
+    page = max(1, int(request.args.get('page', 1) or 1))
+    page, total_pages, offset = _paginar(total, page)
     solicitacoes = db.execute(f"""
         SELECT sol.*, s.nome AS servidor_nome, s.secretaria, s.setor, s.cargo
         FROM solicitacoes sol
@@ -4009,12 +4101,14 @@ def admin_tarefas():
         ORDER BY
             CASE sol.status WHEN 'autorizado' THEN 0 WHEN 'solicitado' THEN 1 ELSE 2 END,
             sol.criado_em DESC
-    """, params).fetchall()
+        LIMIT 20 OFFSET ?
+    """, params + [offset]).fetchall()
 
     habilitado = _solicitacoes_habilitado(db)
     secs, sets = _listas_filtro(db)
     return render_template("admin/tarefas.html",
                            solicitacoes=solicitacoes,
+                           total=total, page=page, total_pages=total_pages,
                            habilitado=habilitado,
                            fmt=minutos_para_horas,
                            status_display=_status_display,

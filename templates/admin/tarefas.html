@@ -103,10 +103,11 @@
           <th>Secretaria / Dept.</th>
           <th>Tipo</th>
           <th>Quantidade</th>
-          <th>Data Pretendida</th>
+          <th>Período</th>
           <th>Status</th>
           <th>Solicitado em</th>
           <th>Autorizado por</th>
+          <th>Despacho</th>
           <th>Data Autorização</th>
           <th>Lançado por</th>
           <th>Data Lançamento</th>
@@ -133,7 +134,10 @@
             {% if s.tipo == 'banco_horas' %}{{ fmt(s.quantidade) }}
             {% else %}{{ s.quantidade }} dia{{ 's' if s.quantidade != 1 else '' }}{% endif %}
           </td>
-          <td>{{ s.data_pretendida|fmt_data }}</td>
+          <td>
+            {{ s.data_pretendida|fmt_data }}
+            {% if s.data_fim and s.data_fim != s.data_pretendida %}<br><span class="text-muted" style="font-size:.72rem">até {{ s.data_fim|fmt_data }}</span>{% endif %}
+          </td>
           <td>
             {% if s.status == 'solicitado' %}
               <span class="badge bg-warning text-dark">Pendente Autorização</span>
@@ -154,6 +158,7 @@
             {{ s.aprovador_nome or '–' }}
             {% if s.justificativa_rh %}<br><span class="text-info" title="{{ s.justificativa_rh }}"><i class="bi bi-info-circle"></i> RH</span>{% endif %}
           </td>
+          <td class="text-muted small" style="max-width:140px;white-space:normal">{{ s.despacho_chefia or '–' }}</td>
           <td>{{ s.data_autorizacao|fmt_datetime if s.data_autorizacao else '–' }}</td>
           <td class="text-muted small">{{ s.rh_nome or '–' }}</td>
           <td>{{ s.data_lancamento|fmt_datetime if s.data_lancamento else '–' }}</td>
@@ -181,6 +186,20 @@
       </tbody>
     </table>
   </div>
+  {% if total_pages > 1 %}
+  <div class="card-footer bg-white d-flex justify-content-between align-items-center small">
+    <span class="text-muted">Página {{ page }} de {{ total_pages }} — {{ total }} solicitação(ões)</span>
+    <div class="d-flex gap-1">
+      {% set qs = 'matricula=' ~ filtros.matricula ~ '&secretaria=' ~ filtros.secretaria ~ '&setor=' ~ filtros.setor ~ '&tipo=' ~ filtros.tipo ~ '&status=' ~ filtros.status ~ '&dt_ini=' ~ filtros.dt_ini ~ '&dt_fim=' ~ filtros.dt_fim %}
+      {% if page > 1 %}
+        <a href="?{{ qs }}&page={{ page-1 }}" class="btn btn-outline-secondary btn-sm">‹ Anterior</a>
+      {% endif %}
+      {% if page < total_pages %}
+        <a href="?{{ qs }}&page={{ page+1 }}" class="btn btn-outline-secondary btn-sm">Próxima ›</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% else %}
 <div class="text-center py-5 text-muted">
@@ -211,6 +230,11 @@
           <textarea class="form-control" id="autorRHJustRH" rows="2"
                     placeholder="Obrigatório para autorização sem passar pela chefia..."></textarea>
           <div class="form-text text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Autorização direta pelo RH requer justificativa.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Despacho</label>
+          <textarea class="form-control" id="autorRHDespacho" rows="2"
+                    placeholder="Opcional — observação para o histórico da solicitação..."></textarea>
         </div>
       </div>
       <input type="hidden" id="autorRHSid">
@@ -387,6 +411,7 @@ function abrirAutorizacaoRH(sid, nome, tipo, qtd, data, just) {
   document.getElementById('autorRHData').textContent = fmtDataBR(data);
   document.getElementById('autorRHJust').textContent = just||'–';
   document.getElementById('autorRHJustRH').value = '';
+  document.getElementById('autorRHDespacho').value = '';
   document.getElementById('autorRHAlerta').classList.add('d-none');
   new bootstrap.Modal(document.getElementById('modalAutorizarRH')).show();
 }
@@ -394,6 +419,7 @@ function abrirAutorizacaoRH(sid, nome, tipo, qtd, data, just) {
 document.getElementById('btnConfAutorizarRH').addEventListener('click', async function() {
   const sid = document.getElementById('autorRHSid').value;
   const justRH = document.getElementById('autorRHJustRH').value.trim();
+  const despacho = document.getElementById('autorRHDespacho').value.trim();
   const alertEl = document.getElementById('autorRHAlerta');
   if (!justRH) {
     alertEl.className='alert alert-danger mb-3';
@@ -401,7 +427,9 @@ document.getElementById('btnConfAutorizarRH').addEventListener('click', async fu
     alertEl.classList.remove('d-none'); return;
   }
   this.disabled=true; this.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Autorizando...';
-  const fd = new FormData(); fd.append('justificativa_rh', justRH);
+  const fd = new FormData();
+  fd.append('justificativa_rh', justRH);
+  if (despacho) fd.append('despacho_chefia', despacho);
   const res = await fetch(`/solicitacoes/${sid}/autorizar`, { method:'POST', body:fd });
   const d = await res.json();
   if (d.ok) { alertEl.className='alert alert-success mb-3'; alertEl.textContent='Autorizado!'; alertEl.classList.remove('d-none'); setTimeout(()=>location.reload(),1000); }

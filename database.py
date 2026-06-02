@@ -296,6 +296,7 @@ _SCHEMA_SQLITE = """
         tipo TEXT NOT NULL,
         quantidade INTEGER NOT NULL,
         data_pretendida TEXT NOT NULL,
+        data_fim TEXT,
         justificativa TEXT,
         status TEXT NOT NULL DEFAULT 'solicitado',
         criado_por_uid INTEGER,
@@ -304,6 +305,7 @@ _SCHEMA_SQLITE = """
         aprovador_uid INTEGER,
         aprovador_nome TEXT,
         data_autorizacao TEXT,
+        despacho_chefia TEXT,
         motivo_indeferimento TEXT,
         justificativa_rh TEXT,
         rh_uid INTEGER,
@@ -418,6 +420,7 @@ _SCHEMA_POSTGRES = """
         tipo TEXT NOT NULL,
         quantidade INTEGER NOT NULL,
         data_pretendida TEXT NOT NULL,
+        data_fim TEXT,
         justificativa TEXT,
         status TEXT NOT NULL DEFAULT 'solicitado',
         criado_por_uid INTEGER,
@@ -426,6 +429,7 @@ _SCHEMA_POSTGRES = """
         aprovador_uid INTEGER,
         aprovador_nome TEXT,
         data_autorizacao TEXT,
+        despacho_chefia TEXT,
         motivo_indeferimento TEXT,
         justificativa_rh TEXT,
         rh_uid INTEGER,
@@ -454,6 +458,8 @@ def init_db():
         ("usuarios",          "vinculos",           "TEXT DEFAULT '[]'"),
         ("pre_autorizacoes",  "vinculos",           "TEXT DEFAULT '[]'"),
         ("usuarios",          "secretaria",         "TEXT"),
+        ("solicitacoes",      "data_fim",           "TEXT"),
+        ("solicitacoes",      "despacho_chefia",    "TEXT"),
     ]
     for table, col, defn in _migracoes:
         try:

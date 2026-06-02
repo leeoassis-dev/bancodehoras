@@ -243,8 +243,78 @@
       </button>
       <span class="fw-semibold text-primary">Banco de Horas - Prefeitura Municipal de Ibiporã</span>
     </div>
-    <span class="text-muted small d-none d-md-inline">{{ {'master':'Administrador Master','secretario':'Secretário','chefia':'Chefia Imediata','servidor':'Servidor'}.get(u_nivel,u_nivel) }}</span>
+    <div class="d-flex align-items-center gap-3">
+      {% if u_sol_habilitado and u_mat_servidor %}
+      <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalSolGlobal" id="btnSolGlobal">
+        <i class="bi bi-send me-1"></i><span class="d-none d-sm-inline">Solicitar Compensação</span><span class="d-inline d-sm-none"><i class="bi bi-send"></i></span>
+      </button>
+      {% endif %}
+      <span class="text-muted small d-none d-md-inline">{{ {'master':'Administrador Master','secretario':'Secretário','chefia':'Chefia Imediata','servidor':'Servidor'}.get(u_nivel,u_nivel) }}</span>
+    </div>
   </header>
+{% endif %}
+
+{% if u_sol_habilitado and u_mat_servidor %}
+<!-- Modal Global: Solicitar Compensação -->
+<div class="modal fade" id="modalSolGlobal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="bi bi-send me-2"></i>Solicitar Compensação</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="solGlobalAlerta" class="alert d-none mb-3"></div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Tipo de Solicitação <span class="text-danger">*</span></label>
+          <select class="form-select" id="solGTipo" required>
+            <option value="">Selecione...</option>
+            <option value="banco_horas">Banco de Horas</option>
+            <option value="eleicao">Banco de Dias de Eleição</option>
+          </select>
+        </div>
+        <!-- Campos Banco de Horas -->
+        <div id="solGCamposHoras" class="d-none">
+          <div class="alert alert-light border py-2 small mb-3" id="solGSaldoHorasBox">
+            Saldo disponível: <strong id="solGSaldoHoras" class="text-success">—</strong>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Horas solicitadas <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="solGQtdHoras" placeholder="Ex: 04:00">
+          </div>
+        </div>
+        <!-- Campos Dias de Eleição -->
+        <div id="solGCamposDias" class="d-none">
+          <div class="alert alert-warning border py-2 small mb-3" id="solGSaldoDiasBox">
+            Saldo disponível: <strong id="solGSaldoDias" class="text-dark">—</strong> dia(s)
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Quantidade de dias <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" id="solGQtdDias" min="1" placeholder="Ex: 1">
+          </div>
+        </div>
+        <!-- Data e período -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Data inicial pretendida <span class="text-danger">*</span></label>
+          <input type="date" class="form-control" id="solGData">
+        </div>
+        <div id="solGPeriodoBox" class="alert alert-info py-2 small d-none mb-3">
+          <i class="bi bi-calendar-range me-1"></i>Período calculado: <strong id="solGPeriodo"></strong>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Justificativa / Observação</label>
+          <textarea class="form-control" id="solGJustificativa" rows="3" placeholder="Opcional — descreva o motivo da solicitação..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnSolGEnviar">
+          <i class="bi bi-send me-1"></i>Enviar Solicitação
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endif %}
 
 <div class="container-fluid px-4 pb-5 {% if u_nivel %}pt-4{% endif %}">
@@ -539,5 +609,133 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 {% block scripts %}{% endblock %}
+{% if u_sol_habilitado and u_mat_servidor %}
+<script>
+(function() {
+  const MAT = '{{ u_mat_servidor }}';
+  let _saldoHoras = null, _saldoDias = null;
+
+  function fmt2(n) { return String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0'); }
+  function addDays(iso, n) {
+    const d = new Date(iso + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0,10);
+  }
+  function fmtBR(iso) {
+    if (!iso) return '';
+    const [y,m,d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  }
+
+  async function carregarSaldo(tipo) {
+    try {
+      const r = await fetch(`/api/saldo-solicitacao/${MAT}/${tipo}`);
+      return await r.json();
+    } catch(e) { return {erro: 'Erro ao carregar saldo'}; }
+  }
+
+  function atualizarPeriodo() {
+    const tipo = document.getElementById('solGTipo').value;
+    if (tipo !== 'eleicao') { document.getElementById('solGPeriodoBox').classList.add('d-none'); return; }
+    const dataIni = document.getElementById('solGData').value;
+    const qtd = parseInt(document.getElementById('solGQtdDias').value) || 0;
+    if (!dataIni || qtd <= 0) { document.getElementById('solGPeriodoBox').classList.add('d-none'); return; }
+    const dataFim = addDays(dataIni, qtd - 1);
+    const txt = qtd === 1 ? fmtBR(dataIni) : `${fmtBR(dataIni)} a ${fmtBR(dataFim)}`;
+    document.getElementById('solGPeriodo').textContent = txt;
+    document.getElementById('solGPeriodoBox').classList.remove('d-none');
+  }
+
+  document.getElementById('solGTipo')?.addEventListener('change', async function() {
+    const tipo = this.value;
+    document.getElementById('solGCamposHoras').classList.toggle('d-none', tipo !== 'banco_horas');
+    document.getElementById('solGCamposDias').classList.toggle('d-none', tipo !== 'eleicao');
+    document.getElementById('solGPeriodoBox').classList.add('d-none');
+    document.getElementById('solGlobalAlerta').classList.add('d-none');
+    if (tipo === 'banco_horas' && _saldoHoras === null) {
+      const d = await carregarSaldo('banco_horas');
+      if (!d.erro) { _saldoHoras = d.saldo; document.getElementById('solGSaldoHoras').textContent = d.fmt; }
+    }
+    if (tipo === 'eleicao' && _saldoDias === null) {
+      const d = await carregarSaldo('eleicao');
+      if (!d.erro) { _saldoDias = d.saldo; document.getElementById('solGSaldoDias').textContent = d.fmt; }
+    }
+  });
+
+  document.getElementById('solGQtdDias')?.addEventListener('input', atualizarPeriodo);
+  document.getElementById('solGData')?.addEventListener('input', atualizarPeriodo);
+
+  // Reset modal ao fechar
+  document.getElementById('modalSolGlobal')?.addEventListener('hidden.bs.modal', function() {
+    document.getElementById('solGTipo').value = '';
+    document.getElementById('solGCamposHoras').classList.add('d-none');
+    document.getElementById('solGCamposDias').classList.add('d-none');
+    document.getElementById('solGPeriodoBox').classList.add('d-none');
+    document.getElementById('solGlobalAlerta').classList.add('d-none');
+    document.getElementById('solGQtdHoras').value = '';
+    document.getElementById('solGQtdDias').value = '';
+    document.getElementById('solGData').value = '';
+    document.getElementById('solGJustificativa').value = '';
+    _saldoHoras = null; _saldoDias = null;
+  });
+
+  document.getElementById('btnSolGEnviar')?.addEventListener('click', async function() {
+    const alertEl = document.getElementById('solGlobalAlerta');
+    const tipo = document.getElementById('solGTipo').value;
+    const data = document.getElementById('solGData').value;
+    const just = document.getElementById('solGJustificativa').value.trim();
+
+    const erro = (msg) => {
+      alertEl.className = 'alert alert-danger mb-3';
+      alertEl.textContent = msg;
+      alertEl.classList.remove('d-none');
+    };
+
+    if (!tipo) return erro('Selecione o tipo de solicitação.');
+    if (!data) return erro('Informe a data pretendida.');
+
+    let quantidade = '';
+    if (tipo === 'banco_horas') {
+      quantidade = document.getElementById('solGQtdHoras').value.trim();
+      if (!quantidade || !quantidade.match(/^\d+:\d{2}$/)) return erro('Informe as horas no formato HH:MM.');
+      const [h, m] = quantidade.split(':').map(Number);
+      const min = h * 60 + m;
+      if (min <= 0) return erro('A quantidade deve ser maior que zero.');
+      if (_saldoHoras !== null && min > _saldoHoras) return erro('Quantidade de horas solicitada superior ao saldo disponível.');
+    } else {
+      quantidade = document.getElementById('solGQtdDias').value;
+      if (!quantidade || parseInt(quantidade) <= 0) return erro('Informe a quantidade de dias.');
+      if (_saldoDias !== null && parseInt(quantidade) > _saldoDias) return erro('Quantidade de dias solicitada superior ao saldo disponível.');
+    }
+
+    this.disabled = true;
+    this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Enviando...';
+    const fd = new FormData();
+    fd.append('tipo', tipo);
+    fd.append('quantidade', quantidade);
+    fd.append('data_pretendida', data);
+    fd.append('justificativa', just);
+
+    try {
+      const res = await fetch('/solicitacoes/nova', { method: 'POST', body: fd });
+      const d = await res.json();
+      if (res.ok && d.ok) {
+        alertEl.className = 'alert alert-success mb-3';
+        alertEl.textContent = 'Solicitação enviada com sucesso! Aguarde a autorização da chefia.';
+        alertEl.classList.remove('d-none');
+        setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('modalSolGlobal'))?.hide(); location.reload(); }, 1800);
+      } else {
+        erro(d.erro || 'Erro ao enviar solicitação.');
+      }
+    } catch(e) {
+      erro('Erro de comunicação. Tente novamente.');
+    } finally {
+      this.disabled = false;
+      this.innerHTML = '<i class="bi bi-send me-1"></i>Enviar Solicitação';
+    }
+  });
+})();
+</script>
+{% endif %}
 </body>
 </html>
