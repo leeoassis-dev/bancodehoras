@@ -3904,6 +3904,7 @@ def _status_display(sol):
         'indeferido':  'Indeferido',
         'lancado':    'Lançado pelo RH',
         'cancelado':  'Cancelado',
+        'estornado':  'Estornado pelo RH',
     }
     return mapa.get(status, status)
 
@@ -4190,6 +4191,34 @@ def admin_tarefas_toggle():
     db.commit()
     estado = 'habilitada' if novo == '1' else 'desabilitada'
     return json.dumps({'ok': True, 'habilitado': novo == '1', 'estado': estado}), 200, {'Content-Type': 'application/json'}
+
+@app.route("/admin/tarefas/<int:sid>/estornar", methods=["POST"])
+@master_required
+def admin_tarefas_estornar(sid):
+    db = get_db()
+    sol = db.execute("SELECT * FROM solicitacoes WHERE id=?", (sid,)).fetchone()
+    if not sol:
+        return json.dumps({'erro': 'Solicitação não encontrada.'}), 404, {'Content-Type': 'application/json'}
+    if sol['status'] != 'lancado':
+        return json.dumps({'erro': 'Apenas solicitações já lançadas podem ser estornadas.'}), 400, {'Content-Type': 'application/json'}
+
+    matricula = sol['matricula']
+    ref_id = sol['referencia_id']
+    srv = db.execute("SELECT nome FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+
+    if sol['tipo'] == 'banco_horas' and ref_id:
+        # Remove consumos vinculados a essa compensação e a própria compensação
+        db.execute("DELETE FROM consumos WHERE tipo='compensacao' AND referencia_id=?", (ref_id,))
+        db.execute("DELETE FROM compensacoes WHERE id=?", (ref_id,))
+    elif sol['tipo'] == 'eleicao' and ref_id:
+        db.execute("DELETE FROM eleicao_baixas WHERE id=?", (ref_id,))
+
+    db.execute("UPDATE solicitacoes SET status='estornado' WHERE id=?", (sid,))
+    registrar_auditoria(db, "Solicitação estornada pelo RH", "solicitacoes", sid, matricula,
+                        srv['nome'] if srv else None,
+                        f"Tipo: {sol['tipo']}; Ref estornada: {ref_id}; Estornado por: {session.get('nome')}")
+    db.commit()
+    return json.dumps({'ok': True}), 200, {'Content-Type': 'application/json'}
 
 @app.route("/api/solicitacoes-servidor")
 @login_required

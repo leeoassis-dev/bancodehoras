@@ -145,6 +145,8 @@
               <span class="badge bg-info text-dark">Aguard. Lançamento RH</span>
             {% elif s.status == 'lancado' %}
               <span class="badge bg-success">Lançado</span>
+            {% elif s.status == 'estornado' %}
+              <span class="badge bg-warning text-dark">Estornado</span>
             {% elif s.status == 'indeferido' %}
               <span class="badge bg-danger" title="{{ s.motivo_indeferimento or '' }}">Indeferido</span>
             {% elif s.status == 'cancelado' %}
@@ -176,6 +178,11 @@
               <button class="btn btn-sm btn-primary"
                       onclick="abrirLancamento({{ s.id }}, '{{ s.servidor_nome|replace("'","\\'")|e }}', '{{ s.tipo }}', {{ s.quantidade }}, '{{ s.data_pretendida }}', '{{ s.aprovador_nome or '' }}')">
                 <i class="bi bi-send me-1"></i>Lançar
+              </button>
+            {% elif s.status == 'lancado' %}
+              <button class="btn btn-sm btn-outline-warning"
+                      onclick="confirmarEstorno({{ s.id }}, '{{ s.servidor_nome|replace("'","\\'")|e }}', '{{ s.tipo }}', {{ s.quantidade }})">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Estornar
               </button>
             {% else %}
               <span class="text-muted small">–</span>
@@ -482,5 +489,17 @@ document.getElementById('btnConfLancar').addEventListener('click', async functio
   if(d.ok){alertEl.className='alert alert-success mb-3';alertEl.textContent='Lançamento realizado com sucesso!';alertEl.classList.remove('d-none');setTimeout(()=>location.reload(),1200);}
   else{alertEl.className='alert alert-danger mb-3';alertEl.textContent=d.erro||'Erro.';alertEl.classList.remove('d-none');this.disabled=false;this.innerHTML='<i class="bi bi-send me-1"></i>Confirmar Lançamento';}
 });
+
+// ── Estornar ───────────────────────────────────────────────────────────────
+async function confirmarEstorno(sid, nome, tipo, qtd) {
+  const label = tipo === 'banco_horas'
+    ? Math.floor(qtd/60).toString().padStart(2,'0')+':'+(qtd%60).toString().padStart(2,'0')
+    : qtd + (qtd===1?' dia':' dias');
+  if (!confirm(`Estornar lançamento de ${label} para ${nome}?\n\nA compensação será removida e o saldo devolvido ao servidor.`)) return;
+  const res = await fetch(`/admin/tarefas/${sid}/estornar`, { method: 'POST' });
+  const d = await res.json();
+  if (d.ok) location.reload();
+  else alert(d.erro || 'Erro ao estornar.');
+}
 </script>
 {% endblock %}
