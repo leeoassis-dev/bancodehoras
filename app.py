@@ -3511,7 +3511,60 @@ def admin_vincular_rapido():
     registrar_auditoria(db, "Vínculo rápido", "acessos", vinculo, matricula, srv['nome'],
                         f"Tipo: {tipo}; Nível: {nivel}; Ação: {acao}")
     db.commit()
-    return json.dumps({'ok': True, 'acao': acao, 'nome': srv['nome'], 'nivel': nivel, 'msg': msg}), 200, {'Content-Type': 'application/json'}
+    return json.dumps({'ok': True, 'acao': acao, 'nome': srv['nome'], 'matricula': matricula, 'nivel': nivel, 'vinculo': vinculo, 'msg': msg}), 200, {'Content-Type': 'application/json'}
+
+
+@app.route('/admin/acessos/vinculo-remover', methods=['POST'])
+@master_required
+def admin_remover_vinculo_rapido():
+    db = get_db()
+    usuario_id = request.form.get('usuario_id', '').strip()
+    tipo       = request.form.get('tipo', '').strip()
+    vinculo    = request.form.get('vinculo', '').strip()
+
+    if not usuario_id or not vinculo or tipo not in ('secretaria', 'setor'):
+        return json.dumps({'erro': 'Dados incompletos para remoção.'}), 400, {'Content-Type': 'application/json'}
+
+    nivel_esperado = 'secretario' if tipo == 'secretaria' else 'chefia'
+    usuario = db.execute(
+        "SELECT id, nome, cpf, nivel, matricula, vinculos FROM usuarios WHERE id=? AND ativo=1",
+        (usuario_id,)
+    ).fetchone()
+    if not usuario:
+        return json.dumps({'erro': 'Usuário ativo não encontrado.'}), 404, {'Content-Type': 'application/json'}
+    if usuario['nivel'] != nivel_esperado:
+        return json.dumps({'erro': 'O vínculo informado não pertence ao nível atual do usuário.'}), 400, {'Content-Type': 'application/json'}
+
+    vinculos_atuais = get_vinculos(usuario)
+    if vinculo not in vinculos_atuais:
+        return json.dumps({'erro': 'Este vínculo já não está associado ao usuário.'}), 400, {'Content-Type': 'application/json'}
+
+    novos_vinculos = [v for v in vinculos_atuais if v != vinculo]
+    db.execute("UPDATE usuarios SET vinculos=? WHERE id=?", (json.dumps(novos_vinculos, ensure_ascii=False), usuario['id']))
+
+    srv = None
+    if usuario['matricula']:
+        srv = db.execute("SELECT matricula, nome FROM servidores WHERE matricula=? AND arquivado=0", (usuario['matricula'],)).fetchone()
+    if not srv and usuario['cpf']:
+        srv = db.execute("SELECT matricula, nome FROM servidores WHERE cpf=? AND arquivado=0", (usuario['cpf'],)).fetchone()
+
+    matricula = srv['matricula'] if srv else (usuario['matricula'] or '')
+    nome = srv['nome'] if srv else usuario['nome']
+    detalhe = f"Tipo: {tipo}; Nível: {nivel_esperado}; Vínculo removido: {vinculo}; Vínculos restantes: {len(novos_vinculos)}"
+    registrar_auditoria(db, "Removeu vínculo de acesso", "acessos", vinculo, matricula, nome, detalhe)
+    db.commit()
+
+    msg = f"Vínculo removido de {nome}."
+    if not novos_vinculos:
+        msg += " O usuário permanece ativo, mas sem vínculo de consulta nesse nível."
+    return json.dumps({
+        'ok': True,
+        'nome': nome,
+        'matricula': matricula,
+        'nivel': nivel_esperado,
+        'vinculo': vinculo,
+        'msg': msg
+    }, ensure_ascii=False), 200, {'Content-Type': 'application/json'}
 
 
 # ─── Banco de Dias de Eleição ─────────────────────────────────────────────────

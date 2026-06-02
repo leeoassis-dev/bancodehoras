@@ -281,7 +281,7 @@
                   <button class="btn btn-outline-primary btn-sm p-0 flex-shrink-0"
                           style="width:26px;height:26px;line-height:1"
                           title="Vincular secretário a {{ sec.nome }}"
-                          onclick="abrirVinculoRapido('secretaria','{{ sec.nome|replace("'","\\'")|e }}')">
+                          onclick='abrirVinculoRapido("secretaria", {{ sec.nome|tojson }})'>
                     <i class="bi bi-plus-lg" style="font-size:.8rem"></i>
                   </button>
                   <div class="flex-grow-1">
@@ -295,8 +295,13 @@
                     </div>
                     {% if sec.secretarios %}
                       {% for u in sec.secretarios %}
-                      <span class="badge bg-primary me-1 mb-1">
-                        <i class="bi bi-person-badge me-1"></i>{{ u.nome }}
+                      <span class="badge bg-primary me-1 mb-1 d-inline-flex align-items-center gap-1">
+                        <i class="bi bi-person-badge"></i>{{ u.nome }}
+                        <button type="button" class="btn btn-sm p-0 text-white border-0"
+                                style="line-height:1" title="Remover vínculo"
+                                onclick='removerVinculoRapido("secretaria", {{ sec.nome|tojson }}, {{ u.id }}, {{ u.nome|tojson }})'>
+                          <i class="bi bi-x-circle-fill"></i>
+                        </button>
                       </span>
                       {% endfor %}
                     {% else %}
@@ -331,7 +336,7 @@
                   <button class="btn btn-outline-primary btn-sm p-0 flex-shrink-0"
                           style="width:26px;height:26px;line-height:1"
                           title="Vincular chefia a {{ s.nome }}"
-                          onclick="abrirVinculoRapido('setor','{{ s.nome|replace("'","\\'")|e }}')">
+                          onclick='abrirVinculoRapido("setor", {{ s.nome|tojson }})'>
                     <i class="bi bi-plus-lg" style="font-size:.8rem"></i>
                   </button>
                   <div class="flex-grow-1">
@@ -351,8 +356,13 @@
                     </div>
                     {% if s.chefias %}
                       {% for c in s.chefias %}
-                      <span class="badge bg-info text-dark me-1 mb-1">
-                        <i class="bi bi-person-fill me-1"></i>{{ c.nome }}
+                      <span class="badge bg-info text-dark me-1 mb-1 d-inline-flex align-items-center gap-1">
+                        <i class="bi bi-person-fill"></i>{{ c.nome }}
+                        <button type="button" class="btn btn-sm p-0 text-dark border-0"
+                                style="line-height:1" title="Remover vínculo"
+                                onclick='removerVinculoRapido("setor", {{ s.nome|tojson }}, {{ c.id }}, {{ c.nome|tojson }})'>
+                          <i class="bi bi-x-circle-fill"></i>
+                        </button>
                       </span>
                       {% endfor %}
                     {% else %}
@@ -721,23 +731,37 @@ document.getElementById('formNivel')?.addEventListener('submit', function(e) {
 });
 
 // ── Vínculo Rápido ───────────────────────────────────────────────────────────
-let _vqTipo = '', _vqVinculo = '', _vqSrvCache = null, _vqDebounce = null;
+let _vqTipo = '', _vqVinculo = '', _vqSrvCache = null, _vqSelecionado = null;
 
 function abrirVinculoRapido(tipo, vinculo) {
   _vqTipo    = tipo;
   _vqVinculo = vinculo;
+  _vqSelecionado = null;
   const nivelLabel = tipo === 'secretaria' ? 'Secretário' : 'Chefia';
   document.getElementById('vqTitulo').textContent    = (tipo === 'secretaria' ? 'Secretaria' : 'Departamento') + ': ' + vinculo;
   document.getElementById('vqNivelBadge').textContent = nivelLabel;
   document.getElementById('vqNivelBadge').className   = 'badge ' + (tipo === 'secretaria' ? 'bg-primary' : 'bg-info text-dark');
   document.getElementById('vqInput').value = '';
+  document.getElementById('vqInput').dataset.mat = '';
   document.getElementById('vqBanner').classList.add('d-none');
+  document.getElementById('vqBanner').innerHTML = '';
   document.getElementById('vqAlerta').classList.add('d-none');
   document.getElementById('vqDrop').style.display = 'none';
   document.getElementById('vqDrop').innerHTML = '';
   document.getElementById('btnVqSalvar').disabled = true;
   document.getElementById('btnVqSalvar').innerHTML = '<i class="bi bi-link-45deg me-1"></i>Vincular';
   new bootstrap.Modal(document.getElementById('modalVinculoRapido')).show();
+}
+
+function removerVinculoRapido(tipo, vinculo, usuarioId, nomeUsuario) {
+  document.getElementById('vrNome').textContent = nomeUsuario;
+  document.getElementById('vrLocal').textContent = vinculo;
+  document.getElementById('vrNivel').textContent = tipo === 'secretaria' ? 'Secretário' : 'Chefia';
+  document.getElementById('btnVrConfirmar').dataset.tipo = tipo;
+  document.getElementById('btnVrConfirmar').dataset.vinculo = vinculo;
+  document.getElementById('btnVrConfirmar').dataset.usuarioId = usuarioId;
+  document.getElementById('vrAlerta').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('modalRemoverVinculo')).show();
 }
 
 async function _vqCarregarSrvs() {
@@ -748,75 +772,207 @@ async function _vqCarregarSrvs() {
 
 function _norm(v) { return (v||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
 
-const vqInput = document.getElementById('vqInput');
-const vqDrop  = document.getElementById('vqDrop');
-const vqBanner = document.getElementById('vqBanner');
+function _vqInfoPartes(info) {
+  const partes = String(info || '').split(' · ');
+  return { secretaria: partes[0] || '—', setor: partes[1] || '—' };
+}
 
-vqInput?.addEventListener('input', async () => {
-  const q = _norm(vqInput.value);
-  document.getElementById('btnVqSalvar').disabled = true;
-  vqBanner.classList.add('d-none');
-  if (q.length < 2) { vqDrop.style.display='none'; return; }
-  const srvs = await _vqCarregarSrvs();
-  const matches = srvs.filter(s => _norm(s.m).includes(q) || _norm(s.n).includes(q)).slice(0,8);
-  if (!matches.length) { vqDrop.innerHTML='<div class="px-3 py-2 text-muted small">Nenhum servidor encontrado.</div>'; vqDrop.style.display='block'; return; }
-  vqDrop.innerHTML = matches.map((s,i) =>
-    `<div class="__vq px-3 py-2 border-bottom" data-idx="${i}" style="cursor:pointer">
-       <span class="badge bg-secondary me-1">${s.m}</span><strong>${s.n}</strong>
-       ${s.i ? `<div class="text-muted" style="font-size:.72rem">${s.i}</div>` : ''}
-     </div>`
-  ).join('');
-  vqDrop.style.display = 'block';
-  let _matches = matches;
-  vqDrop.querySelectorAll('.__vq').forEach(el => {
-    el.addEventListener('mouseenter', () => el.style.background='#f0f7ff');
-    el.addEventListener('mouseleave', () => el.style.background='');
-    el.addEventListener('mousedown', e => {
-      e.preventDefault();
-      const s = _matches[+el.dataset.idx];
-      vqInput.value = s.m + ' – ' + s.n;
-      vqInput.dataset.mat = s.m;
-      vqDrop.style.display = 'none';
-      // Mostra banner
-      vqBanner.innerHTML = `<i class="bi bi-person-check-fill me-2 text-success"></i>
-        <strong>${s.n}</strong> <span class="badge bg-secondary ms-1">${s.m}</span>
-        <span class="ms-2 text-muted small">${s.i||''}</span>`;
-      vqBanner.classList.remove('d-none');
-      document.getElementById('btnVqSalvar').disabled = false;
-    });
-  });
-});
-vqInput?.addEventListener('blur', () => setTimeout(() => vqDrop.style.display='none', 160));
+function _html(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
 
-document.getElementById('btnVqSalvar')?.addEventListener('click', async function() {
+function _limparBackdrops() {
+  document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+  document.body.classList.remove('modal-open');
+  document.body.style.removeProperty('overflow');
+  document.body.style.removeProperty('padding-right');
+}
+
+function _mostrarLoadingVinculo(titulo, subtitulo) {
+  const barra = document.getElementById('vlBarra');
+  const msg = document.getElementById('vlMsg');
+  const etapa = document.getElementById('vlEtapa');
+  document.getElementById('vlTitulo').textContent = titulo;
+  document.getElementById('vlSubtitulo').textContent = subtitulo;
+  barra.style.width = '0%';
+  barra.textContent = '0%';
+  msg.textContent = 'Preparando registro...';
+  etapa.textContent = 'Iniciando';
+  const modal = new bootstrap.Modal(document.getElementById('modalVinculoLoading'), { backdrop: 'static', keyboard: false });
+  modal.show();
+  const etapas = [
+    [18, 'Validando servidor selecionado...', 'Conferindo matrícula'],
+    [38, 'Conferindo CPF e cadastro de acesso...', 'Validando usuário'],
+    [62, 'Aplicando vínculo de permissão...', 'Atualizando permissões'],
+    [82, 'Registrando auditoria da alteração...', 'Gravando histórico'],
+    [100, 'Finalizando processamento...', 'Concluído']
+  ];
+  let i = 0;
+  const timer = setInterval(() => {
+    const atual = etapas[Math.min(i, etapas.length - 1)];
+    barra.style.width = atual[0] + '%';
+    barra.textContent = atual[0] + '%';
+    msg.textContent = atual[1];
+    etapa.textContent = atual[2];
+    i++;
+    if (i >= etapas.length) clearInterval(timer);
+  }, 320);
+  return { modal, timer };
+}
+
+function _confirmarVinculo(dados) {
+  document.querySelector('#modalVinculoConfirmacao .modal-title').textContent = 'Vínculo Confirmado';
+  document.getElementById('vqConfAcao').textContent = 'vinculado como';
+  document.getElementById('vqConfNome').textContent   = dados.nome || '';
+  document.getElementById('vqConfMatricula').textContent = dados.matricula || '';
+  document.getElementById('vqConfNivel').textContent  = dados.nivel === 'secretario' ? 'Secretário' : 'Chefia';
+  document.getElementById('vqConfLocal').textContent  = dados.vinculo || _vqVinculo;
+  document.getElementById('vqConfMsg').textContent    = dados.msg || '';
+  new bootstrap.Modal(document.getElementById('modalVinculoConfirmacao'), { backdrop: 'static' }).show();
+}
+
+async function _salvarVinculoRapido(btn) {
+  const vqInput = document.getElementById('vqInput');
   const mat = vqInput.dataset.mat;
   const alertEl = document.getElementById('vqAlerta');
   if (!mat) { alertEl.className='alert alert-danger mb-0'; alertEl.textContent='Selecione um servidor da lista.'; alertEl.classList.remove('d-none'); return; }
-  this.disabled=true; this.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Salvando...';
+  btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Salvando...';
   const fd = new FormData();
   fd.append('matricula', mat);
   fd.append('tipo', _vqTipo);
   fd.append('vinculo', _vqVinculo);
+  const loading = _mostrarLoadingVinculo('Vinculando usuário', 'Aplicando permissão no painel de vínculos');
   try {
     const res = await fetch('/admin/acessos/vincular-rapido', { method:'POST', body:fd });
     const d = await res.json();
+    await new Promise(resolve => setTimeout(resolve, 900));
+    clearInterval(loading.timer);
+    loading.modal.hide();
     if (d.ok) {
       bootstrap.Modal.getInstance(document.getElementById('modalVinculoRapido'))?.hide();
-      // Mostra modal de confirmação
-      document.getElementById('vqConfNome').textContent   = d.nome;
-      document.getElementById('vqConfNivel').textContent  = d.nivel === 'secretario' ? 'Secretário' : 'Chefia';
-      document.getElementById('vqConfLocal').textContent  = _vqVinculo;
-      document.getElementById('vqConfMsg').textContent    = d.msg;
-      new bootstrap.Modal(document.getElementById('modalVinculoConfirmacao')).show();
-      setTimeout(() => location.reload(), 3000);
+      setTimeout(() => {
+        _limparBackdrops();
+        _confirmarVinculo({...d, matricula: mat, vinculo: _vqVinculo});
+      }, 220);
     } else {
       alertEl.className='alert alert-danger mb-0'; alertEl.textContent=d.erro||'Erro ao vincular.'; alertEl.classList.remove('d-none');
-      this.disabled=false; this.innerHTML='<i class="bi bi-link-45deg me-1"></i>Vincular';
+      btn.disabled=false; btn.innerHTML='<i class="bi bi-link-45deg me-1"></i>Vincular';
     }
   } catch(e) {
+    clearInterval(loading.timer);
+    loading.modal.hide();
     alertEl.className='alert alert-danger mb-0'; alertEl.textContent='Erro de comunicação.'; alertEl.classList.remove('d-none');
-    this.disabled=false; this.innerHTML='<i class="bi bi-link-45deg me-1"></i>Vincular';
+    btn.disabled=false; btn.innerHTML='<i class="bi bi-link-45deg me-1"></i>Vincular';
   }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const vqInput = document.getElementById('vqInput');
+  const vqDrop  = document.getElementById('vqDrop');
+  const vqBanner = document.getElementById('vqBanner');
+
+  vqInput?.addEventListener('input', async () => {
+    const q = _norm(vqInput.value);
+    document.getElementById('btnVqSalvar').disabled = true;
+    vqInput.dataset.mat = '';
+    _vqSelecionado = null;
+    vqBanner.classList.add('d-none');
+    vqBanner.innerHTML = '';
+    if (q.length < 2) { vqDrop.style.display='none'; return; }
+    const srvs = await _vqCarregarSrvs();
+    const matches = srvs.filter(s => _norm(s.m).includes(q) || _norm(s.n).includes(q)).slice(0,8);
+    if (!matches.length) {
+      vqDrop.innerHTML='<div class="px-3 py-2 text-muted small">Nenhum servidor encontrado.</div>';
+      vqDrop.style.display='block';
+      return;
+    }
+    vqDrop.innerHTML = matches.map((s,i) => {
+      const info = _vqInfoPartes(s.i);
+      return `<div class="__vq px-3 py-2 border-bottom" data-idx="${i}" style="cursor:pointer">
+        <div><span class="badge bg-secondary me-1">${_html(s.m)}</span><strong>${_html(s.n)}</strong></div>
+        <div class="text-muted" style="font-size:.72rem">
+          Secretaria: ${_html(info.secretaria)} · Departamento: ${_html(info.setor)}
+        </div>
+      </div>`;
+    }).join('');
+    vqDrop.style.display = 'block';
+    vqDrop.querySelectorAll('.__vq').forEach(el => {
+      el.addEventListener('mouseenter', () => el.style.background='#f0f7ff');
+      el.addEventListener('mouseleave', () => el.style.background='');
+      el.addEventListener('mousedown', e => {
+        e.preventDefault();
+        const s = matches[+el.dataset.idx];
+        const info = _vqInfoPartes(s.i);
+        _vqSelecionado = s;
+        vqInput.value = s.m + ' - ' + s.n;
+        vqInput.dataset.mat = s.m;
+        vqDrop.style.display = 'none';
+        vqBanner.innerHTML = `
+          <div class="d-flex align-items-start gap-2">
+            <i class="bi bi-person-check-fill text-success fs-5"></i>
+            <div>
+              <div class="fw-bold">${_html(s.n)} <span class="badge bg-secondary ms-1">${_html(s.m)}</span></div>
+              <div class="small text-muted">Secretaria: <strong>${_html(info.secretaria)}</strong></div>
+              <div class="small text-muted">Departamento: <strong>${_html(info.setor)}</strong></div>
+            </div>
+          </div>`;
+        vqBanner.classList.remove('d-none');
+        document.getElementById('btnVqSalvar').disabled = false;
+      });
+    });
+  });
+  vqInput?.addEventListener('blur', () => setTimeout(() => vqDrop.style.display='none', 160));
+  document.getElementById('btnVqSalvar')?.addEventListener('click', function() {
+    _salvarVinculoRapido(this);
+  });
+
+  document.getElementById('btnVrConfirmar')?.addEventListener('click', async function() {
+    const btn = this;
+    const alertEl = document.getElementById('vrAlerta');
+    const fd = new FormData();
+    fd.append('usuario_id', btn.dataset.usuarioId || '');
+    fd.append('tipo', btn.dataset.tipo || '');
+    fd.append('vinculo', btn.dataset.vinculo || '');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Removendo...';
+    const loading = _mostrarLoadingVinculo('Removendo vínculo', 'Atualizando permissões do usuário');
+    try {
+      const res = await fetch('/admin/acessos/vinculo-remover', { method:'POST', body:fd });
+      const d = await res.json();
+      await new Promise(resolve => setTimeout(resolve, 800));
+      clearInterval(loading.timer);
+      loading.modal.hide();
+      if (d.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('modalRemoverVinculo'))?.hide();
+        setTimeout(() => {
+          _limparBackdrops();
+          document.getElementById('vqConfNome').textContent = d.nome || '';
+          document.getElementById('vqConfMatricula').textContent = d.matricula || '';
+          document.getElementById('vqConfNivel').textContent = d.nivel === 'secretario' ? 'Secretário' : 'Chefia';
+          document.getElementById('vqConfLocal').textContent = d.vinculo || '';
+          document.getElementById('vqConfMsg').textContent = d.msg || 'Vínculo removido.';
+          document.querySelector('#modalVinculoConfirmacao .modal-title').textContent = 'Vínculo Removido';
+          document.getElementById('vqConfAcao').textContent = 'removido do vínculo como';
+          new bootstrap.Modal(document.getElementById('modalVinculoConfirmacao'), { backdrop: 'static' }).show();
+        }, 220);
+      } else {
+        alertEl.className = 'alert alert-danger mb-0';
+        alertEl.textContent = d.erro || 'Erro ao remover vínculo.';
+        alertEl.classList.remove('d-none');
+      }
+    } catch(e) {
+      clearInterval(loading.timer);
+      loading.modal.hide();
+      alertEl.className = 'alert alert-danger mb-0';
+      alertEl.textContent = 'Erro de comunicação.';
+      alertEl.classList.remove('d-none');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-trash me-1"></i>Remover vínculo';
+    }
+  });
 });
 </script>
 
@@ -859,6 +1015,56 @@ document.getElementById('btnVqSalvar')?.addEventListener('click', async function
   </div>
 </div>
 
+<!-- Modal: Loading Vínculo -->
+<div class="modal fade" id="modalVinculoLoading" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="bi bi-arrow-repeat me-2"></i><span id="vlTitulo">Processando vínculo</span></h5>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted mb-3" id="vlSubtitulo">Atualizando permissões</p>
+        <div class="progress mb-3" style="height:18px">
+          <div id="vlBarra" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%">0%</div>
+        </div>
+        <div class="small text-muted mb-2" id="vlMsg">Preparando registro...</div>
+        <div class="small border rounded bg-light p-2">
+          <strong>Etapa atual:</strong> <span id="vlEtapa">Iniciando</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Remover Vínculo -->
+<div class="modal fade" id="modalRemoverVinculo" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-person-dash me-2"></i>Remover Vínculo</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="vrAlerta" class="alert d-none mb-3"></div>
+        <p class="mb-2">Remover o vínculo de <strong id="vrNome"></strong>?</p>
+        <div class="border rounded bg-light p-3 small">
+          <div><strong>Nível:</strong> <span id="vrNivel"></span></div>
+          <div><strong>Vínculo:</strong> <span id="vrLocal"></span></div>
+        </div>
+        <div class="form-text mt-2">
+          A conta do usuário não será excluída. Apenas este vínculo será removido das permissões ativas.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="btnVrConfirmar">
+          <i class="bi bi-trash me-1"></i>Remover vínculo
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Confirmação de Vínculo -->
 <div class="modal fade" id="modalVinculoConfirmacao" tabindex="-1" data-bs-backdrop="static">
   <div class="modal-dialog modal-dialog-centered modal-sm">
@@ -871,7 +1077,8 @@ document.getElementById('btnVqSalvar')?.addEventListener('click', async function
       </div>
       <div class="modal-body py-4 text-center">
         <p class="mb-1"><strong id="vqConfNome"></strong></p>
-        <p class="mb-1 text-muted small">vinculado como <strong id="vqConfNivel"></strong> a</p>
+        <p class="mb-1"><span class="badge bg-secondary">Matrícula <span id="vqConfMatricula"></span></span></p>
+        <p class="mb-1 text-muted small"><span id="vqConfAcao">vinculado como</span> <strong id="vqConfNivel"></strong> a</p>
         <p class="fw-semibold mb-3" id="vqConfLocal"></p>
         <p class="text-muted small mb-0" id="vqConfMsg"></p>
       </div>
