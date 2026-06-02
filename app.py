@@ -1923,11 +1923,13 @@ def admin_backup_excel():
     ])
 
     usuarios_vinc = db.execute("""
-        SELECT u.id,u.nome,u.cpf,u.nivel,u.matricula,u.vinculos
+        SELECT u.id,u.nome,u.cpf,u.nivel,u.matricula,u.secretaria,u.setor,u.vinculos
         FROM usuarios u
-        WHERE u.ativo=1 AND u.nivel IN ('chefia','secretario')
+        WHERE u.ativo=1 AND (u.nivel IN ('chefia','secretario') OR u.vinculos IS NOT NULL)
         ORDER BY u.nivel,u.nome
     """).fetchall()
+    backup_secs = _cadastros_nomes(db, "secretaria")
+    backup_sets = _cadastros_nomes(db, "departamento")
     mapa_chefia, mapa_secretario = {}, {}
     for u in usuarios_vinc:
         item = f"{u['nome']} | CPF {u['cpf']} | ID {u['id']}"
@@ -1936,6 +1938,11 @@ def admin_backup_excel():
                 mapa_chefia.setdefault(vinc, []).append(item)
             elif u["nivel"] == "secretario":
                 mapa_secretario.setdefault(vinc, []).append(item)
+            elif u["nivel"] == "master":
+                if vinc in backup_sets or vinc == (u["setor"] or ""):
+                    mapa_chefia.setdefault(vinc, []).append(item)
+                if vinc in backup_secs or vinc == (u["secretaria"] or ""):
+                    mapa_secretario.setdefault(vinc, []).append(item)
 
     setor_secretaria = {}
     for row in db.execute("""
@@ -3406,9 +3413,10 @@ def admin_acessos():
     srvs = db.execute("SELECT matricula,nome,cpf FROM servidores WHERE arquivado=0 ORDER BY nome").fetchall()
 
     # ── Painel de vínculos ────────────────────────────────────────────────────
-    # Carrega todos os usuários ativos de nível chefia/secretario com seus vínculos
+    # Carrega usuários ativos com vínculos. Master preserva o nível, mas pode
+    # constar como responsável operacional no painel quando possuir vínculo.
     usuarios_vinc = db.execute(
-        "SELECT id, nome, nivel, vinculos FROM usuarios WHERE ativo=1 AND nivel IN ('chefia','secretario')"
+        "SELECT id, nome, nivel, secretaria, setor, vinculos FROM usuarios WHERE ativo=1 AND (nivel IN ('chefia','secretario') OR vinculos IS NOT NULL)"
     ).fetchall()
     # mapa: setor → lista de chefias; secretaria → lista de secretarios
     _mapa_chefia = {}
@@ -3422,9 +3430,15 @@ def admin_acessos():
         if u['nivel'] == 'chefia':
             for v in vs:
                 _mapa_chefia.setdefault(v, []).append(entry)
-        else:
+        elif u['nivel'] == 'secretario':
             for v in vs:
                 _mapa_secretario.setdefault(v, []).append(entry)
+        elif u['nivel'] == 'master':
+            for v in vs:
+                if v in sets or v == (u['setor'] or ''):
+                    _mapa_chefia.setdefault(v, []).append(entry)
+                if v in secs or v == (u['secretaria'] or ''):
+                    _mapa_secretario.setdefault(v, []).append(entry)
 
     # Para cada setor, descobre a secretaria pai (pelo cadastro de servidores)
     _setor_secretaria = {}
@@ -3668,12 +3682,12 @@ def admin_remover_vinculo_rapido():
 
     nivel_esperado = 'secretario' if tipo == 'secretaria' else 'chefia'
     usuario = db.execute(
-        "SELECT id, nome, cpf, nivel, matricula, vinculos FROM usuarios WHERE id=? AND ativo=1",
+        "SELECT id, nome, cpf, nivel, matricula, secretaria, setor, vinculos FROM usuarios WHERE id=? AND ativo=1",
         (usuario_id,)
     ).fetchone()
     if not usuario:
         return json.dumps({'erro': 'Usuário ativo não encontrado.'}), 404, {'Content-Type': 'application/json'}
-    if usuario['nivel'] != nivel_esperado:
+    if usuario['nivel'] != nivel_esperado and usuario['nivel'] != 'master':
         return json.dumps({'erro': 'O vínculo informado não pertence ao nível atual do usuário.'}), 400, {'Content-Type': 'application/json'}
 
     vinculos_atuais = get_vinculos(usuario)
@@ -3681,7 +3695,10 @@ def admin_remover_vinculo_rapido():
         return json.dumps({'erro': 'Este vínculo já não está associado ao usuário.'}), 400, {'Content-Type': 'application/json'}
 
     novos_vinculos = [v for v in vinculos_atuais if v != vinculo]
-    db.execute("UPDATE usuarios SET vinculos=? WHERE id=?", (json.dumps(novos_vinculos, ensure_ascii=False), usuario['id']))
+    nova_secretaria = '' if tipo == 'secretaria' and (usuario['secretaria'] or '') == vinculo else (usuario['secretaria'] or '')
+    novo_setor = '' if tipo == 'setor' and (usuario['setor'] or '') == vinculo else (usuario['setor'] or '')
+    db.execute("UPDATE usuarios SET secretaria=?, setor=?, vinculos=? WHERE id=?",
+               (nova_secretaria, novo_setor, json.dumps(novos_vinculos, ensure_ascii=False), usuario['id']))
 
     srv = None
     if usuario['matricula']:
@@ -4155,7 +4172,7 @@ def _aprovadores_para_servidor(db, matricula):
     setor = srv['setor'] or ''
     secretaria = srv['secretaria'] or ''
     users = db.execute(
-        "SELECT id, nome, nivel, vinculos FROM usuarios WHERE ativo=1 AND nivel IN ('chefia','secretario')"
+        "SELECT id, nome, nivel, secretaria, setor, vinculos FROM usuarios WHERE ativo=1 AND (nivel IN ('chefia','secretario') OR nivel='master')"
     ).fetchall()
     result = []
     for u in users:
@@ -4166,6 +4183,8 @@ def _aprovadores_para_servidor(db, matricula):
         if u['nivel'] == 'chefia' and setor and setor in vinculos:
             result.append(dict(u))
         elif u['nivel'] == 'secretario' and secretaria and secretaria in vinculos:
+            result.append(dict(u))
+        elif u['nivel'] == 'master' and ((setor and setor in vinculos) or (secretaria and secretaria in vinculos)):
             result.append(dict(u))
     return result
 
@@ -4190,7 +4209,7 @@ def _secretarios_para_chefia(db, chefia_uid):
     if not secretaria:
         return []
     users = db.execute(
-        "SELECT id, nome, nivel, vinculos FROM usuarios WHERE ativo=1 AND nivel='secretario'"
+        "SELECT id, nome, nivel, vinculos FROM usuarios WHERE ativo=1 AND (nivel='secretario' OR nivel='master')"
     ).fetchall()
     result = []
     for u in users:
