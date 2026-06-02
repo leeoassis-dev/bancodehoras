@@ -121,6 +121,10 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i><span id="modalNome"></span></h5>
+        <a id="modalHistoricoPdf" href="#" target="_blank" rel="noopener"
+           class="btn btn-sm btn-outline-danger ms-auto me-2" title="Gerar histórico em PDF">
+          <i class="bi bi-file-earmark-pdf"></i>
+        </a>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body" id="modalBody">
@@ -136,6 +140,7 @@
 <script>
 function verHistorico(matricula, nome) {
   document.getElementById('modalNome').textContent = nome + ' (' + matricula + ')';
+  document.getElementById('modalHistoricoPdf').href = '/servidores/' + encodeURIComponent(matricula) + '/historico/pdf';
   document.getElementById('modalBody').innerHTML =
     '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
   document.getElementById('modalLinks').innerHTML = '';

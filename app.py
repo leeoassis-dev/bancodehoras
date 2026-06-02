@@ -1052,6 +1052,148 @@ def api_historico(matricula):
         "saldo_eleicao":    saldo_eleicao,
     })
 
+@app.route("/servidores/<matricula>/historico/pdf")
+@login_required
+def historico_servidor_pdf(matricula):
+    db = get_db()
+    if not usuario_pode_ver_matricula(db, matricula):
+        flash("Acesso não autorizado para esta matrícula.", "danger")
+        return redirect(url_for("portal"))
+
+    srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    if not srv:
+        flash("Servidor não encontrado.", "danger")
+        return redirect(url_for("portal"))
+
+    lancs = db.execute("""
+        SELECT l.data, l.horas_base, l.percentual, l.minutos_creditados, l.descricao,
+               COALESCE((SELECT SUM(c.minutos) FROM consumos c WHERE c.lancamento_id=l.id),0) AS consumido
+        FROM lancamentos l
+        WHERE l.matricula=?
+        ORDER BY l.data DESC
+    """, (matricula,)).fetchall()
+    comps = db.execute("""
+        SELECT data,tipo,minutos_compensados,descricao
+        FROM compensacoes
+        WHERE matricula=?
+        ORDER BY data DESC
+    """, (matricula,)).fetchall()
+    pags = db.execute("""
+        SELECT p.data_pagamento AS data, p.descricao,
+               COALESCE(SUM(ROUND(c.minutos*l.minutos_base*1.0/l.minutos_creditados)),0) AS base_paga,
+               COALESCE(SUM(c.minutos),0) AS minutos_pagos
+        FROM pagamentos p
+        JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
+        JOIN lancamentos l ON l.id=c.lancamento_id
+        WHERE p.matricula=?
+        GROUP BY p.id,p.data_pagamento,p.descricao
+        ORDER BY p.data_pagamento DESC
+    """, (matricula,)).fetchall()
+    eleicao_creditos = db.execute("""
+        SELECT referencia_eleicao, quantidade_dias, observacao, criado_em
+        FROM eleicao_creditos
+        WHERE matricula=?
+        ORDER BY criado_em DESC
+    """, (matricula,)).fetchall()
+    eleicao_baixas = db.execute("""
+        SELECT data, observacao, criado_em
+        FROM eleicao_baixas
+        WHERE matricula=?
+        ORDER BY data DESC
+    """, (matricula,)).fetchall()
+
+    rows = []
+    total_creditado = total_compensado = total_pago_base = total_pago_banco = 0
+
+    if lancs:
+        rows.append(["LANÇAMENTOS", "", "", "", "", "", ""])
+        for l in lancs:
+            creditado = minutos_num(l["minutos_creditados"])
+            saldo = creditado - minutos_num(l["consumido"])
+            total_creditado += creditado
+            rows.append([
+                "Lançamento",
+                fmt_data(l["data"]),
+                l["horas_base"],
+                f'{l["percentual"]}%',
+                minutos_para_horas(creditado),
+                minutos_para_horas(saldo),
+                l["descricao"] or "",
+            ])
+
+    if comps:
+        rows.append(["COMPENSAÇÕES", "", "", "", "", "", ""])
+        for c in comps:
+            compensado = minutos_num(c["minutos_compensados"])
+            total_compensado += compensado
+            rows.append([
+                "Compensação",
+                fmt_data(c["data"]),
+                "Horas informadas",
+                "",
+                "",
+                minutos_para_horas(compensado),
+                c["descricao"] or "",
+            ])
+
+    if pags:
+        rows.append(["PAGAMENTOS", "", "", "", "", "", ""])
+        for p in pags:
+            base_paga = minutos_num(p["base_paga"])
+            banco_pago = minutos_num(p["minutos_pagos"])
+            total_pago_base += base_paga
+            total_pago_banco += banco_pago
+            rows.append([
+                "Pagamento",
+                fmt_data(p["data"]),
+                "Registrado no banco",
+                "",
+                minutos_para_horas(base_paga),
+                minutos_para_horas(banco_pago),
+                p["descricao"] or "",
+            ])
+
+    if eleicao_creditos or eleicao_baixas:
+        rows.append(["DIAS DE ELEIÇÃO", "", "", "", "", "", ""])
+        for e in eleicao_creditos:
+            rows.append([
+                "Crédito eleição",
+                fmt_datetime(e["criado_em"]),
+                e["referencia_eleicao"] or "",
+                "",
+                f'{e["quantidade_dias"]} dia(s)',
+                "",
+                e["observacao"] or "",
+            ])
+        for e in eleicao_baixas:
+            rows.append([
+                "Baixa eleição",
+                fmt_data(e["data"]),
+                fmt_datetime(e["criado_em"]),
+                "",
+                "",
+                "1 dia",
+                e["observacao"] or "",
+            ])
+
+    if not rows:
+        rows.append(["Sem registros", "", "", "", "", "", ""])
+
+    rows.append([
+        "TOTAL GERAL",
+        "",
+        "",
+        "",
+        f"Lançado {minutos_para_horas(total_creditado)} | Pago base {minutos_para_horas(total_pago_base)}",
+        f"Compensado {minutos_para_horas(total_compensado)} | Banco pago {minutos_para_horas(total_pago_banco)}",
+        f"Saldo atual {minutos_para_horas(calcular_saldo(db, matricula))}",
+    ])
+
+    headers = ["Tipo", "Data", "Registro", "%", "Crédito/Base", "Saldo/Débito", "Descrição"]
+    filename = f"historico_banco_horas_{matricula}"
+    title = f"Histórico do Banco de Horas - {srv['nome']} ({matricula})"
+    return _export_response("pdf", filename, title, headers, rows)
+
 @app.route("/servidores/novo", methods=["GET","POST"])
 @master_required
 def novo_servidor():
