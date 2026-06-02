@@ -384,12 +384,12 @@ function buildTable(modo) {
       <td class="text-center"><span class="badge ${pctCls}">${i.percentual}%</span></td>
       <td class="text-center text-muted">${fmtHM(i.saldo_minutos)}</td>
       <td class="text-center">
-        <input type="text" class="form-control form-control-sm text-center fw-bold mp-inp"
+        <input type="text" class="form-control form-control-sm text-center fw-bold mp-inp js-hora"
                value="${defaultVal}"
                data-max="${fmtHM(i.saldo_base_minutos)}"
                data-vencido="${i.vencido}"
                data-id="${i.id}"
-               placeholder="HH:MM"
+                placeholder="HH:MM" inputmode="numeric"
                style="max-width:85px;margin:auto">
       </td>
       <td class="text-muted small">${i.descricao || '–'}</td>
@@ -397,6 +397,7 @@ function buildTable(modo) {
   }
   html += '</tbody></table></div>';
   document.getElementById('mp_tabela_container').innerHTML = html;
+  window.aplicarMascaraHoras?.(document.getElementById('mp_tabela_container'));
 
   document.querySelectorAll('.mp-inp').forEach(inp => {
     inp.title = `Máx disponível: ${inp.dataset.max}`;

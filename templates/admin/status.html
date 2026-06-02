@@ -3,8 +3,8 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
-    <h4 class="mb-0"><i class="bi bi-heart-pulse me-2 text-danger"></i>Saúde do Sistema</h4>
-    <p class="text-muted small mb-0">Resumo técnico para conferência rápida do ambiente e dos dados administrativos.</p>
+    <h4 class="mb-0"><i class="bi bi-activity me-2 text-primary"></i>Status do Sistema</h4>
+    <p class="text-muted small mb-0">Resumo tecnico para conferencia rapida do ambiente e dos dados administrativos.</p>
   </div>
   <a href="/admin/backup" class="btn btn-outline-primary btn-sm"><i class="bi bi-database-down me-1"></i>Backup</a>
 </div>
@@ -14,26 +14,26 @@
     <div class="card p-3 h-100 border-start border-primary border-4">
       <div class="text-muted small">Banco de dados</div>
       <div class="fw-bold fs-5">{{ banco }}</div>
-      <div class="small text-muted">Conexão ativa</div>
+      <div class="small text-muted">Conexao ativa</div>
     </div>
   </div>
   <div class="col-md-3">
     <div class="card p-3 h-100 border-start {{ 'border-success' if smtp_ok else 'border-warning' }} border-4">
       <div class="text-muted small">E-mail SMTP</div>
       <div class="fw-bold fs-5">{{ 'Configurado' if smtp_ok else 'Pendente' }}</div>
-      <div class="small text-muted">{{ smtp.smtp_host or 'Servidor não informado' }}</div>
+      <div class="small text-muted">{{ smtp.smtp_host or 'Servidor nao informado' }}</div>
     </div>
   </div>
   <div class="col-md-3">
     <div class="card p-3 h-100 border-start border-info border-4">
-      <div class="text-muted small">Usuários ativos</div>
+      <div class="text-muted small">Usuarios ativos</div>
       <div class="fw-bold fs-5">{{ contadores.usuarios_ativos }}</div>
-      <div class="small text-muted">{{ contadores.pre_autorizacoes }} pré-autorização(ões)</div>
+      <div class="small text-muted">{{ contadores.pre_autorizacoes }} pre-autorizacao(oes)</div>
     </div>
   </div>
   <div class="col-md-3">
     <div class="card p-3 h-100 border-start border-warning border-4">
-      <div class="text-muted small">Solicitações abertas</div>
+      <div class="text-muted small">Solicitacoes abertas</div>
       <div class="fw-bold fs-5">{{ contadores.solicitacoes_pendentes }}</div>
       <div class="small text-muted">Solicitado/autorizado</div>
     </div>
@@ -43,15 +43,15 @@
 <div class="row g-3 mb-4">
   <div class="col-lg-6">
     <div class="card h-100">
-      <div class="card-header bg-white fw-semibold"><i class="bi bi-activity me-1 text-primary"></i>Resumo de Dados</div>
+      <div class="card-header bg-white fw-semibold"><i class="bi bi-server me-1 text-primary"></i>Resumo de Dados</div>
       <div class="table-responsive">
         <table class="table table-sm mb-0 align-middle">
           <tbody>
             <tr><th>Servidores ativos</th><td class="text-end fw-semibold">{{ contadores.servidores_ativos }}</td></tr>
             <tr><th>Servidores arquivados</th><td class="text-end fw-semibold">{{ contadores.servidores_arquivados }}</td></tr>
-            <tr><th>Importações registradas</th><td class="text-end fw-semibold">{{ contadores.importacoes }}</td></tr>
-            <tr><th>Usuários Secretário/Chefia sem vínculo</th><td class="text-end fw-semibold {{ 'text-danger' if sem_vinculo else 'text-success' }}">{{ sem_vinculo }}</td></tr>
-            <tr><th>Usuários com CPF ainda formatado no banco</th><td class="text-end fw-semibold {{ 'text-warning' if cpf_sem_padrao else 'text-success' }}">{{ cpf_sem_padrao }}</td></tr>
+            <tr><th>Importacoes registradas</th><td class="text-end fw-semibold">{{ contadores.importacoes }}</td></tr>
+            <tr><th>Usuarios Secretario/Chefia sem vinculo</th><td class="text-end fw-semibold {{ 'text-danger' if sem_vinculo else 'text-success' }}">{{ sem_vinculo }}</td></tr>
+            <tr><th>Usuarios com CPF ainda formatado no banco</th><td class="text-end fw-semibold {{ 'text-warning' if cpf_sem_padrao else 'text-success' }}">{{ cpf_sem_padrao }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -59,10 +59,10 @@
   </div>
   <div class="col-lg-6">
     <div class="card h-100">
-      <div class="card-header bg-white fw-semibold"><i class="bi bi-clock-history me-1 text-primary"></i>Últimos Eventos Técnicos</div>
+      <div class="card-header bg-white fw-semibold"><i class="bi bi-clock-history me-1 text-primary"></i>Ultimos Eventos Tecnicos</div>
       <div class="card-body">
         <div class="mb-3">
-          <div class="small text-muted">Último backup</div>
+          <div class="small text-muted">Ultimo backup</div>
           {% if ultimo_backup %}
             <div class="fw-semibold">{{ ultimo_backup.criado_em|fmt_datetime }}</div>
             <div class="small text-muted">{{ ultimo_backup.usuario_nome or 'Sistema' }}</div>
@@ -71,7 +71,7 @@
           {% endif %}
         </div>
         <div>
-          <div class="small text-muted">Último alerta de segurança/falha</div>
+          <div class="small text-muted">Ultimo alerta de seguranca/falha</div>
           {% if ultimo_erro %}
             <div class="fw-semibold">{{ ultimo_erro.criado_em|fmt_datetime }}</div>
             <div class="small text-muted">{{ ultimo_erro.detalhe or 'Sem detalhe' }}</div>
@@ -85,13 +85,13 @@
 </div>
 
 <div class="card">
-  <div class="card-header bg-white fw-semibold"><i class="bi bi-exclamation-triangle me-1 text-warning"></i>Integridade de CPF</div>
+  <div class="card-header bg-white fw-semibold"><i class="bi bi-shield-check me-1 text-primary"></i>Integridade de CPF</div>
   <div class="card-body">
     {% if cpf_duplicados %}
-      <div class="alert alert-warning small">Foram encontrados CPFs equivalentes repetidos após remover pontuação. Revise antes de qualquer migração definitiva.</div>
+      <div class="alert alert-warning small">Foram encontrados CPFs equivalentes repetidos apos remover pontuacao. Revise antes de qualquer migracao definitiva.</div>
       <div class="table-responsive">
         <table class="table table-sm table-bordered align-middle mb-0">
-          <thead class="table-light"><tr><th>CPF normalizado</th><th class="text-end">Ocorrências</th></tr></thead>
+          <thead class="table-light"><tr><th>CPF normalizado</th><th class="text-end">Ocorrencias</th></tr></thead>
           <tbody>
             {% for c in cpf_duplicados %}
             <tr><td>{{ c.cpf_norm|fmt_cpf }}</td><td class="text-end fw-semibold">{{ c.qtd }}</td></tr>
@@ -100,7 +100,7 @@
         </table>
       </div>
     {% else %}
-      <div class="text-success small"><i class="bi bi-check-circle me-1"></i>Nenhum CPF duplicado por normalização foi identificado.</div>
+      <div class="text-success small"><i class="bi bi-check-circle me-1"></i>Nenhum CPF duplicado por normalizacao foi identificado.</div>
     {% endif %}
   </div>
 </div>

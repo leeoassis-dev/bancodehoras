@@ -109,7 +109,7 @@
           </div>
           <div class="col-6">
             <label class="form-label fw-semibold small">Horas (HH:MM) <span class="text-danger">*</span></label>
-            <input type="text" id="lanc_horas" class="form-control" placeholder="Ex: 02:30"
+            <input type="text" id="lanc_horas" class="form-control js-hora" placeholder="Ex: 02:30" inputmode="numeric"
                    pattern="\d{1,3}:\d{2}" required>
           </div>
         </div>
@@ -184,7 +184,7 @@
           </div>
           <div class="col-6">
             <label class="form-label fw-semibold small">Quantidade de horas <span class="text-danger">*</span></label>
-            <input type="text" id="comp_horas" class="form-control" placeholder="HH:MM"
+            <input type="text" id="comp_horas" class="form-control js-hora" placeholder="HH:MM" inputmode="numeric"
                    pattern="\d{1,3}:\d{2}" required>
           </div>
         </div>
@@ -644,16 +644,18 @@ function pagBuiltTable(modo) {
       <td class="text-center"><span class="badge ${i.percentual===50?'badge-50':'badge-100'}">${i.percentual}%</span></td>
       <td class="text-center text-muted">${fmtHM(i.saldo_minutos)}</td>
       <td class="text-center">
-        <input type="text" class="form-control form-control-sm text-center fw-bold pag-inp"
-               value="${val}" data-max="${fmtHM(i.saldo_base_minutos)}"
-               data-vencido="${i.vencido}" data-id="${i.id}"
-               style="max-width:80px;margin:auto">
+        <input type="text" class="form-control form-control-sm text-center fw-bold pag-inp js-hora"
+                value="${val}" data-max="${fmtHM(i.saldo_base_minutos)}"
+                data-vencido="${i.vencido}" data-id="${i.id}"
+                inputmode="numeric" placeholder="HH:MM"
+                style="max-width:80px;margin:auto">
       </td>
       <td class="text-muted small">${i.descricao || '–'}</td>
     </tr>`;
   }
   html += '</tbody></table></div>';
   document.getElementById('pag_tabela').innerHTML = html;
+  window.aplicarMascaraHoras?.(document.getElementById('pag_tabela'));
   document.querySelectorAll('.pag-inp').forEach(inp => {
     inp.title = `Máx disponível: ${inp.dataset.max}`;
     inp.addEventListener('input', () => {

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Banco de Horas – Prefeitura de Ibiporã</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <style>
@@ -75,7 +76,17 @@
       padding:.45rem .65rem;
       overflow-y:auto;
       flex:1;
+      scrollbar-width:thin;
+      scrollbar-color:rgba(255,255,255,.28) transparent;
     }
+    .sidebar-nav::-webkit-scrollbar { width:7px; }
+    .sidebar-nav::-webkit-scrollbar-track { background:transparent; }
+    .sidebar-nav::-webkit-scrollbar-thumb {
+      background:rgba(255,255,255,.24);
+      border-radius:999px;
+      border:2px solid #1a3a6b;
+    }
+    .sidebar-nav::-webkit-scrollbar-thumb:hover { background:rgba(255,255,255,.42); }
     .sidebar-section-title {
       padding:.8rem .6rem .35rem;
       font-size:.72rem;
@@ -188,8 +199,9 @@
         </span>
       </a>
       {% endif %}
-      <a class="sidebar-link {% if request.path.startswith('/servidores') %}active{% endif %}" href="/servidores" title="Servidores"><i class="bi bi-people"></i><span class="sidebar-link-text">Servidores</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/servidores') %}active{% endif %}" href="/servidores" title="Banco de Horas"><i class="bi bi-clock-history"></i><span class="sidebar-link-text">Banco de Horas</span></a>
       <a class="sidebar-link {% if request.path.startswith('/pagamentos') %}active{% endif %}" href="/pagamentos" title="Pagamentos"><i class="bi bi-cash-coin"></i><span class="sidebar-link-text">Pagamentos</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/arquivados') %}active{% endif %}" href="/arquivados" title="Arquivados"><i class="bi bi-archive"></i><span class="sidebar-link-text">Arquivados</span></a>
       <a class="sidebar-link {% if request.path.startswith('/relatorios') %}active{% endif %}" href="/relatorios" title="Relatórios"><i class="bi bi-file-earmark-text"></i><span class="sidebar-link-text">Relatórios</span></a>
       <div class="sidebar-section-title">Eleitoral</div>
       <a class="sidebar-link {% if request.path.startswith('/eleicao') %}active{% endif %}" href="/eleicao" title="Dias de Eleição">
@@ -207,11 +219,10 @@
       <a class="sidebar-link {% if request.path.startswith('/admin/cadastros') %}active{% endif %}" href="/admin/cadastros" title="Cadastros"><i class="bi bi-folder-check"></i><span class="sidebar-link-text">Cadastros</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/importacao') %}active{% endif %}" href="/admin/importacao" title="Importação"><i class="bi bi-upload"></i><span class="sidebar-link-text">Importação</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/backup') %}active{% endif %}" href="/admin/backup" title="Backup"><i class="bi bi-database-down"></i><span class="sidebar-link-text">Backup</span></a>
-      <a class="sidebar-link {% if request.path.startswith('/admin/saude') %}active{% endif %}" href="/admin/saude" title="Saúde do Sistema"><i class="bi bi-heart-pulse"></i><span class="sidebar-link-text">Saúde</span></a>
-      <a class="sidebar-link {% if request.path.startswith('/arquivados') %}active{% endif %}" href="/arquivados" title="Arquivados"><i class="bi bi-archive"></i><span class="sidebar-link-text">Arquivados</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/usuarios') %}active{% endif %}" href="/admin/usuarios" title="Usuários"><i class="bi bi-person-gear"></i><span class="sidebar-link-text">Usuários</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/acessos') %}active{% endif %}" href="/admin/acessos" title="Acessos"><i class="bi bi-shield-lock"></i><span class="sidebar-link-text">Acessos</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/auditoria') %}active{% endif %}" href="/admin/auditoria" title="Auditoria"><i class="bi bi-clipboard-data"></i><span class="sidebar-link-text">Auditoria</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/admin/status') or request.path.startswith('/admin/saude') %}active{% endif %}" href="/admin/status" title="Status do Sistema"><i class="bi bi-activity"></i><span class="sidebar-link-text">Status do Sistema</span></a>
     {% elif u_nivel in ('secretario','chefia') %}
       <div class="sidebar-section-title">Consulta</div>
       <a class="sidebar-link {% if request.path.startswith('/consulta') %}active{% endif %}" href="/consulta" title="Consulta"><i class="bi bi-people"></i><span class="sidebar-link-text">Consulta</span></a>
@@ -261,6 +272,7 @@
             <i class="bi bi-shield-lock me-1"></i>Master
           </button>
         </form>
+        {% if u_master_visoes.secretario %}
         <form method="post" action="/admin/alternar-visao" class="d-inline">
           <input type="hidden" name="visao" value="secretario">
           <button class="btn {{ 'btn-primary' if u_visao_master == 'secretario' else 'btn-outline-primary' }}" title="Visualizar consulta como Secretário">
@@ -268,6 +280,8 @@
             {% if u_visao_master == 'secretario' and pendentes_aprovacao > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pendentes_aprovacao }}</span>{% endif %}
           </button>
         </form>
+        {% endif %}
+        {% if u_master_visoes.chefia %}
         <form method="post" action="/admin/alternar-visao" class="d-inline">
           <input type="hidden" name="visao" value="chefia">
           <button class="btn {{ 'btn-primary' if u_visao_master == 'chefia' else 'btn-outline-primary' }}" title="Visualizar consulta como Chefia">
@@ -275,6 +289,7 @@
             {% if u_visao_master == 'chefia' and pendentes_aprovacao > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pendentes_aprovacao }}</span>{% endif %}
           </button>
         </form>
+        {% endif %}
       </div>
       {% endif %}
       {% if u_sol_habilitado and u_mat_servidor %}
@@ -313,7 +328,7 @@
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Horas solicitadas <span class="text-danger">*</span></label>
-            <input type="text" class="form-control" id="solGQtdHoras" placeholder="Ex: 04:00">
+            <input type="text" class="form-control js-hora" id="solGQtdHoras" placeholder="Ex: 04:00" inputmode="numeric">
           </div>
         </div>
         <!-- Campos Dias de Eleição -->
@@ -639,6 +654,33 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
   });
+
+  function formatarHoraDigitada(valor) {
+    const limpo = String(valor || '').replace(/\D/g, '').slice(0, 5);
+    if (!limpo) return '';
+    if (limpo.length <= 2) return limpo;
+    const minutos = limpo.slice(-2);
+    const horas = limpo.slice(0, -2).padStart(2, '0');
+    return `${horas}:${minutos}`;
+  }
+  window.aplicarMascaraHoras = function(root = document) {
+    root.querySelectorAll('.js-hora').forEach((inp) => {
+      if (inp.dataset.horaMask === '1') return;
+      inp.dataset.horaMask = '1';
+      inp.addEventListener('input', () => {
+        inp.value = formatarHoraDigitada(inp.value);
+        const m = inp.value.match(/^(\d{1,4}):(\d{2})$/);
+        inp.setCustomValidity(m && Number(m[2]) > 59 ? 'Informe minutos entre 00 e 59.' : '');
+      });
+      inp.addEventListener('blur', () => {
+        if (!inp.value) { inp.setCustomValidity(''); return; }
+        const m = inp.value.match(/^(\d{1,4}):([0-5]\d)$/);
+        if (m) inp.value = `${String(parseInt(m[1], 10)).padStart(2, '0')}:${m[2]}`;
+        inp.setCustomValidity(m ? '' : 'Informe as horas no formato HH:MM.');
+      });
+    });
+  };
+  window.aplicarMascaraHoras();
 });
 </script>
 {% block scripts %}{% endblock %}

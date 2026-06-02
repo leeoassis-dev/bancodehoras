@@ -110,11 +110,11 @@
             <td class="text-center text-muted">{{ fmt(i.saldo_minutos) }}</td>
             <td class="text-center">
               <input type="text" name="horas_{{ i.id }}"
-                     class="form-control form-control-sm text-center fw-bold horas-input"
+                     class="form-control form-control-sm text-center fw-bold horas-input js-hora"
                      value="{{ fmt(i.saldo_base_minutos) }}"
                      data-max="{{ fmt(i.saldo_base_minutos) }}"
                      data-vencido="{{ '1' if i.vencido else '0' }}"
-                     placeholder="HH:MM" pattern="\d{1,3}:\d{2}"
+                     placeholder="HH:MM" inputmode="numeric" pattern="\d{1,3}:\d{2}"
                      title="Máx disponível: {{ fmt(i.saldo_base_minutos) }}"
                      style="max-width:90px;margin:auto">
               <div class="text-muted" style="font-size:.65rem;">máx {{ fmt(i.saldo_base_minutos) }}</div>

@@ -38,30 +38,42 @@
     <table class="table table-hover align-middle mb-0 small">
       <thead class="table-dark">
         <tr>
-          <th>Nome</th><th>CPF</th><th>E-mail</th><th>Nível</th><th>Vínculo</th>
-          <th>Últimas 3 visualizações</th><th class="text-center">Ativo</th><th>Último Acesso</th><th class="text-center no-sort">Ações</th>
+          <th>Nome</th><th>Matrícula</th><th>CPF</th><th>E-mail</th><th>Secretaria</th><th>Departamento</th>
+          <th>Conta</th><th>Nível</th><th>Últimas 3 visualizações</th><th>Último Acesso</th><th class="text-center no-sort">Ações</th>
         </tr>
       </thead>
       <tbody>
         {% for u in usuarios %}
-        <tr class="{{ 'text-muted' if not u.ativo }}">
+        <tr class="{{ 'text-muted' if u.possui_conta and not u.ativo }}">
           <td class="fw-semibold">{{ u.nome }}
             {% if u.senha_temporaria %}<span class="badge bg-warning text-dark ms-1 small">Temp.</span>{% endif %}
+            {% if u.arquivado %}<span class="badge bg-secondary ms-1">Arquivado</span>{% endif %}
           </td>
+          <td>{{ u.matricula or '–' }}</td>
           <td>{{ u.cpf|fmt_cpf }}</td>
           <td>{{ u.email or '–' }}</td>
+          <td class="small text-muted">{{ u.secretaria or '–' }}</td>
+          <td class="small text-muted">{{ u.setor or '–' }}</td>
           <td>
+            {% if u.possui_conta %}
+              <span class="badge {{ 'bg-success' if u.ativo else 'bg-secondary' }}">{{ 'Ativa' if u.ativo else 'Inativa' }}</span>
+            {% else %}
+              <span class="badge bg-light text-dark border">Sem conta</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.possui_conta %}
             {% set cores = {'master':'danger','secretario':'primary','chefia':'info','servidor':'secondary'} %}
             <span class="badge bg-{{ cores.get(u.nivel,'secondary') }}">
               {{ {'master':'Master','secretario':'Secretário','chefia':'Chefia','servidor':'Servidor'}.get(u.nivel,u.nivel) }}
             </span>
-          </td>
-          <td class="text-muted">
             {% if u.nivel in ('secretario','chefia') and u.vinculos_lista %}
               {% for v in u.vinculos_lista[:3] %}<span class="badge bg-light text-dark border me-1">{{ v }}</span>{% endfor %}
               {% if u.vinculos_lista|length > 3 %}<span class="badge bg-secondary">+{{ u.vinculos_lista|length - 3 }}</span>{% endif %}
-            {% elif u.nivel=='servidor' %}Mat. {{ u.matricula or '–' }}
-            {% else %}—{% endif %}
+            {% endif %}
+            {% else %}
+              <span class="text-muted">–</span>
+            {% endif %}
           </td>
           <td class="small">
             {% if u.ultimas_visualizacoes %}
@@ -72,22 +84,24 @@
               <span class="text-muted">Sem visualizações registradas</span>
             {% endif %}
           </td>
-          <td class="text-center">
-            <form method="post" action="/admin/usuarios/{{ u.id }}/toggle">
-              <button class="btn btn-sm {{ 'btn-success' if u.ativo else 'btn-outline-secondary' }}" title="{{ 'Desativar' if u.ativo else 'Ativar' }}">
-                <i class="bi {{ 'bi-toggle-on' if u.ativo else 'bi-toggle-off' }}"></i>
-              </button>
-            </form>
-          </td>
           <td class="text-muted">{{ u.ultimo_acesso|fmt_datetime if u.ultimo_acesso else 'Nunca' }}</td>
           <td class="text-center">
+            {% if u.possui_conta %}
             <div class="d-flex gap-1 justify-content-center">
               <a href="/admin/usuarios/{{ u.id }}/editar" class="btn btn-sm btn-outline-primary" title="Editar"><i class="bi bi-pencil"></i></a>
+              <form method="post" action="/admin/usuarios/{{ u.id }}/toggle">
+                <button class="btn btn-sm {{ 'btn-success' if u.ativo else 'btn-outline-secondary' }}" title="{{ 'Desativar' if u.ativo else 'Ativar' }}">
+                  <i class="bi {{ 'bi-toggle-on' if u.ativo else 'bi-toggle-off' }}"></i>
+                </button>
+              </form>
               <form method="post" action="/admin/usuarios/{{ u.id }}/reset-senha"
                     onsubmit="return confirm('Redefinir senha de {{ u.nome }}? Uma senha temporária será gerada.')">
                 <button class="btn btn-sm btn-outline-warning" title="Redefinir senha"><i class="bi bi-key"></i></button>
               </form>
             </div>
+            {% else %}
+              <span class="text-muted small">Criar pelo RH</span>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

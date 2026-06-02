@@ -156,6 +156,7 @@ def injetar_usuario():
         'u_mat_servidor': None,
         'u_sol_habilitado': False,
         'u_visao_master': session.get('visao_master', 'master') if session.get('nivel') == 'master' else '',
+        'u_master_visoes': {'secretario': False, 'chefia': False},
     }
     uid   = session.get('uid')
     nivel = session.get('nivel')
@@ -174,6 +175,13 @@ def injetar_usuario():
             if ctx['u_mat_servidor']:
                 ctx['u_sol_habilitado'] = _solicitacoes_habilitado(db)
             if nivel == 'master':
+                ctx['u_master_visoes'] = {
+                    'secretario': bool(vinculos_por_visao(db, uid, 'secretario')),
+                    'chefia': bool(vinculos_por_visao(db, uid, 'chefia')),
+                }
+                if ctx['u_visao_master'] in ('secretario', 'chefia') and not ctx['u_master_visoes'].get(ctx['u_visao_master']):
+                    session['visao_master'] = 'master'
+                    ctx['u_visao_master'] = 'master'
                 ctx['pendentes_tarefas'] = db.execute(
                     "SELECT COUNT(*) FROM solicitacoes WHERE status='autorizado'"
                 ).fetchone()[0] or 0
@@ -310,6 +318,17 @@ def fmt_cpf(valor):
     if len(d) != 11:
         return valor or '–'
     return f"{d[:3]}.{d[3:6]}.{d[6:9]}-{d[9:]}"
+
+def contar_seguro(db, tabela, where="1=1", params=()):
+    """Conta registros sem derrubar telas técnicas se uma tabela ainda não existir."""
+    try:
+        return db.execute(f"SELECT COUNT(*) FROM {tabela} WHERE {where}", params).fetchone()[0] or 0
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return 0
 
 def calcular_saldo_eleicao(db, matricula):
     creditos = db.execute(
@@ -1871,49 +1890,89 @@ def admin_backup():
 
 @app.route("/admin/saude")
 @master_required
-def admin_saude():
+def admin_saude_redirect():
+    return redirect(url_for("admin_status"))
+
+@app.route("/admin/status")
+@master_required
+def admin_status():
     db = get_db()
-    smtp = obter_config_smtp()
+    try:
+        smtp = obter_config_smtp()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        smtp = {"smtp_host": "", "smtp_user": "", "smtp_pass": "", "smtp_from": "", "_origem": "Indisponível"}
     smtp_ok = bool(smtp.get("smtp_host") and smtp.get("smtp_user") and smtp.get("smtp_pass") and smtp.get("smtp_from"))
     contadores = {
-        "servidores_ativos": db.execute("SELECT COUNT(*) FROM servidores WHERE arquivado=0").fetchone()[0] or 0,
-        "servidores_arquivados": db.execute("SELECT COUNT(*) FROM servidores WHERE arquivado=1").fetchone()[0] or 0,
-        "usuarios_ativos": db.execute("SELECT COUNT(*) FROM usuarios WHERE ativo=1").fetchone()[0] or 0,
-        "pre_autorizacoes": db.execute("SELECT COUNT(*) FROM pre_autorizacoes").fetchone()[0] or 0,
-        "solicitacoes_pendentes": db.execute("SELECT COUNT(*) FROM solicitacoes WHERE status IN ('solicitado','autorizado')").fetchone()[0] or 0,
-        "importacoes": db.execute("SELECT COUNT(*) FROM importacoes").fetchone()[0] or 0,
+        "servidores_ativos": contar_seguro(db, "servidores", "arquivado=0"),
+        "servidores_arquivados": contar_seguro(db, "servidores", "arquivado=1"),
+        "usuarios_ativos": contar_seguro(db, "usuarios", "ativo=1"),
+        "pre_autorizacoes": contar_seguro(db, "pre_autorizacoes"),
+        "solicitacoes_pendentes": contar_seguro(db, "solicitacoes", "status IN ('solicitado','autorizado')"),
+        "importacoes": contar_seguro(db, "importacoes"),
     }
-    ultimo_backup = db.execute("""
-        SELECT criado_em, usuario_nome, detalhe
-        FROM auditoria
-        WHERE entidade='backup'
-        ORDER BY criado_em DESC, id DESC
-        LIMIT 1
-    """).fetchone()
-    ultimo_erro = db.execute("""
-        SELECT criado_em, usuario_nome, detalhe
-        FROM auditoria
-        WHERE acao LIKE '%negado%' OR acao LIKE '%Falha%'
-        ORDER BY criado_em DESC, id DESC
-        LIMIT 1
-    """).fetchone()
-    cpf_duplicados = db.execute(f"""
-        SELECT {cpf_sem_pontuacao_sql('cpf')} AS cpf_norm, COUNT(*) AS qtd
-        FROM usuarios
-        WHERE cpf IS NOT NULL AND cpf!=''
-        GROUP BY {cpf_sem_pontuacao_sql('cpf')}
-        HAVING COUNT(*) > 1
-        ORDER BY qtd DESC
-    """).fetchall()
-    cpf_sem_padrao = db.execute("""
-        SELECT COUNT(*) FROM usuarios
-        WHERE cpf IS NOT NULL AND cpf!='' AND (cpf LIKE '%.%' OR cpf LIKE '%-%' OR cpf LIKE '% %')
-    """).fetchone()[0] or 0
-    sem_vinculo = db.execute("""
-        SELECT COUNT(*) FROM usuarios
-        WHERE ativo=1 AND nivel IN ('secretario','chefia') AND (vinculos IS NULL OR vinculos='' OR vinculos='[]')
-    """).fetchone()[0] or 0
-    return render_template("admin/saude.html",
+    try:
+        ultimo_backup = db.execute("""
+            SELECT criado_em, usuario_nome, detalhe
+            FROM auditoria
+            WHERE entidade='backup'
+            ORDER BY criado_em DESC, id DESC
+            LIMIT 1
+        """).fetchone()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        ultimo_backup = None
+    try:
+        ultimo_erro = db.execute("""
+            SELECT criado_em, usuario_nome, detalhe
+            FROM auditoria
+            WHERE acao LIKE '%negado%' OR acao LIKE '%Falha%'
+            ORDER BY criado_em DESC, id DESC
+            LIMIT 1
+        """).fetchone()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        ultimo_erro = None
+    try:
+        cpf_duplicados = db.execute(f"""
+            SELECT {cpf_sem_pontuacao_sql('cpf')} AS cpf_norm, COUNT(*) AS qtd
+            FROM usuarios
+            WHERE cpf IS NOT NULL AND cpf!=''
+            GROUP BY {cpf_sem_pontuacao_sql('cpf')}
+            HAVING COUNT(*) > 1
+            ORDER BY qtd DESC
+        """).fetchall()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        cpf_duplicados = []
+    try:
+        cpf_sem_padrao = db.execute("""
+            SELECT COUNT(*) FROM usuarios
+            WHERE cpf IS NOT NULL AND cpf!='' AND (cpf LIKE '%.%' OR cpf LIKE '%-%' OR cpf LIKE '% %')
+        """).fetchone()[0] or 0
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        cpf_sem_padrao = 0
+    sem_vinculo = contar_seguro(
+        db, "usuarios",
+        "ativo=1 AND nivel IN ('secretario','chefia') AND (vinculos IS NULL OR vinculos='' OR vinculos='[]')"
+    )
+    return render_template("admin/status.html",
                            banco="PostgreSQL/Neon" if IS_POSTGRES else "SQLite local",
                            smtp=smtp, smtp_ok=smtp_ok, contadores=contadores,
                            ultimo_backup=ultimo_backup, ultimo_erro=ultimo_erro,
@@ -2968,8 +3027,10 @@ def recuperar_senha_token(token):
 def portal():
     nivel = session.get('nivel')
     if nivel == 'master':
-        if session.get('visao_master') in ('secretario', 'chefia'):
+        visao = session.get('visao_master')
+        if visao in ('secretario', 'chefia') and vinculos_por_visao(get_db(), session.get('uid'), visao):
             return redirect(url_for('consulta'))
+        session['visao_master'] = 'master'
         return redirect(url_for('dashboard'))
     if nivel == 'servidor':  return redirect(url_for('meu_banco'))
     return redirect(url_for('consulta'))
@@ -2980,6 +3041,9 @@ def portal():
 def admin_alternar_visao():
     visao = request.form.get('visao', 'master').strip()
     if visao not in ('master', 'secretario', 'chefia'):
+        visao = 'master'
+    if visao in ('secretario', 'chefia') and not vinculos_por_visao(get_db(), session.get('uid'), visao):
+        flash("Visão indisponível: não há vínculo ativo para este perfil.", "warning")
         visao = 'master'
     session['visao_master'] = visao
     if visao == 'master':
@@ -3060,6 +3124,10 @@ def consulta():
     set_ = request.args.get('setor','').strip()
 
     vinculos = vinculos_por_visao(db, session.get('uid'), nivel) if nivel_sessao == 'master' else session.get('vinculos', [])
+    if nivel_sessao == 'master' and not vinculos:
+        session['visao_master'] = 'master'
+        flash("Visão indisponível: não há vínculo ativo para este perfil.", "warning")
+        return redirect(url_for('dashboard'))
     matricula_propria = session.get('matricula') or ''
     filtro = "WHERE s.arquivado=0"
     params = []
@@ -3167,34 +3235,73 @@ def admin_usuarios():
     db   = get_db()
     page = request.args.get('nivel','')
     busca = request.args.get('busca','').strip()
-    q    = "WHERE u.ativo=1 AND (u.nivel='master' OR s.matricula IS NOT NULL)"
-    p    = [page] if page else []
-    if page:
-        q += " AND u.nivel=?"
-    if busca:
-        q += " AND (u.nome LIKE ? OR u.cpf LIKE ? OR u.matricula LIKE ? OR s.nome LIKE ?)"
-        like = f"%{busca}%"
-        p.extend([like, like, like, like])
-    rows = db.execute(f"""
-        SELECT u.*, s.nome AS servidor_nome
-        FROM usuarios u
-        LEFT JOIN servidores s ON s.arquivado=0
-          AND ((u.matricula IS NOT NULL AND u.matricula!='' AND s.matricula=u.matricula)
-               OR (u.cpf IS NOT NULL AND u.cpf!='' AND s.cpf=u.cpf))
-        {q}
-        ORDER BY u.nivel,u.nome
-    """, p).fetchall()
-    usrs = []
-    for u in rows:
-        d = dict(u)
-        d["vinculos_lista"] = get_vinculos(u)
-        d["ultimas_visualizacoes"] = db.execute("""
+    usuarios_rows = db.execute("SELECT * FROM usuarios ORDER BY nome").fetchall()
+    por_matricula = {str(u["matricula"] or "").strip(): u for u in usuarios_rows if str(u["matricula"] or "").strip()}
+    por_cpf = {somente_digitos(u["cpf"] or ""): u for u in usuarios_rows if somente_digitos(u["cpf"] or "")}
+
+    servidores_rows = db.execute("SELECT * FROM servidores ORDER BY arquivado, nome").fetchall()
+    usrs, usuarios_usados = [], set()
+
+    def ultimas_visualizacoes(uid):
+        if not uid:
+            return []
+        return db.execute("""
             SELECT titulo,caminho,criado_em FROM visualizacoes
             WHERE usuario_id=?
             ORDER BY criado_em DESC, id DESC
             LIMIT 3
-        """, (u["id"],)).fetchall()
+        """, (uid,)).fetchall()
+
+    termo = busca.lower()
+    for s in servidores_rows:
+        u = por_matricula.get(str(s["matricula"] or "").strip()) or por_cpf.get(somente_digitos(s["cpf"] or ""))
+        if u:
+            usuarios_usados.add(u["id"])
+        d = {
+            "id": u["id"] if u else None,
+            "nome": u["nome"] if u else s["nome"],
+            "cpf": u["cpf"] if u else s["cpf"],
+            "email": u["email"] if u else s["email"],
+            "nivel": u["nivel"] if u else "",
+            "ativo": int(u["ativo"]) if u else 0,
+            "senha_temporaria": int(u["senha_temporaria"]) if u else 0,
+            "ultimo_acesso": u["ultimo_acesso"] if u else None,
+            "matricula": s["matricula"],
+            "servidor_nome": s["nome"],
+            "secretaria": s["secretaria"],
+            "setor": s["setor"],
+            "cargo": s["cargo"],
+            "arquivado": int(s["arquivado"] or 0),
+            "possui_conta": bool(u),
+            "vinculos_lista": get_vinculos(u) if u else [],
+            "ultimas_visualizacoes": ultimas_visualizacoes(u["id"] if u else None),
+        }
+        if page and d["nivel"] != page:
+            continue
+        if termo:
+            campos = [d["nome"], d["cpf"], d["email"], d["matricula"], d["servidor_nome"], d["secretaria"], d["setor"], d["cargo"]]
+            if not any(termo in str(c or "").lower() for c in campos):
+                continue
         usrs.append(d)
+
+    for u in usuarios_rows:
+        if u["id"] in usuarios_usados:
+            continue
+        if u["nivel"] != "master":
+            continue
+        d = dict(u)
+        d.update({
+            "servidor_nome": None, "secretaria": u["secretaria"], "setor": u["setor"],
+            "cargo": "", "arquivado": 0, "possui_conta": True,
+            "vinculos_lista": get_vinculos(u),
+            "ultimas_visualizacoes": ultimas_visualizacoes(u["id"]),
+        })
+        if page and d["nivel"] != page:
+            continue
+        if termo and not any(termo in str(d.get(c) or "").lower() for c in ("nome", "cpf", "email", "matricula", "secretaria", "setor")):
+            continue
+        usrs.append(d)
+
     return render_template('admin/usuarios.html', usuarios=usrs, filtro_nivel=page, busca=busca)
 
 
@@ -4079,14 +4186,14 @@ def eleicao_exportar(matricula, fmt):
 
     h_cred = ["Eleição / Referência", "Dias Creditados", "Trabalho Realizado", "Lançado por", "Data Lançamento"]
     rows_cred = [
-        [c['referencia_eleicao'], c['quantidade_dias'], c['observacao'] or '', c['criado_por'] or '', (c['criado_em'] or '')[:10]]
+        [c['referencia_eleicao'], c['quantidade_dias'], c['observacao'] or '', c['criado_por'] or '', fmt_data(c['criado_em'])]
         for c in creditos
     ]
     rows_cred.append(["TOTAL CRÉDITOS", total_cred, "", "", ""])
 
     h_baixas = ["Data da Folga", "Observação", "Registrado por", "Data Registro"]
     rows_baixas = [
-        [b['data'], b['observacao'] or '', b['criado_por'] or '', (b['criado_em'] or '')[:10]]
+        [fmt_data(b['data']), b['observacao'] or '', b['criado_por'] or '', fmt_data(b['criado_em'])]
         for b in baixas
     ]
     rows_baixas.append(["TOTAL FOLGAS", total_baixas, "", ""])
@@ -4595,18 +4702,29 @@ def admin_tarefas_lancar(sid):
         saldo_sem_esta = saldo_real + sol['quantidade']
         if saldo_sem_esta < sol['quantidade']:
             return json.dumps({'erro': 'Saldo de dias insuficiente para lançar a fruição.'}), 400, {'Content-Type': 'application/json'}
-        desc = f"Solicitação #{sid} — fruição autorizada por {sol['aprovador_nome'] or nome}"
-        bid = db.insert(
-            "INSERT INTO eleicao_baixas (matricula,data,observacao,criado_por) VALUES (?,?,?,?)",
-            (matricula, data_lanc, desc, nome))
-        ref_id = bid
+        try:
+            data_base = date.fromisoformat(data_lanc)
+        except Exception:
+            data_base = date.today()
+        qtd_dias = max(1, int(sol['quantidade'] or 1))
+        datas_baixadas = [(data_base + timedelta(days=i)).isoformat() for i in range(qtd_dias)]
+        desc_base = f"Solicitação #{sid} — fruição autorizada por {sol['aprovador_nome'] or nome}"
+        if qtd_dias > 1:
+            desc_base += f" | Período: {fmt_data(datas_baixadas[0])} a {fmt_data(datas_baixadas[-1])} | Total: {qtd_dias} dias"
+        ids_baixa = []
+        for data_baixa in datas_baixadas:
+            bid = db.insert(
+                "INSERT INTO eleicao_baixas (matricula,data,observacao,criado_por) VALUES (?,?,?,?)",
+                (matricula, data_baixa, desc_base, nome))
+            ids_baixa.append(bid)
+        ref_id = ids_baixa[0] if ids_baixa else None
 
     db.execute("""UPDATE solicitacoes SET status='lancado', rh_uid=?, rh_nome=?,
                   data_lancamento=?, referencia_id=? WHERE id=?""",
                (uid, nome, agora, ref_id, sid))
     registrar_auditoria(db, "Solicitação lançada pelo RH", "solicitacoes", sid, matricula,
                         srv['nome'] if srv else None,
-                        f"Tipo: {sol['tipo']}; Ref lançamento: {ref_id}")
+                        f"Tipo: {sol['tipo']}; Ref lançamento: {ref_id}; Quantidade: {sol['quantidade']}")
     db.commit()
     return json.dumps({'ok': True}), 200, {'Content-Type': 'application/json'}
 
@@ -4644,7 +4762,7 @@ def admin_tarefas_estornar(sid):
         db.execute("DELETE FROM consumos WHERE tipo='compensacao' AND referencia_id=?", (ref_id,))
         db.execute("DELETE FROM compensacoes WHERE id=?", (ref_id,))
     elif sol['tipo'] == 'eleicao' and ref_id:
-        db.execute("DELETE FROM eleicao_baixas WHERE id=?", (ref_id,))
+        db.execute("DELETE FROM eleicao_baixas WHERE matricula=? AND observacao LIKE ?", (matricula, f"Solicitação #{sid}%"))
 
     db.execute("UPDATE solicitacoes SET status='estornado' WHERE id=?", (sid,))
     registrar_auditoria(db, "Solicitação estornada pelo RH", "solicitacoes", sid, matricula,
