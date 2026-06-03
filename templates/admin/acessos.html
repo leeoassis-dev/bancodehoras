@@ -23,7 +23,7 @@
     <div class="col-md-3">
       <label class="form-label small fw-semibold mb-1">Nível</label>
       <select name="nivel" class="form-select">
-        {% for nv, label in [('','Todos'),('master','Master'),('secretario','Secretário'),('chefia','Chefia'),('servidor','Servidor')] %}
+        {% for nv, label in [('','Todos'),('master','Master'),('visualizacao','Visualização'),('secretario','Secretário'),('chefia','Chefia'),('servidor','Servidor')] %}
         <option value="{{ nv }}" {{ 'selected' if filtro_nivel==nv }}>{{ label }}</option>
         {% endfor %}
       </select>
@@ -41,10 +41,10 @@
 
 <!-- KPIs de segurança -->
 <div class="row g-3 mb-4">
-  {% set cores = {'master':'danger','secretario':'primary','chefia':'info','servidor':'secondary'} %}
-  {% set labels = {'master':'Master','secretario':'Secretário','chefia':'Chefia','servidor':'Servidor'} %}
-  {% for nv in ['master','secretario','chefia','servidor'] %}
-  <div class="col-md-3">
+  {% set cores   = {'master':'danger','visualizacao':'success','secretario':'primary','chefia':'info','servidor':'secondary'} %}
+  {% set labels  = {'master':'Master','visualizacao':'Visualização','secretario':'Secretário','chefia':'Chefia','servidor':'Servidor'} %}
+  {% for nv in ['master','visualizacao','secretario','chefia','servidor'] %}
+  <div class="col-6 col-md-4 col-lg">
     <div class="card p-3 border-start border-{{ cores[nv] }} border-4">
       <div class="text-muted small">{{ labels[nv] }}</div>
       <div class="fs-2 fw-bold text-{{ cores[nv] }}">{{ contadores.get(nv, 0) }}</div>
