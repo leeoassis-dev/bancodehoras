@@ -189,7 +189,6 @@
   </button>
   <nav class="sidebar-nav">
     {% if u_nivel == 'master' %}
-      <div class="sidebar-section-title">Operação</div>
       <a class="sidebar-link {% if request.path == '/' %}active{% endif %}" href="/" title="Dashboard"><i class="bi bi-speedometer2"></i><span class="sidebar-link-text">Dashboard</span></a>
       {% if u_visao_master in ('secretario','chefia') %}
       <a class="sidebar-link {% if request.path.startswith('/consulta') %}active{% endif %}" href="/consulta" title="Consulta Operacional">
@@ -199,29 +198,30 @@
         </span>
       </a>
       {% endif %}
-      <a class="sidebar-link {% if request.path.startswith('/servidores') %}active{% endif %}" href="/servidores" title="Banco de Horas"><i class="bi bi-clock-history"></i><span class="sidebar-link-text">Banco de Horas</span></a>
-      <a class="sidebar-link {% if request.path.startswith('/pagamentos') %}active{% endif %}" href="/pagamentos" title="Pagamentos"><i class="bi bi-cash-coin"></i><span class="sidebar-link-text">Pagamentos</span></a>
-      <a class="sidebar-link {% if request.path.startswith('/arquivados') %}active{% endif %}" href="/arquivados" title="Arquivados"><i class="bi bi-archive"></i><span class="sidebar-link-text">Arquivados</span></a>
-      <a class="sidebar-link {% if request.path.startswith('/relatorios') %}active{% endif %}" href="/relatorios" title="Relatórios"><i class="bi bi-file-earmark-text"></i><span class="sidebar-link-text">Relatórios</span></a>
-      <div class="sidebar-section-title">Eleitoral</div>
-      <a class="sidebar-link {% if request.path.startswith('/eleicao') %}active{% endif %}" href="/eleicao" title="Dias de Eleição">
-        <i class="bi bi-calendar2-check" style="color:#fde68a"></i>
-        <span class="sidebar-link-text" style="color:#fde68a">Dias de Eleição</span>
-      </a>
-      <div class="sidebar-section-title">Solicitações</div>
       <a class="sidebar-link {% if request.path.startswith('/admin/tarefas') %}active{% endif %}" href="/admin/tarefas" title="Tarefas">
         <i class="bi bi-list-check"></i>
         <span class="sidebar-link-text">Tarefas
           {% if pendentes_tarefas > 0 %}<span class="badge bg-warning text-dark ms-1">{{ pendentes_tarefas }}</span>{% endif %}
         </span>
       </a>
-      <div class="sidebar-section-title">Administração</div>
+      <div class="sidebar-section-title">Banco de Horas</div>
+      <a class="sidebar-link {% if request.path.startswith('/servidores') %}active{% endif %}" href="/servidores" title="Banco de Horas"><i class="bi bi-clock-history"></i><span class="sidebar-link-text">Banco de Horas</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/pagamentos') %}active{% endif %}" href="/pagamentos" title="Pagamentos"><i class="bi bi-cash-coin"></i><span class="sidebar-link-text">Pagamentos</span></a>
+      <div class="sidebar-section-title">Eleitoral</div>
+      <a class="sidebar-link {% if request.path.startswith('/eleicao') %}active{% endif %}" href="/eleicao" title="Dias de Eleição">
+        <i class="bi bi-calendar2-check" style="color:#fde68a"></i>
+        <span class="sidebar-link-text" style="color:#fde68a">Dias de Eleição</span>
+      </a>
+      <div class="sidebar-section-title">Gestão de Registros</div>
+      <a class="sidebar-link {% if request.path.startswith('/arquivados') %}active{% endif %}" href="/arquivados" title="Arquivados"><i class="bi bi-archive"></i><span class="sidebar-link-text">Arquivados</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/cadastros') %}active{% endif %}" href="/admin/cadastros" title="Cadastros"><i class="bi bi-folder-check"></i><span class="sidebar-link-text">Cadastros</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/importacao') %}active{% endif %}" href="/admin/importacao" title="Importação"><i class="bi bi-upload"></i><span class="sidebar-link-text">Importação</span></a>
-      <a class="sidebar-link {% if request.path.startswith('/admin/backup') %}active{% endif %}" href="/admin/backup" title="Backup"><i class="bi bi-database-down"></i><span class="sidebar-link-text">Backup</span></a>
+      <div class="sidebar-section-title">Administração</div>
+      <a class="sidebar-link {% if request.path.startswith('/relatorios') %}active{% endif %}" href="/relatorios" title="Relatórios"><i class="bi bi-file-earmark-text"></i><span class="sidebar-link-text">Relatórios</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/usuarios') %}active{% endif %}" href="/admin/usuarios" title="Usuários"><i class="bi bi-person-gear"></i><span class="sidebar-link-text">Usuários</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/acessos') %}active{% endif %}" href="/admin/acessos" title="Acessos"><i class="bi bi-shield-lock"></i><span class="sidebar-link-text">Acessos</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/auditoria') %}active{% endif %}" href="/admin/auditoria" title="Auditoria"><i class="bi bi-clipboard-data"></i><span class="sidebar-link-text">Auditoria</span></a>
+      <a class="sidebar-link {% if request.path.startswith('/admin/backup') %}active{% endif %}" href="/admin/backup" title="Backup"><i class="bi bi-database-down"></i><span class="sidebar-link-text">Backup</span></a>
       <a class="sidebar-link {% if request.path.startswith('/admin/status') or request.path.startswith('/admin/saude') %}active{% endif %}" href="/admin/status" title="Status do Sistema"><i class="bi bi-activity"></i><span class="sidebar-link-text">Status do Sistema</span></a>
     {% elif u_nivel in ('secretario','chefia') %}
       <div class="sidebar-section-title">Consulta</div>
