@@ -1,14 +1,26 @@
 ﻿{% extends "base.html" %}
 {% block content %}
 
-<!-- ── Overlay de carregamento ── -->
-<div id="loadingOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(255,255,255,0.96);flex-direction:column;align-items:center;justify-content:center;gap:1.2rem;">
-  <div id="loadingMsg" class="fw-bold fs-5 text-primary"></div>
-  <div class="progress" style="width:min(420px,80vw);height:14px;border-radius:8px;">
-    <div id="loadingBar" class="progress-bar progress-bar-striped progress-bar-animated"
-         style="width:0%;transition:width .25s ease;border-radius:8px;"></div>
+<!-- ── Modal de carregamento ── -->
+<div class="modal fade" id="modalLoading" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:420px;">
+    <div class="modal-content border-0 shadow-lg rounded-3 overflow-hidden">
+      <div id="loadingHeader" class="px-4 pt-4 pb-3 text-white text-center">
+        <div id="loadingIcon" class="fs-1 mb-2"></div>
+        <div id="loadingTitle" class="fw-bold fs-5"></div>
+      </div>
+      <div class="px-4 pb-2 pt-3">
+        <div class="progress mb-2" style="height:10px;border-radius:6px;background:#e9ecef;">
+          <div id="loadingBar" class="progress-bar progress-bar-striped progress-bar-animated"
+               style="width:0%;transition:width .3s ease;border-radius:6px;"></div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div id="loadingStatusMsg" class="small text-muted"></div>
+          <div id="loadingPct" class="small fw-semibold text-muted">0%</div>
+        </div>
+      </div>
+    </div>
   </div>
-  <div id="loadingPct" class="text-muted small">0%</div>
 </div>
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h4 class="mb-0"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h4>
@@ -605,34 +617,56 @@ const elBusca = criarBuscaServidor({ inputId: 'atalhoElServidor', dropdownId: 'a
 
 function encontrarServidorAtalho() { return bhBusca.getAtual(); }
 
-// ── Loading overlay ──────────────────────────────────────────────────────────
-function mostrarCarregamento(msg, cor, callback) {
-  // Fecha qualquer modal Bootstrap aberto
+// ── Modal de carregamento ─────────────────────────────────────────────────────
+const _loadingCores = {
+  success:   { bg: '#198754', bar: 'bg-success',  icon: 'bi-plus-circle-fill'   },
+  warning:   { bg: '#e67e00', bar: 'bg-warning',  icon: 'bi-arrow-left-right'   },
+  danger:    { bg: '#dc3545', bar: 'bg-danger',   icon: 'bi-cash-coin'          },
+  secondary: { bg: '#6c757d', bar: 'bg-secondary',icon: 'bi-calendar-check-fill'},
+};
+
+function mostrarCarregamento(titulo, cor, callback, mensagens) {
+  // Fecha qualquer modal Bootstrap aberto antes de abrir o loading
   document.querySelectorAll('.modal.show').forEach(m => {
     bootstrap.Modal.getInstance(m)?.hide();
   });
 
-  const overlay = document.getElementById('loadingOverlay');
+  const config  = _loadingCores[cor] || _loadingCores.secondary;
   const bar     = document.getElementById('loadingBar');
-  const pct     = document.getElementById('loadingPct');
-  document.getElementById('loadingMsg').textContent = msg;
-  bar.className = `progress-bar progress-bar-striped progress-bar-animated bg-${cor}`;
-  bar.style.width = '0%';
-  pct.textContent = '0%';
-  overlay.style.display = 'flex';
+  const pctEl   = document.getElementById('loadingPct');
+  const statusEl= document.getElementById('loadingStatusMsg');
 
-  const passos = [8, 22, 38, 55, 70, 84, 94, 100];
-  const delays = [60, 90, 90, 100, 110, 120, 140, 300];
+  document.getElementById('loadingHeader').style.background = config.bg;
+  document.getElementById('loadingIcon').innerHTML          = `<i class="bi ${config.icon}"></i>`;
+  document.getElementById('loadingTitle').textContent       = titulo;
+  bar.className   = `progress-bar progress-bar-striped progress-bar-animated ${config.bar}`;
+  bar.style.width = '0%';
+  pctEl.textContent    = '0%';
+  statusEl.textContent = '';
+
+  const modal = new bootstrap.Modal(document.getElementById('modalLoading'));
+  modal.show();
+
+  // passos: [percentual, delay_ms, mensagem]
+  const passos = mensagens || [
+    [15,  200, 'Validando dados…'],
+    [35,  220, 'Processando…'],
+    [58,  230, 'Salvando no banco…'],
+    [78,  220, 'Registrando auditoria…'],
+    [93,  200, 'Quase pronto…'],
+    [100, 350, 'Concluído!'],
+  ];
+
   let i = 0;
   function avancar() {
-    if (i >= passos.length) { callback(); return; }
-    const p = passos[i];
-    bar.style.width = p + '%';
-    pct.textContent  = p + '%';
-    setTimeout(avancar, delays[i]);
-    i++;
+    if (i >= passos.length) { setTimeout(callback, 180); return; }
+    const [p, delay, msg] = passos[i++];
+    bar.style.width      = p + '%';
+    pctEl.textContent    = p + '%';
+    statusEl.textContent = msg;
+    setTimeout(avancar, delay);
   }
-  setTimeout(avancar, 80);
+  setTimeout(avancar, 100);
 }
 
 // ── Modais de atalho rápido ───────────────────────────────────────────────────
