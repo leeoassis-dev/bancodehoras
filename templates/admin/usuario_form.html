@@ -31,7 +31,7 @@
           <div class="col-md-4">
             <label class="form-label fw-semibold">Nível de acesso <span class="text-danger">*</span></label>
             <select name="nivel" id="nivelSelect" class="form-select" onchange="ajustarCampos()" required>
-              {% for nv, label in [('master','Master (RH)'),('secretario','Secretário'),('chefia','Chefia Imediata'),('servidor','Servidor')] %}
+              {% for nv, label in [('master','Master (RH)'),('visualizacao','Visualização'),('secretario','Secretário'),('chefia','Chefia Imediata'),('servidor','Servidor')] %}
               <option value="{{ nv }}" {{ 'selected' if usuario and usuario.nivel==nv }}>{{ label }}</option>
               {% endfor %}
             </select>

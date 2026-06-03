@@ -6,7 +6,7 @@
     <h4 class="mb-0"><i class="bi bi-clock-history me-2 text-primary"></i>Banco de Horas</h4>
     <div class="text-muted small">Gestão de saldos, históricos, lançamentos, compensações e pagamentos dos servidores ativos.</div>
   </div>
-  <a href="/servidores/novo" class="btn btn-primary btn-sm"><i class="bi bi-person-plus me-1"></i>Novo Servidor</a>
+  {% if u_nivel != 'visualizacao' %}<a href="/servidores/novo" class="btn btn-primary btn-sm"><i class="bi bi-person-plus me-1"></i>Novo Servidor</a>{% endif %}
 </div>
 
 <form method="get" class="card p-3 mb-3">
@@ -101,6 +101,7 @@
           </td>
           <td class="text-center">
             <div class="d-flex flex-wrap gap-1 justify-content-center">
+              {% if u_nivel != 'visualizacao' %}
               <a href="/lancamentos/{{ s.matricula }}" class="btn btn-sm btn-outline-success"><i class="bi bi-plus-circle"></i> Horas</a>
               <a href="/compensacoes/{{ s.matricula }}" class="btn btn-sm btn-outline-warning"><i class="bi bi-arrow-left-right"></i> Comp.</a>
               <a href="/pagamentos/{{ s.matricula }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-cash-coin"></i> Pagar</a>
@@ -113,6 +114,7 @@
                     onsubmit="return confirm('Excluir definitivamente {{ s.nome }}? Esta ação remove cadastro, lançamentos, compensações e pagamentos do servidor.')">
                 <button class="btn btn-sm btn-outline-danger" title="Excluir cadastro"><i class="bi bi-trash"></i></button>
               </form>
+              {% endif %}
             </div>
           </td>
         </tr>

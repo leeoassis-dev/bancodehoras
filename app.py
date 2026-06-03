@@ -150,6 +150,24 @@ def master_required(f):
         return f(*args, **kwargs)
     return decorated
 
+
+def visualizacao_ou_master_required(f):
+    """Permite acesso a master e visualizacao. Bloqueia POST para visualizacao."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'uid' not in session:
+            flash("Faça login para continuar.", "warning")
+            return redirect(url_for('login'))
+        nivel = session.get('nivel')
+        if nivel not in ('master', 'visualizacao'):
+            flash("Acesso não autorizado.", "danger")
+            return redirect(url_for('portal'))
+        if nivel == 'visualizacao' and request.method == 'POST':
+            flash("Você não tem permissão para realizar alterações.", "danger")
+            return redirect(url_for('portal'))
+        return f(*args, **kwargs)
+    return decorated
+
 @app.context_processor
 def injetar_usuario():
     ctx = {
@@ -238,6 +256,17 @@ def verificar_acesso():
     if session.get('temp') and request.endpoint != 'trocar_senha':
         flash("Sua senha é temporária. Defina uma nova senha para continuar.", "warning")
         return redirect(url_for('trocar_senha'))
+
+    # Visualização → consulta/relatórios somente leitura
+    if nivel == 'visualizacao' and request.endpoint not in (
+            'portal', 'dashboard', 'servidores', 'historico_servidor_pdf',
+            'eleicao_index', 'eleicao_servidor', 'eleicao_exportar',
+            'relatorios',
+            'api_historico', 'api_saldo_servidor', 'api_saldo_eleicao',
+            'api_servidores_lista', 'api_servidor_info',
+            'meu_cadastro', 'trocar_senha', 'logout'):
+        flash("Acesso não autorizado.", "danger")
+        return redirect(url_for('dashboard'))
 
     # Servidor → meu_banco + seus próprios dados de eleição + solicitações
     if nivel == 'servidor' and request.endpoint not in (
@@ -858,7 +887,7 @@ def ultimos_n_meses(n=6):
 # â”€â”€â”€ Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/")
-@master_required
+@visualizacao_ou_master_required
 def dashboard():
     db = get_db()
     cache_key = f"dashboard:{date.today().isoformat()}"
@@ -962,7 +991,7 @@ def dashboard():
 # â”€â”€â”€ Servidores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/servidores")
-@master_required
+@visualizacao_ou_master_required
 def servidores():
     PER_PAGE = 20
     db = get_db()
@@ -1519,7 +1548,7 @@ def api_servidores_lista():
 
 
 @app.route("/api/servidor-info/<matricula>")
-@master_required
+@visualizacao_ou_master_required
 def api_servidor_info(matricula):
     db = get_db()
     srv = db.execute(
@@ -1542,7 +1571,7 @@ def api_servidor_info(matricula):
 
 
 @app.route("/api/saldo-servidor/<matricula>")
-@master_required
+@visualizacao_ou_master_required
 def api_saldo_servidor(matricula):
     db = get_db()
     return jsonify({"saldo": calcular_saldo(db, matricula),
@@ -1550,7 +1579,7 @@ def api_saldo_servidor(matricula):
 
 
 @app.route("/api/saldo-eleicao/<matricula>")
-@master_required
+@visualizacao_ou_master_required
 def api_saldo_eleicao(matricula):
     db = get_db()
     return jsonify({"saldo": calcular_saldo_eleicao(db, matricula)})
@@ -2634,7 +2663,7 @@ def admin_cadastro_aux_excluir(cid):
     return redirect(url_for("admin_cadastros"))
 
 @app.route("/relatorios")
-@master_required
+@visualizacao_ou_master_required
 def relatorios():
     db  = get_db()
     aba = request.args.get("aba","historico")
@@ -3460,6 +3489,7 @@ def portal():
             return redirect(url_for('consulta'))
         session['visao_master'] = 'master'
         return redirect(url_for('dashboard'))
+    if nivel == 'visualizacao': return redirect(url_for('dashboard'))
     if nivel == 'servidor':  return redirect(url_for('meu_banco'))
     return redirect(url_for('consulta'))
 
@@ -3907,8 +3937,9 @@ def api_verificar_cpf():
     # Vinculos (multiplos setores/secretarias)
     vinculos = get_vinculos(pre) if pre else []
 
-    nivel_label = {'master':'Master (RH)','secretario':'Secretario',
-                   'chefia':'Chefia Imediata','servidor':'Servidor'}.get(nivel, nivel)
+    nivel_label = {'master':'Master (RH)','secretario':'Secretário',
+                   'chefia':'Chefia Imediata','servidor':'Servidor',
+                   'visualizacao':'Visualização'}.get(nivel, nivel)
 
     aviso = '' if pre else 'Nenhuma pre-autorizacao. Acesso como Servidor (padrao).'
 
@@ -4453,7 +4484,7 @@ def eleicao_servidor(matricula):
         flash("Servidor não encontrado.", "danger")
         return redirect(url_for('eleicao_index'))
 
-    if request.method == 'POST' and nivel != 'master':
+    if request.method == 'POST' and nivel not in ('master',):
         flash("Apenas o RH pode realizar lançamentos.", "danger")
         return redirect(url_for('eleicao_servidor', matricula=matricula))
 

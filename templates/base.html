@@ -238,6 +238,17 @@
         <i class="bi bi-calendar2-check" style="color:#fde68a"></i>
         <span class="sidebar-link-text" style="color:#fde68a">Dias de Eleição</span>
       </a>
+    {% elif u_nivel == 'visualizacao' %}
+      <a class="sidebar-link {% if request.path == '/' %}active{% endif %}" href="/" title="Dashboard"><i class="bi bi-speedometer2"></i><span class="sidebar-link-text">Dashboard</span></a>
+      <div class="sidebar-section-title">Banco de Horas</div>
+      <a class="sidebar-link {% if request.path.startswith('/servidores') %}active{% endif %}" href="/servidores" title="Banco de Horas"><i class="bi bi-clock-history"></i><span class="sidebar-link-text">Banco de Horas</span></a>
+      <div class="sidebar-section-title">Eleitoral</div>
+      <a class="sidebar-link {% if request.path.startswith('/eleicao') %}active{% endif %}" href="/eleicao" title="Dias de Eleição">
+        <i class="bi bi-calendar2-check" style="color:#fde68a"></i>
+        <span class="sidebar-link-text" style="color:#fde68a">Dias de Eleição</span>
+      </a>
+      <div class="sidebar-section-title">Relatórios</div>
+      <a class="sidebar-link {% if request.path.startswith('/relatorios') %}active{% endif %}" href="/relatorios" title="Relatórios"><i class="bi bi-file-earmark-text"></i><span class="sidebar-link-text">Relatórios</span></a>
     {% elif u_nivel == 'servidor' %}
       <div class="sidebar-section-title">Meu acesso</div>
       <a class="sidebar-link {% if request.path.startswith('/meu-banco') %}active{% endif %}" href="/meu-banco" title="Meu Banco"><i class="bi bi-person-badge"></i><span class="sidebar-link-text">Meu Banco</span></a>
@@ -247,7 +258,7 @@
     <div class="sidebar-user-line" title="{{ u_nome }}">
       <i class="bi bi-person-circle"></i>
       <span class="sidebar-user-text text-truncate">
-        {{ u_nome }} <span class="badge bg-secondary ms-1">{{ {'master':'Master','secretario':'Secretário','chefia':'Chefia','servidor':'Servidor'}.get(u_nivel,u_nivel) }}</span>
+        {{ u_nome }} <span class="badge bg-secondary ms-1">{{ {'master':'Master','secretario':'Secretário','chefia':'Chefia','servidor':'Servidor','visualizacao':'Visualização'}.get(u_nivel,u_nivel) }}</span>
       </span>
     </div>
     <a class="sidebar-link {% if request.path.startswith('/meu-cadastro') %}active{% endif %}" href="/meu-cadastro" title="Cadastro"><i class="bi bi-person-lines-fill"></i><span class="sidebar-link-text">Cadastro</span></a>
