@@ -596,6 +596,8 @@ def _grupo_relatorio(row, agr):
         return row.get("setor") or "Sem Departamento"
     if agr == "cargo":
         return row.get("cargo") or "Sem Cargo"
+    if agr == "responsavel":
+        return row.get("criado_por_nome") or row.get("rh_nome") or row.get("aprovador_nome") or row.get("criado_por") or row.get("usuario_nome") or "Sem Responsável"
     nome = row.get("nome") or row.get("servidor_nome") or "Servidor"
     matricula = row.get("matricula") or row.get("mat") or ""
     return f"{nome} ({matricula})" if matricula else nome
@@ -2640,6 +2642,7 @@ def relatorios():
     mes = request.args.get("mes","")
     ano = request.args.get("ano",str(date.today().year))
     agr = request.args.get("agrupar","servidor")
+    rel = request.args.get("rel","").strip()
     if aba == "competencia" and not mes:
         mes = f"{date.today().month:02d}"
 
@@ -2653,8 +2656,8 @@ def relatorios():
     secs, sets = _listas_filtro(db, 0)
     cargos = _cadastros_nomes(db, "cargo")
     srvs_lista = db.execute("SELECT * FROM servidores WHERE arquivado=0 ORDER BY nome").fetchall()
-    filtros = {"matricula":mat,"servidor":servidor_busca,"secretaria":sec,"setor":set_,"cargo":cargo,"data_ini":di,"data_fim":df,"mes":mes,"ano":ano,"agrupar":agr}
-    filtros_qs = urlencode({k:v for k,v in filtros.items() if v})
+    filtros = {"matricula":mat,"servidor":servidor_busca,"secretaria":sec,"setor":set_,"cargo":cargo,"data_ini":di,"data_fim":df,"mes":mes,"ano":ano,"agrupar":agr,"rel":rel}
+    filtros_qs = urlencode({k:v for k,v in filtros.items() if v and k != "rel"})
     data = {}
     grupos_relatorios = [
         {
@@ -2669,21 +2672,42 @@ def relatorios():
             "icone": "bi-clock-history",
             "cor": "success",
             "descricao": "Saldos, lançamentos, compensações, pagamentos e vencimentos.",
-            "abas": [("saldos", "Saldos"), ("competencia", "Lançamentos"), ("historico", "Compensações"), ("pagamentos", "Pagamentos"), ("vencimentos", "Vencimentos")],
+            "abas": [
+                ("saldos", "Saldos"),
+                ("saldos", "Maiores saldos", "maiores_saldos"),
+                ("competencia", "Lançamentos por competência"),
+                ("historico", "Lançamentos por período", "lancamentos"),
+                ("historico", "Compensações por período", "compensacoes"),
+                ("pagamentos", "Pagamentos em folha"),
+                ("vencimentos", "Vencimentos"),
+                ("responsaveis_bh", "Responsáveis por lançamentos"),
+            ],
         },
         {
             "titulo": "Dias de Eleição",
             "icone": "bi-calendar2-check",
             "cor": "warning",
             "descricao": "Créditos, baixas/fruições, saldos eleitorais e solicitações.",
-            "abas": [("eleicao", "Resumo Eleitoral")],
+            "abas": [
+                ("eleicao", "Saldos eleitorais"),
+                ("eleicao", "Créditos lançados", "creditos"),
+                ("eleicao", "Baixas/fruições", "baixas"),
+                ("tarefas", "Solicitações eleitorais", "eleicao"),
+            ],
         },
         {
             "titulo": "Tarefas e Solicitações",
             "icone": "bi-list-check",
             "cor": "info",
             "descricao": "Pedidos pendentes, autorizados, lançados e indeferidos.",
-            "abas": [("tarefas", "Solicitações")],
+            "abas": [
+                ("tarefas", "Todas"),
+                ("tarefas", "Pendentes", "pendentes"),
+                ("tarefas", "Autorizadas", "autorizadas"),
+                ("tarefas", "Concluídas", "concluidas"),
+                ("tarefas", "Indeferidas", "indeferidas"),
+                ("tarefas", "Por responsável", "responsavel"),
+            ],
         },
         {
             "titulo": "Auditoria e Administração",
@@ -2703,6 +2727,13 @@ def relatorios():
                 (SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=s.matricula)
                 -(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=s.matricula) AS saldo
             FROM servidores s {filt_srv} ORDER BY s.nome""", params_srv).fetchall()
+        if rel == "maiores_saldos":
+            data["servidores"] = sorted(data["servidores"], key=lambda s: minutos_num(s["saldo"]), reverse=True)[:50]
+            data["titulo"] = "Servidores com Maior Saldo em Banco de Horas"
+            data["descricao"] = "Ranking dos 50 maiores saldos encontrados para os filtros aplicados."
+        else:
+            data["titulo"] = "Saldo Atual por Servidor"
+            data["descricao"] = "Total creditado, compensado, pago e saldo atual por servidor."
         data["grupos"] = _agrupar_itens(data["servidores"], agr)
         if fmt_out in ("csv", "xlsx", "pdf"):
             headers = ["Grupo","Matrícula","Nome","CPF","Email","Secretaria","Departamento","Cargo","Total Creditado","Total Compensado","Total Pago","Saldo","FG"]
@@ -2722,7 +2753,9 @@ def relatorios():
                 rows.append(["", "", "", "", "", "", "", "", "", "", "", "", ""])
             rows.append(["TOTAL GERAL", "", f"{geral['qtd']} servidor(es)", "", "", "", "", "",
                          minutos_para_horas(geral["credito"]), minutos_para_horas(geral["comp"]), minutos_para_horas(geral["pago"]), minutos_para_horas(geral["saldo"]), ""])
-            return _export_response(fmt_out, "saldos", "Relatório de Saldos em Banco de Horas", headers, rows)
+            titulo_export = data["titulo"]
+            nome_export = "maiores_saldos" if rel == "maiores_saldos" else "saldos"
+            return _export_response(fmt_out, nome_export, titulo_export, headers, rows)
 
     elif aba == "historico":
         mats=[r["matricula"] for r in db.execute(f"SELECT s.matricula FROM servidores s {filt_srv}",params_srv).fetchall()]
@@ -2751,6 +2784,16 @@ def relatorios():
                 ORDER BY p.data_pagamento DESC""",pp).fetchall():
                 ev.append({**dict(r),"tipo_evento":"pagamento","data_ord":r["data_pagamento"]})
             ev.sort(key=lambda x:x["data_ord"],reverse=True); data["eventos"]=ev
+            mapa_eventos = {"lancamentos": "lancamento", "compensacoes": "compensacao", "pagamentos": "pagamento"}
+            if rel in mapa_eventos:
+                data["eventos"] = [e for e in data["eventos"] if e.get("tipo_evento") == mapa_eventos[rel]]
+        titulos_historico = {
+            "lancamentos": "Horas Lançadas por Período",
+            "compensacoes": "Horas Compensadas por Período",
+            "pagamentos": "Pagamentos em Folha por Período",
+        }
+        data["titulo"] = titulos_historico.get(rel, "Histórico Completo")
+        data["descricao"] = "Histórico consolidado conforme filtros aplicados."
         data["grupos"] = _agrupar_itens(data["eventos"], agr)
         data["totais_historico"] = {}
         for grupo, eventos in data["grupos"].items():
@@ -2785,9 +2828,12 @@ def relatorios():
                 rows.append(["", "", "", "", "", "", "", "", "", "", "", "", ""])
             rows.append(["TOTAL GERAL", "", f"{geral['qtd']} evento(s)", "", "", "", "", "", "", "",
                          minutos_para_horas(geral["lanc"]), minutos_para_horas(geral["comp"]), minutos_para_horas(geral["pago"])])
-            return _export_response(fmt_out, "historico", "Relatório de Histórico Completo", headers, rows)
+            nome_export = f"historico_{rel}" if rel else "historico"
+            return _export_response(fmt_out, nome_export, f"Relatório de {data['titulo']}", headers, rows)
 
     elif aba == "pagamentos":
+        data["titulo"] = "Horas Pagas em Folha por Período"
+        data["descricao"] = "Pagamentos registrados no banco com detalhamento das horas realizadas que originaram a baixa."
         fp=f"WHERE p.matricula IN (SELECT matricula FROM servidores s {filt_srv})"; pp=list(params_srv)
         if di: fp+=" AND p.data_pagamento>=?"; pp.append(di)
         if df: fp+=" AND p.data_pagamento<=?"; pp.append(df)
@@ -2880,6 +2926,8 @@ def relatorios():
             return _export_response(fmt_out, f"competencia_{mes}_{ano}", f"Relatório de Horas por Competência {mes}/{ano}", headers, rows)
 
     elif aba == "vencimentos":
+        data["titulo"] = "Horas Vencidas ou Próximas do Vencimento"
+        data["descricao"] = "Saldo remanescente por data de realização, considerando vencimento em 6 meses."
         rows_v = db.execute(f"""
             SELECT l.*, s.nome, s.secretaria, s.setor, s.cargo, s.matricula AS mat, s.funcao_gratificada,
                    l.minutos_creditados - COALESCE((SELECT SUM(c.minutos) FROM consumos c WHERE c.lancamento_id=l.id),0) AS saldo_creditado
@@ -2924,38 +2972,135 @@ def relatorios():
             rows.append(["TOTAL GERAL", "", f"{total_qtd} lançamento(s)", "", "", "", "", "", "", "", minutos_para_horas(total_creditado), minutos_para_horas(total_base)])
             return _export_response(fmt_out, "vencimentos", "Relatório de Horas a Vencer/Vencidas", headers, rows)
 
-    elif aba == "eleicao":
-        data["eleicao"] = db.execute(f"""
-            SELECT s.*,
-                   COALESCE((SELECT SUM(quantidade_dias) FROM eleicao_creditos WHERE matricula=s.matricula),0) AS creditos,
-                   COALESCE((SELECT COUNT(*) FROM eleicao_baixas WHERE matricula=s.matricula),0) AS baixas,
-                   COALESCE((SELECT SUM(quantidade) FROM solicitacoes WHERE matricula=s.matricula AND tipo='eleicao' AND status IN ('solicitado','autorizado')),0) AS reservados,
-                   COALESCE((SELECT COUNT(*) FROM solicitacoes WHERE matricula=s.matricula AND tipo='eleicao'),0) AS solicitacoes_total
-            FROM servidores s {filt_srv}
-            ORDER BY s.secretaria,s.setor,s.nome
-        """, params_srv).fetchall()
-        data["grupos"] = _agrupar_itens(data["eleicao"], agr)
+    elif aba == "responsaveis_bh":
+        data["titulo"] = "Lançamentos por Usuário Responsável"
+        data["descricao"] = "Apuração baseada nos registros de auditoria de criação, exclusão e alteração de banco de horas."
+        fa = "WHERE a.entidade IN ('lancamento','compensacao','pagamento')"
+        pa = []
+        if di:
+            fa += " AND a.criado_em>=?"; pa.append(di)
+        if df:
+            fa += " AND a.criado_em<=?"; pa.append(df + " 23:59:59")
+        if mat:
+            fa += " AND a.matricula=?"; pa.append(mat)
+        eventos = db.execute(f"""
+            SELECT a.criado_em, a.usuario_nome AS criado_por_nome, a.acao, a.entidade,
+                   a.entidade_id, a.matricula, a.servidor_nome AS nome, a.detalhe,
+                   s.secretaria, s.setor, s.cargo
+            FROM auditoria a
+            LEFT JOIN servidores s ON s.matricula=a.matricula
+            {fa}
+            ORDER BY a.criado_em DESC
+            LIMIT 2000
+        """, pa).fetchall()
+        data["responsaveis"] = eventos
+        data["grupos"] = _agrupar_itens(eventos, "responsavel" if agr == "servidor" else agr)
         if fmt_out in ("csv", "xlsx", "pdf"):
-            headers = ["Grupo","Matrícula","Servidor","Secretaria","Departamento","Cargo","Créditos","Baixas/Fruições","Reservados","Saldo Atual","Solicitações"]
+            headers = ["Grupo","Data","Usuário Responsável","Ação","Entidade","ID","Matrícula","Servidor","Secretaria","Departamento","Detalhe"]
             rows = []
-            total = {"creditos":0,"baixas":0,"reservados":0,"saldo":0,"sol":0,"qtd":0}
             for grupo, itens in data["grupos"].items():
-                subt = {"creditos":0,"baixas":0,"reservados":0,"saldo":0,"sol":0}
-                for s in itens:
-                    cred = int(s["creditos"] or 0); baix = int(s["baixas"] or 0); res = int(s["reservados"] or 0)
-                    saldo = cred - baix - res; sol_qtd = int(s["solicitacoes_total"] or 0)
-                    for k, v in (("creditos",cred),("baixas",baix),("reservados",res),("saldo",saldo),("sol",sol_qtd)):
-                        subt[k] += v; total[k] += v
-                    total["qtd"] += 1
-                    rows.append([grupo, s["matricula"], s["nome"], s["secretaria"] or "", s["setor"] or "", s["cargo"] or "", cred, baix, res, saldo, sol_qtd])
-                rows.append([f"TOTAL DO GRUPO: {grupo}", "", f"{len(itens)} servidor(es)", "", "", "", subt["creditos"], subt["baixas"], subt["reservados"], subt["saldo"], subt["sol"]])
+                for e in itens:
+                    rows.append([grupo, fmt_datetime(e["criado_em"]), e["criado_por_nome"] or "", e["acao"], e["entidade"], e["entidade_id"] or "",
+                                 e["matricula"] or "", e["nome"] or "", e["secretaria"] or "", e["setor"] or "", e["detalhe"] or ""])
+                rows.append([f"TOTAL DO GRUPO: {grupo}", f"{len(itens)} registro(s)", "", "", "", "", "", "", "", "", ""])
                 rows.append(["", "", "", "", "", "", "", "", "", "", ""])
-            rows.append(["TOTAL GERAL", "", f"{total['qtd']} servidor(es)", "", "", "", total["creditos"], total["baixas"], total["reservados"], total["saldo"], total["sol"]])
-            return _export_response(fmt_out, "dias_eleicao", "Relatório de Dias de Eleição", headers, rows)
+            rows.append(["TOTAL GERAL", f"{len(eventos)} registro(s)", "", "", "", "", "", "", "", "", ""])
+            return _export_response(fmt_out, "responsaveis_banco_horas", "Relatório de Lançamentos por Usuário Responsável", headers, rows)
+
+    elif aba == "eleicao":
+        titulos_eleicao = {
+            "creditos": "Créditos Eleitorais Lançados",
+            "baixas": "Folgas Eleitorais Usufruídas por Período",
+        }
+        data["titulo"] = titulos_eleicao.get(rel, "Saldos Eleitorais")
+        data["descricao"] = "Créditos, baixas/fruições, reservas em solicitações e saldo atual por servidor."
+        if rel in ("creditos", "baixas"):
+            tabela = "eleicao_creditos" if rel == "creditos" else "eleicao_baixas"
+            campo_data = "e.criado_em" if rel == "creditos" else "e.data"
+            extra_select = "e.referencia_eleicao, e.quantidade_dias" if rel == "creditos" else "NULL AS referencia_eleicao, 1 AS quantidade_dias"
+            fe = f"WHERE e.matricula IN (SELECT matricula FROM servidores s {filt_srv})"
+            pe = list(params_srv)
+            if di:
+                fe += f" AND {campo_data}>=?"; pe.append(di)
+            if df:
+                fe += f" AND {campo_data}<=?"; pe.append(df + (" 23:59:59" if rel == "creditos" else ""))
+            eventos = db.execute(f"""
+                SELECT e.*, {extra_select}, s.nome, s.secretaria, s.setor, s.cargo, s.matricula AS mat
+                FROM {tabela} e
+                JOIN servidores s ON s.matricula=e.matricula
+                {fe}
+                ORDER BY {campo_data} DESC
+            """, pe).fetchall()
+            data["eleicao_eventos"] = eventos
+            data["grupos"] = _agrupar_itens(eventos, agr)
+            if fmt_out in ("csv", "xlsx", "pdf"):
+                headers = ["Grupo","Data","Matrícula","Servidor","Secretaria","Departamento","Cargo","Referência","Dias","Observação","Criado por"]
+                rows = []
+                total_dias = 0
+                for grupo, itens in data["grupos"].items():
+                    subtotal = 0
+                    for e in itens:
+                        dias = int(e["quantidade_dias"] or 0); subtotal += dias; total_dias += dias
+                        data_ev = e["criado_em"] if rel == "creditos" else e["data"]
+                        rows.append([grupo, fmt_datetime(data_ev) if rel == "creditos" else fmt_data(data_ev), e["matricula"], e["nome"],
+                                     e["secretaria"] or "", e["setor"] or "", e["cargo"] or "", e["referencia_eleicao"] or "",
+                                     dias, e["observacao"] or "", e["criado_por"] or ""])
+                    rows.append([f"TOTAL DO GRUPO: {grupo}", "", f"{len(itens)} registro(s)", "", "", "", "", "", subtotal, "", ""])
+                    rows.append(["", "", "", "", "", "", "", "", "", "", ""])
+                rows.append(["TOTAL GERAL", "", f"{len(eventos)} registro(s)", "", "", "", "", "", total_dias, "", ""])
+                return _export_response(fmt_out, f"eleicao_{rel}", f"Relatório de {data['titulo']}", headers, rows)
+        else:
+            data["eleicao"] = db.execute(f"""
+                SELECT s.*,
+                       COALESCE((SELECT SUM(quantidade_dias) FROM eleicao_creditos WHERE matricula=s.matricula),0) AS creditos,
+                       COALESCE((SELECT COUNT(*) FROM eleicao_baixas WHERE matricula=s.matricula),0) AS baixas,
+                       COALESCE((SELECT SUM(quantidade) FROM solicitacoes WHERE matricula=s.matricula AND tipo='eleicao' AND status IN ('solicitado','autorizado')),0) AS reservados,
+                       COALESCE((SELECT COUNT(*) FROM solicitacoes WHERE matricula=s.matricula AND tipo='eleicao'),0) AS solicitacoes_total
+                FROM servidores s {filt_srv}
+                ORDER BY s.secretaria,s.setor,s.nome
+            """, params_srv).fetchall()
+            data["grupos"] = _agrupar_itens(data["eleicao"], agr)
+            if fmt_out in ("csv", "xlsx", "pdf"):
+                headers = ["Grupo","Matrícula","Servidor","Secretaria","Departamento","Cargo","Créditos","Baixas/Fruições","Reservados","Saldo Atual","Solicitações"]
+                rows = []
+                total = {"creditos":0,"baixas":0,"reservados":0,"saldo":0,"sol":0,"qtd":0}
+                for grupo, itens in data["grupos"].items():
+                    subt = {"creditos":0,"baixas":0,"reservados":0,"saldo":0,"sol":0}
+                    for s in itens:
+                        cred = int(s["creditos"] or 0); baix = int(s["baixas"] or 0); res = int(s["reservados"] or 0)
+                        saldo = cred - baix - res; sol_qtd = int(s["solicitacoes_total"] or 0)
+                        for k, v in (("creditos",cred),("baixas",baix),("reservados",res),("saldo",saldo),("sol",sol_qtd)):
+                            subt[k] += v; total[k] += v
+                        total["qtd"] += 1
+                        rows.append([grupo, s["matricula"], s["nome"], s["secretaria"] or "", s["setor"] or "", s["cargo"] or "", cred, baix, res, saldo, sol_qtd])
+                    rows.append([f"TOTAL DO GRUPO: {grupo}", "", f"{len(itens)} servidor(es)", "", "", "", subt["creditos"], subt["baixas"], subt["reservados"], subt["saldo"], subt["sol"]])
+                    rows.append(["", "", "", "", "", "", "", "", "", "", ""])
+                rows.append(["TOTAL GERAL", "", f"{total['qtd']} servidor(es)", "", "", "", total["creditos"], total["baixas"], total["reservados"], total["saldo"], total["sol"]])
+                return _export_response(fmt_out, "dias_eleicao", "Relatório de Dias de Eleição", headers, rows)
 
     elif aba == "tarefas":
+        titulos_tarefas = {
+            "pendentes": "Tarefas e Solicitações Pendentes",
+            "autorizadas": "Tarefas e Solicitações Autorizadas",
+            "concluidas": "Tarefas e Solicitações Concluídas",
+            "indeferidas": "Tarefas e Solicitações Indeferidas",
+            "responsavel": "Tarefas e Solicitações por Responsável",
+            "eleicao": "Solicitações de Compensação Eleitoral",
+        }
+        data["titulo"] = titulos_tarefas.get(rel, "Tarefas e Solicitações")
+        data["descricao"] = "Pedidos pendentes, autorizados, lançados, indeferidos, cancelados e estornados."
         fs = f"WHERE sol.matricula IN (SELECT matricula FROM servidores s {filt_srv})"
         ps = list(params_srv)
+        if rel == "pendentes":
+            fs += " AND sol.status='solicitado'"
+        elif rel == "autorizadas":
+            fs += " AND sol.status='autorizado'"
+        elif rel == "concluidas":
+            fs += " AND sol.status='lancado'"
+        elif rel == "indeferidas":
+            fs += " AND sol.status='indeferido'"
+        elif rel == "eleicao":
+            fs += " AND sol.tipo='eleicao'"
         if di:
             fs += " AND sol.criado_em>=?"; ps.append(di)
         if df:
@@ -2968,7 +3113,8 @@ def relatorios():
             ORDER BY sol.criado_em DESC
         """, ps).fetchall()
         data["solicitacoes"] = solicitacoes
-        data["grupos"] = _agrupar_itens(solicitacoes, agr)
+        agr_tarefas = "responsavel" if rel == "responsavel" else agr
+        data["grupos"] = _agrupar_itens(solicitacoes, agr_tarefas)
         data["totais_status"] = {
             st: sum(1 for s in solicitacoes if s["status"] == st)
             for st in ("solicitado", "autorizado", "lancado", "indeferido", "cancelado", "estornado")
@@ -2990,7 +3136,8 @@ def relatorios():
                 rows.append([f"TOTAL DO GRUPO: {grupo}", f"{len(itens)} solicitação(ões)", "", "", "", "", "", "", "", "", "", "", "", "", ""])
                 rows.append(["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""])
             rows.append(["TOTAL GERAL", f"{total_qtd} solicitação(ões)", "", "", "", "", "", "", "", "", "", "", "", "", ""])
-            return _export_response(fmt_out, "tarefas_solicitacoes", "Relatório de Tarefas e Solicitações", headers, rows)
+            nome_export = f"tarefas_{rel}" if rel else "tarefas_solicitacoes"
+            return _export_response(fmt_out, nome_export, f"Relatório de {data['titulo']}", headers, rows)
 
     elif aba == "administracao":
         eventos = []
