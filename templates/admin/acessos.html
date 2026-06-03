@@ -78,7 +78,7 @@
 
   <!-- ── Tab Usuários ── -->
   <div class="tab-pane fade show active" id="tabUsuarios">
-    {% for nv in ['master','secretario','chefia','servidor'] %}
+    {% for nv in ['master','visualizacao','secretario','chefia','servidor'] %}
     {% set grupo = usuarios | selectattr('nivel','equalto',nv) | list %}
     {% if grupo %}
     <div class="mb-4">
