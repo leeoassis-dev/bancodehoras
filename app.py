@@ -1549,6 +1549,13 @@ def api_saldo_servidor(matricula):
                     "saldo_fmt": minutos_para_horas(calcular_saldo(db, matricula))})
 
 
+@app.route("/api/saldo-eleicao/<matricula>")
+@master_required
+def api_saldo_eleicao(matricula):
+    db = get_db()
+    return jsonify({"saldo": calcular_saldo_eleicao(db, matricula)})
+
+
 @app.route("/api/pagamentos-itens/<matricula>")
 @master_required
 def api_pagamentos_itens(matricula):

@@ -49,39 +49,67 @@
 
 <!-- ── Acesso rápido ── -->
 <div class="card p-3 mb-4 border-start border-primary border-4">
-  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <div>
-      <h6 class="fw-bold mb-1"><i class="bi bi-lightning-charge-fill me-1 text-primary"></i>Atalhos de Lançamento</h6>
-      <span class="text-muted small">Digite a matrícula ou o nome e realize lançamentos sem sair do dashboard.</span>
-    </div>
-  </div>
-  <div class="row g-2 align-items-end">
-    <div class="col-lg-7">
-      <label class="form-label small fw-semibold mb-1">Servidor / Matrícula</label>
-      <div class="position-relative">
-        <input id="atalhoServidor" class="form-control" autocomplete="off"
-               placeholder="Digite a matrícula ou o nome do servidor">
-        <!-- Dropdown customizado — aparece abaixo do campo -->
-        <div id="atalhoDropdown"
-             class="position-absolute w-100 bg-white border rounded shadow-sm d-none"
-             style="top:100%;left:0;z-index:1055;max-height:260px;overflow-y:auto;margin-top:2px;">
+  <h6 class="fw-bold mb-3"><i class="bi bi-lightning-charge-fill me-1 text-primary"></i>Atalhos de Lançamento</h6>
+  <div class="row g-3">
+
+    <!-- Banco de Horas -->
+    <div class="col-lg-6">
+      <div class="rounded border p-3 h-100">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <i class="bi bi-clock-history text-primary"></i>
+          <span class="fw-semibold small text-primary">Banco de Horas</span>
+        </div>
+        <div class="position-relative mb-1">
+          <input id="atalhoServidor" class="form-control form-control-sm" autocomplete="off"
+                 placeholder="Matrícula ou nome do servidor">
+          <div id="atalhoDropdown"
+               class="position-absolute w-100 bg-white border rounded shadow-sm d-none"
+               style="top:100%;left:0;z-index:1055;max-height:220px;overflow-y:auto;margin-top:2px;"></div>
+        </div>
+        <div id="atalhoInfo" class="form-text mb-2">Selecione um servidor para habilitar as ações.</div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-success btn-sm flex-fill" onclick="abrirModal('lanc')">
+            <i class="bi bi-plus-circle me-1"></i>Lançar
+          </button>
+          <button type="button" class="btn btn-warning btn-sm flex-fill text-white" onclick="abrirModal('comp')">
+            <i class="bi bi-arrow-left-right me-1"></i>Compensar
+          </button>
+          <button type="button" class="btn btn-danger btn-sm flex-fill" onclick="abrirModal('pag')">
+            <i class="bi bi-cash-coin me-1"></i>Pagar
+          </button>
         </div>
       </div>
-      <div id="atalhoInfo" class="form-text">As informações do servidor serão carregadas da base de dados.</div>
     </div>
-    <div class="col-lg-5">
-      <div class="d-flex gap-2 flex-wrap">
-        <button type="button" class="btn btn-success flex-fill" onclick="abrirModal('lanc')">
-          <i class="bi bi-plus-circle me-1"></i>Lançar hora
-        </button>
-        <button type="button" class="btn btn-warning text-white flex-fill" onclick="abrirModal('comp')">
-          <i class="bi bi-arrow-left-right me-1"></i>Compensar
-        </button>
-        <button type="button" class="btn btn-danger flex-fill" onclick="abrirModal('pag')">
-          <i class="bi bi-cash-coin me-1"></i>Pagar
-        </button>
+
+    <!-- Eleitoral -->
+    <div class="col-lg-6">
+      <div class="rounded border p-3 h-100" style="border-color:#d4a200 !important;">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <i class="bi bi-calendar2-check" style="color:#ca8a04"></i>
+          <span class="fw-semibold small" style="color:#ca8a04">Eleitoral</span>
+        </div>
+        <div class="position-relative mb-1">
+          <input id="atalhoElServidor" class="form-control form-control-sm" autocomplete="off"
+                 placeholder="Matrícula ou nome do servidor">
+          <div id="atalhoElDropdown"
+               class="position-absolute w-100 bg-white border rounded shadow-sm d-none"
+               style="top:100%;left:0;z-index:1055;max-height:220px;overflow-y:auto;margin-top:2px;"></div>
+        </div>
+        <div id="atalhoElInfo" class="form-text mb-2">Selecione um servidor para habilitar as ações.</div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm flex-fill text-white fw-semibold"
+                  style="background:#ca8a04; border-color:#ca8a04"
+                  onclick="abrirModalEl('credito')">
+            <i class="bi bi-calendar-plus me-1"></i>Creditar Dias
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm flex-fill"
+                  onclick="abrirModalEl('baixa')">
+            <i class="bi bi-calendar-check me-1"></i>Registrar Folga
+          </button>
+        </div>
       </div>
     </div>
+
   </div>
 </div>
 
@@ -299,6 +327,103 @@
   <div id="pag_hid_horas"></div>
 </form>
 
+<!-- ═══ Modal: Creditar Dias de Eleição ══════════════════════════════════ -->
+<div class="modal fade" id="modalElCredito" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header text-white py-2" style="background:#ca8a04;">
+        <h5 class="modal-title"><i class="bi bi-calendar-plus me-2"></i>Creditar Dias de Eleição</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert py-2 px-3 mb-3 d-flex align-items-center gap-2"
+             style="background:#fffbeb; border:1.5px solid #ca8a04; border-radius:.5rem;">
+          <i class="bi bi-person-badge fs-5" style="color:#ca8a04"></i>
+          <div>
+            <div class="fw-bold" style="color:#ca8a04" id="elcred_nome"></div>
+            <div class="small text-muted" id="elcred_info"></div>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Referência da Eleição <span class="text-danger">*</span></label>
+          <input type="text" id="elcred_ref" class="form-control"
+                 placeholder="Ex: Eleição Municipal 2024">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Quantidade de Dias <span class="text-danger">*</span></label>
+          <input type="number" id="elcred_qtd" class="form-control" min="1" value="1"
+                 placeholder="1">
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-semibold small">Observação</label>
+          <textarea id="elcred_obs" class="form-control form-control-sm" rows="2"
+                    placeholder="Informações adicionais (opcional)"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn text-white fw-semibold btn-sm" style="background:#ca8a04"
+                onclick="submitElCredito()">
+          <i class="bi bi-check-lg me-1"></i>Creditar Dias
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<form id="formElCredito" method="post" action="" style="display:none">
+  <input type="hidden" name="acao"               value="add_credito">
+  <input type="hidden" name="referencia_eleicao" id="elcred_hid_ref">
+  <input type="hidden" name="quantidade_dias"    id="elcred_hid_qtd">
+  <input type="hidden" name="observacao"         id="elcred_hid_obs">
+</form>
+
+<!-- ═══ Modal: Registrar Folga Eleitoral ════════════════════════════════ -->
+<div class="modal fade" id="modalElBaixa" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-secondary text-white py-2">
+        <h5 class="modal-title"><i class="bi bi-calendar-check me-2"></i>Registrar Folga Eleitoral</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert py-2 px-3 mb-3 d-flex align-items-center gap-2"
+             style="background:#f8f9fa; border:1.5px solid #6c757d; border-radius:.5rem;">
+          <i class="bi bi-person-badge text-secondary fs-5"></i>
+          <div>
+            <div class="fw-bold text-secondary" id="elbaixa_nome"></div>
+            <div class="small text-muted" id="elbaixa_info"></div>
+          </div>
+          <div class="ms-auto text-end">
+            <div class="small text-muted">Saldo eleitoral</div>
+            <div class="fw-bold" id="elbaixa_saldo">–</div>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Data da Folga <span class="text-danger">*</span></label>
+          <input type="date" id="elbaixa_data" class="form-control" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-semibold small">Observação</label>
+          <textarea id="elbaixa_obs" class="form-control form-control-sm" rows="2"
+                    placeholder="Informações adicionais (opcional)"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-secondary btn-sm fw-semibold"
+                onclick="submitElBaixa()">
+          <i class="bi bi-check-lg me-1"></i>Registrar Folga
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<form id="formElBaixa" method="post" action="" style="display:none">
+  <input type="hidden" name="acao"       value="add_baixa">
+  <input type="hidden" name="data"       id="elbaixa_hid_data">
+  <input type="hidden" name="observacao" id="elbaixa_hid_obs">
+</form>
+
 <!-- ── Gráficos linha 1 ── -->
 <div class="row g-3 mb-4">
   <div class="col-md-6">
@@ -397,77 +522,76 @@ const servidoresAtalho = [
   {% endfor %}
 ];
 
-const inputAtalho  = document.getElementById('atalhoServidor');
-const infoAtalho   = document.getElementById('atalhoInfo');
-const dropdown     = document.getElementById('atalhoDropdown');
-let _servidorAtual = null;
-let _matchesAtalho = [];
-
 function normalizarBusca(valor) {
   return (valor || '').toString().trim().toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
-function fecharDropdown() {
-  dropdown.classList.add('d-none');
-  dropdown.innerHTML = '';
-}
+function criarBuscaServidor({ inputId, dropdownId, infoId, hoverColor = '#f0f7ff', onSelect }) {
+  const input    = document.getElementById(inputId);
+  const dropdown = document.getElementById(dropdownId);
+  const info     = document.getElementById(infoId);
+  let atual      = null;
+  let matches    = [];
 
-function selecionarServidorAtalho(srv) {
-  _servidorAtual = srv;
-  inputAtalho.value = srv.matricula + ' - ' + srv.nome;
-  infoAtalho.textContent = srv.info;
-  infoAtalho.style.color = '#198754';
-  fecharDropdown();
-}
+  function fechar() { dropdown.classList.add('d-none'); dropdown.innerHTML = ''; }
 
-function encontrarServidorAtalho() {
-  return _servidorAtual;
-}
-
-inputAtalho?.addEventListener('input', () => {
-  const q = normalizarBusca(inputAtalho.value);
-  _servidorAtual = null;
-  infoAtalho.textContent = 'Digite a matrícula ou o nome e selecione um servidor.';
-  infoAtalho.style.color = '';
-
-  if (q.length < 2) { fecharDropdown(); return; }
-
-  _matchesAtalho = servidoresAtalho.filter(s =>
-    normalizarBusca(s.matricula).includes(q) || normalizarBusca(s.nome).includes(q)
-  ).slice(0, 8);
-
-  if (!_matchesAtalho.length) {
-    dropdown.innerHTML = '<div class="px-3 py-2 text-muted small">Nenhum servidor encontrado.</div>';
-    dropdown.classList.remove('d-none');
-    return;
+  function selecionar(srv) {
+    atual = srv;
+    input.value = srv.matricula + ' - ' + srv.nome;
+    info.textContent = srv.info;
+    info.style.color = '#198754';
+    fechar();
+    onSelect?.(srv);
   }
 
-  dropdown.innerHTML = _matchesAtalho.map((s, i) =>
-    '<div class="atalho-item px-3 py-2 border-bottom" data-idx="' + i + '"' +
-    ' style="cursor:pointer;transition:background .1s">' +
-    '<div class="fw-semibold small"><span class="badge bg-secondary me-1">' + s.matricula + '</span>' + s.nome + '</div>' +
-    '<div class="text-muted" style="font-size:.75rem">' + s.info + '</div></div>'
-  ).join('');
-  dropdown.classList.remove('d-none');
+  function getAtual() { return atual; }
 
-  dropdown.querySelectorAll('.atalho-item').forEach(el => {
-    el.addEventListener('mouseenter', () => el.style.background = '#f0f7ff');
-    el.addEventListener('mouseleave', () => el.style.background = '');
-    el.addEventListener('mousedown', e => {
-      e.preventDefault();
-      selecionarServidorAtalho(_matchesAtalho[parseInt(el.dataset.idx)]);
+  input?.addEventListener('input', () => {
+    const q = normalizarBusca(input.value);
+    atual = null;
+    info.textContent = 'Digite a matrícula ou o nome e selecione um servidor.';
+    info.style.color = '';
+    if (q.length < 2) { fechar(); return; }
+
+    matches = servidoresAtalho.filter(s =>
+      normalizarBusca(s.matricula).includes(q) || normalizarBusca(s.nome).includes(q)
+    ).slice(0, 8);
+
+    if (!matches.length) {
+      dropdown.innerHTML = '<div class="px-3 py-2 text-muted small">Nenhum servidor encontrado.</div>';
+      dropdown.classList.remove('d-none');
+      return;
+    }
+
+    dropdown.innerHTML = matches.map((s, i) =>
+      '<div class="atalho-item px-3 py-2 border-bottom" data-idx="' + i + '"' +
+      ' style="cursor:pointer;transition:background .1s">' +
+      '<div class="fw-semibold small"><span class="badge bg-secondary me-1">' + s.matricula + '</span>' + s.nome + '</div>' +
+      '<div class="text-muted" style="font-size:.75rem">' + s.info + '</div></div>'
+    ).join('');
+    dropdown.classList.remove('d-none');
+
+    dropdown.querySelectorAll('.atalho-item').forEach(el => {
+      el.addEventListener('mouseenter', () => el.style.background = hoverColor);
+      el.addEventListener('mouseleave', () => el.style.background = '');
+      el.addEventListener('mousedown', e => { e.preventDefault(); selecionar(matches[parseInt(el.dataset.idx)]); });
     });
   });
-});
 
-inputAtalho?.addEventListener('blur', () => setTimeout(fecharDropdown, 150));
-inputAtalho?.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { fecharDropdown(); inputAtalho.blur(); }
-});
-document.addEventListener('click', e => {
-  if (!inputAtalho?.contains(e.target) && !dropdown?.contains(e.target)) fecharDropdown();
-});
+  input?.addEventListener('blur', () => setTimeout(fechar, 150));
+  input?.addEventListener('keydown', e => { if (e.key === 'Escape') { fechar(); input.blur(); } });
+  document.addEventListener('click', e => {
+    if (!input?.contains(e.target) && !dropdown?.contains(e.target)) fechar();
+  });
+
+  return { getAtual };
+}
+
+const bhBusca = criarBuscaServidor({ inputId: 'atalhoServidor',   dropdownId: 'atalhoDropdown',   infoId: 'atalhoInfo',   hoverColor: '#f0f7ff' });
+const elBusca = criarBuscaServidor({ inputId: 'atalhoElServidor', dropdownId: 'atalhoElDropdown', infoId: 'atalhoElInfo', hoverColor: '#fffbeb' });
+
+function encontrarServidorAtalho() { return bhBusca.getAtual(); }
 
 // ── Modais de atalho rápido ───────────────────────────────────────────────────
 
@@ -716,6 +840,68 @@ function submitPag() {
   document.getElementById('pag_hid_desc').value = document.getElementById('pag_desc').value;
   document.getElementById('pag_hid_just').value = just;
   document.getElementById('formPag').submit();
+}
+
+// ── Modais Eleitorais ───────────────────────────────────────────────────────
+function abrirModalEl(tipo) {
+  const srv = elBusca.getAtual();
+  if (!srv) {
+    alert('Digite a matrícula ou escolha um servidor válido antes de continuar.');
+    document.getElementById('atalhoElServidor').focus();
+    return;
+  }
+  if (tipo === 'credito') abrirModalElCredito(srv);
+  else if (tipo === 'baixa') abrirModalElBaixa(srv);
+}
+
+function abrirModalElCredito(srv) {
+  document.getElementById('elcred_nome').textContent = srv.nome;
+  document.getElementById('elcred_info').textContent = [srv.matricula, srv.info].filter(Boolean).join(' · ');
+  document.getElementById('formElCredito').action = `/eleicao/${encodeURIComponent(srv.matricula)}`;
+  document.getElementById('elcred_ref').value = '';
+  document.getElementById('elcred_qtd').value = '1';
+  document.getElementById('elcred_obs').value = '';
+  new bootstrap.Modal(document.getElementById('modalElCredito')).show();
+  setTimeout(() => document.getElementById('elcred_ref').focus(), 400);
+}
+
+function submitElCredito() {
+  const ref = document.getElementById('elcred_ref').value.trim();
+  const qtd = parseInt(document.getElementById('elcred_qtd').value, 10);
+  if (!ref) { alert('Informe a referência da eleição.'); document.getElementById('elcred_ref').focus(); return; }
+  if (!qtd || qtd <= 0) { alert('Informe uma quantidade de dias maior que zero.'); document.getElementById('elcred_qtd').focus(); return; }
+  document.getElementById('elcred_hid_ref').value = ref;
+  document.getElementById('elcred_hid_qtd').value = qtd;
+  document.getElementById('elcred_hid_obs').value = document.getElementById('elcred_obs').value;
+  document.getElementById('formElCredito').submit();
+}
+
+function abrirModalElBaixa(srv) {
+  document.getElementById('elbaixa_nome').textContent = srv.nome;
+  document.getElementById('elbaixa_info').textContent = [srv.matricula, srv.info].filter(Boolean).join(' · ');
+  document.getElementById('formElBaixa').action = `/eleicao/${encodeURIComponent(srv.matricula)}`;
+  document.getElementById('elbaixa_data').valueAsDate = new Date();
+  document.getElementById('elbaixa_obs').value = '';
+  document.getElementById('elbaixa_saldo').textContent = '…';
+  document.getElementById('elbaixa_saldo').style.color = '';
+  new bootstrap.Modal(document.getElementById('modalElBaixa')).show();
+
+  fetch(`/api/saldo-eleicao/${encodeURIComponent(srv.matricula)}`)
+    .then(r => r.json())
+    .then(d => {
+      const s = d.saldo ?? d;
+      document.getElementById('elbaixa_saldo').textContent = (typeof s === 'number' ? s : '?') + ' dia(s)';
+      document.getElementById('elbaixa_saldo').style.color = s > 0 ? '#198754' : '#dc3545';
+    })
+    .catch(() => { document.getElementById('elbaixa_saldo').textContent = '–'; });
+}
+
+function submitElBaixa() {
+  const data = document.getElementById('elbaixa_data').value;
+  if (!data) { alert('Informe a data da folga.'); return; }
+  document.getElementById('elbaixa_hid_data').value = data;
+  document.getElementById('elbaixa_hid_obs').value  = document.getElementById('elbaixa_obs').value;
+  document.getElementById('formElBaixa').submit();
 }
 
 // Gráfico lançamentos x compensações
