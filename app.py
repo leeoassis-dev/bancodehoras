@@ -834,7 +834,7 @@ def _inativar_vinculos_servidor(db, servidor):
 def usuario_pode_ver_matricula(db, matricula):
     """Valida acesso de leitura ao histórico conforme nível e vínculos da sessão."""
     nivel = session.get('nivel')
-    if nivel == 'master':
+    if nivel in ('master', 'visualizacao'):
         return True
     if session.get('matricula') == matricula:
         return bool(db.execute(
@@ -4010,7 +4010,7 @@ def admin_acessos():
     departamento = request.args.get('departamento','').strip()
 
     # Usuários por nível
-    q = "WHERE u.ativo=1 AND (u.nivel='master' OR s.matricula IS NOT NULL)"
+    q = "WHERE u.ativo=1 AND (u.nivel IN ('master','visualizacao') OR s.matricula IS NOT NULL)"
     params = []
     if filtro_nivel:
         q += " AND u.nivel=?"; params.append(filtro_nivel)
@@ -4043,7 +4043,7 @@ def admin_acessos():
         LEFT JOIN servidores s ON s.arquivado=0
           AND ((u.matricula IS NOT NULL AND u.matricula!='' AND s.matricula=u.matricula)
                OR (u.cpf IS NOT NULL AND u.cpf!='' AND s.cpf=u.cpf))
-        WHERE u.ativo=1 AND (u.nivel='master' OR s.matricula IS NOT NULL)
+        WHERE u.ativo=1 AND (u.nivel IN ('master','visualizacao') OR s.matricula IS NOT NULL)
         GROUP BY u.nivel
     """).fetchall()}
 
@@ -4082,7 +4082,7 @@ def admin_acessos():
                OR (u.cpf IS NOT NULL AND u.cpf!='' AND s.cpf=u.cpf))
         WHERE u.ultimo_acesso IS NOT NULL
           AND u.ativo=1
-          AND (u.nivel='master' OR s.matricula IS NOT NULL)
+          AND (u.nivel IN ('master','visualizacao') OR s.matricula IS NOT NULL)
         ORDER BY u.ultimo_acesso DESC LIMIT 10
     """).fetchall()
 
