@@ -4502,6 +4502,8 @@ def eleicao_servidor(matricula):
                 db.commit()
                 flash(f"{srv['nome']} ({matricula})\nDia de folga eleitoral registrado em {data_baixa}.", "success")
 
+        if request.form.get('_source') == 'dashboard':
+            return redirect(url_for('dashboard'))
         return redirect(url_for('eleicao_servidor', matricula=matricula))
 
     creditos = db.execute(

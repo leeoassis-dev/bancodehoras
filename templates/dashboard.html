@@ -1,5 +1,15 @@
 ﻿{% extends "base.html" %}
 {% block content %}
+
+<!-- ── Overlay de carregamento ── -->
+<div id="loadingOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(255,255,255,0.96);flex-direction:column;align-items:center;justify-content:center;gap:1.2rem;">
+  <div id="loadingMsg" class="fw-bold fs-5 text-primary"></div>
+  <div class="progress" style="width:min(420px,80vw);height:14px;border-radius:8px;">
+    <div id="loadingBar" class="progress-bar progress-bar-striped progress-bar-animated"
+         style="width:0%;transition:width .25s ease;border-radius:8px;"></div>
+  </div>
+  <div id="loadingPct" class="text-muted small">0%</div>
+</div>
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h4 class="mb-0"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h4>
   <span class="text-muted small">Prefeitura Municipal de Ibiporã</span>
@@ -371,6 +381,7 @@
   </div>
 </div>
 <form id="formElCredito" method="post" action="" style="display:none">
+  <input type="hidden" name="_source"            value="dashboard">
   <input type="hidden" name="acao"               value="add_credito">
   <input type="hidden" name="referencia_eleicao" id="elcred_hid_ref">
   <input type="hidden" name="quantidade_dias"    id="elcred_hid_qtd">
@@ -419,6 +430,7 @@
   </div>
 </div>
 <form id="formElBaixa" method="post" action="" style="display:none">
+  <input type="hidden" name="_source"    value="dashboard">
   <input type="hidden" name="acao"       value="add_baixa">
   <input type="hidden" name="data"       id="elbaixa_hid_data">
   <input type="hidden" name="observacao" id="elbaixa_hid_obs">
@@ -593,6 +605,36 @@ const elBusca = criarBuscaServidor({ inputId: 'atalhoElServidor', dropdownId: 'a
 
 function encontrarServidorAtalho() { return bhBusca.getAtual(); }
 
+// ── Loading overlay ──────────────────────────────────────────────────────────
+function mostrarCarregamento(msg, cor, callback) {
+  // Fecha qualquer modal Bootstrap aberto
+  document.querySelectorAll('.modal.show').forEach(m => {
+    bootstrap.Modal.getInstance(m)?.hide();
+  });
+
+  const overlay = document.getElementById('loadingOverlay');
+  const bar     = document.getElementById('loadingBar');
+  const pct     = document.getElementById('loadingPct');
+  document.getElementById('loadingMsg').textContent = msg;
+  bar.className = `progress-bar progress-bar-striped progress-bar-animated bg-${cor}`;
+  bar.style.width = '0%';
+  pct.textContent = '0%';
+  overlay.style.display = 'flex';
+
+  const passos = [8, 22, 38, 55, 70, 84, 94, 100];
+  const delays = [60, 90, 90, 100, 110, 120, 140, 300];
+  let i = 0;
+  function avancar() {
+    if (i >= passos.length) { callback(); return; }
+    const p = passos[i];
+    bar.style.width = p + '%';
+    pct.textContent  = p + '%';
+    setTimeout(avancar, delays[i]);
+    i++;
+  }
+  setTimeout(avancar, 80);
+}
+
 // ── Modais de atalho rápido ───────────────────────────────────────────────────
 
 const LIMITE_PAG = 45 * 60;
@@ -657,7 +699,7 @@ function submitLanc() {
   document.getElementById('lanc_hid_horas').value = horas;
   document.getElementById('lanc_hid_pct').value   = pct;
   document.getElementById('lanc_hid_desc').value  = document.getElementById('lanc_desc').value;
-  document.getElementById('formLanc').submit();
+  mostrarCarregamento('Salvando lançamento…', 'success', () => document.getElementById('formLanc').submit());
 }
 
 // ── Modal Compensação ───────────────────────────────────────────────────────
@@ -705,7 +747,7 @@ function submitComp() {
   document.getElementById('comp_hid_data').value  = data;
   document.getElementById('comp_hid_horas').value = horas;
   document.getElementById('comp_hid_desc').value  = document.getElementById('comp_desc').value;
-  document.getElementById('formComp').submit();
+  mostrarCarregamento('Registrando compensação…', 'warning', () => document.getElementById('formComp').submit());
 }
 
 // ── Modal Pagamento ─────────────────────────────────────────────────────────
@@ -839,7 +881,7 @@ function submitPag() {
   document.getElementById('pag_hid_data').value = data;
   document.getElementById('pag_hid_desc').value = document.getElementById('pag_desc').value;
   document.getElementById('pag_hid_just').value = just;
-  document.getElementById('formPag').submit();
+  mostrarCarregamento('Confirmando pagamento…', 'danger', () => document.getElementById('formPag').submit());
 }
 
 // ── Modais Eleitorais ───────────────────────────────────────────────────────
@@ -873,7 +915,7 @@ function submitElCredito() {
   document.getElementById('elcred_hid_ref').value = ref;
   document.getElementById('elcred_hid_qtd').value = qtd;
   document.getElementById('elcred_hid_obs').value = document.getElementById('elcred_obs').value;
-  document.getElementById('formElCredito').submit();
+  mostrarCarregamento('Creditando dias eleitorais…', 'warning', () => document.getElementById('formElCredito').submit());
 }
 
 function abrirModalElBaixa(srv) {
@@ -901,7 +943,7 @@ function submitElBaixa() {
   if (!data) { alert('Informe a data da folga.'); return; }
   document.getElementById('elbaixa_hid_data').value = data;
   document.getElementById('elbaixa_hid_obs').value  = document.getElementById('elbaixa_obs').value;
-  document.getElementById('formElBaixa').submit();
+  mostrarCarregamento('Registrando folga eleitoral…', 'secondary', () => document.getElementById('formElBaixa').submit());
 }
 
 // Gráfico lançamentos x compensações

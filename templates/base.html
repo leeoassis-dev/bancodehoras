@@ -655,28 +655,56 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  function formatarHoraDigitada(valor) {
-    const limpo = String(valor || '').replace(/\D/g, '').slice(0, 5);
-    if (!limpo) return '';
-    if (limpo.length <= 2) return limpo;
-    const minutos = limpo.slice(-2);
-    const horas = limpo.slice(0, -2).padStart(2, '0');
-    return `${horas}:${minutos}`;
-  }
   window.aplicarMascaraHoras = function(root = document) {
     root.querySelectorAll('.js-hora').forEach((inp) => {
       if (inp.dataset.horaMask === '1') return;
       inp.dataset.horaMask = '1';
-      inp.addEventListener('input', () => {
-        inp.value = formatarHoraDigitada(inp.value);
-        const m = inp.value.match(/^(\d{1,4}):(\d{2})$/);
-        inp.setCustomValidity(m && Number(m[2]) > 59 ? 'Informe minutos entre 00 e 59.' : '');
+
+      inp.addEventListener('keydown', (e) => {
+        inp.dataset.prevVal = inp.value;
+        inp.dataset.prevPos = inp.selectionStart;
       });
+
+      inp.addEventListener('input', () => {
+        const prev = inp.dataset.prevVal ?? '';
+        const cur  = inp.value;
+        const apagando = cur.length < prev.length;
+
+        if (apagando) {
+          // Deixa apagar livremente; remove ":" solto no final
+          if (inp.value.endsWith(':')) inp.value = inp.value.slice(0, -1);
+          inp.dataset.prevVal = inp.value;
+          inp.setCustomValidity('');
+          return;
+        }
+
+        // Somente dígitos, máximo 6 chars
+        const digits = cur.replace(/\D/g, '').slice(0, 6);
+        if (!digits) { inp.value = ''; inp.dataset.prevVal = ''; return; }
+
+        // Insere ":" apenas quando tiver 3+ dígitos (digitando para frente)
+        let formatted;
+        if (digits.length <= 2) {
+          formatted = digits;
+        } else {
+          const h = digits.slice(0, digits.length - 2);
+          const m = digits.slice(-2);
+          formatted = `${h}:${m}`;
+        }
+
+        inp.value = formatted;
+        inp.dataset.prevVal = formatted;
+
+        const match = formatted.match(/^(\d{1,4}):(\d{2})$/);
+        inp.setCustomValidity(match && Number(match[2]) > 59 ? 'Informe minutos entre 00 e 59.' : '');
+      });
+
       inp.addEventListener('blur', () => {
         if (!inp.value) { inp.setCustomValidity(''); return; }
         const m = inp.value.match(/^(\d{1,4}):([0-5]\d)$/);
         if (m) inp.value = `${String(parseInt(m[1], 10)).padStart(2, '0')}:${m[2]}`;
         inp.setCustomValidity(m ? '' : 'Informe as horas no formato HH:MM.');
+        inp.dataset.prevVal = inp.value;
       });
     });
   };
