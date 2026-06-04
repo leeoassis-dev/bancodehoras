@@ -1239,6 +1239,8 @@ def historico_servidor_pdf(matricula):
 @master_required
 def novo_servidor():
     db = get_db()
+    origem = request.args.get("origem", "").strip()
+    voltar_url = url_for("admin_usuarios") if origem == "usuarios" else url_for("servidores")
     if request.method == "POST":
         mat = request.form["matricula"].strip()
         if db.execute("SELECT 1 FROM servidores WHERE matricula=?", (mat,)).fetchone():
@@ -1257,8 +1259,8 @@ def novo_servidor():
                  request.form["email"].strip(), cargo, setor, secretaria, fg))
             db.commit()
             flash("Servidor cadastrado!", "success")
-            return redirect(url_for("servidores"))
-    return render_template("servidor_form.html", servidor=None, voltar_url=url_for("servidores"), **_opcoes_servidor_form(db))
+            return redirect(voltar_url)
+    return render_template("servidor_form.html", servidor=None, voltar_url=voltar_url, **_opcoes_servidor_form(db))
 
 @app.route("/servidores/<matricula>/editar", methods=["GET","POST"])
 @master_required
@@ -3989,37 +3991,9 @@ def admin_usuarios():
 @app.route('/admin/usuarios/novo', methods=['GET','POST'])
 @master_required
 def admin_novo_usuario():
-    db = get_db()
     if request.method == 'POST':
-        cpf   = somente_digitos(request.form['cpf'])
-        nome  = request.form['nome'].strip()
-        email = request.form['email'].strip()
-        nivel = request.form['nivel']
-        vinculos = request.form.getlist('vinculos')
-        sec   = vinculos[0] if nivel == 'secretario' and vinculos else request.form.get('secretaria','').strip()
-        set_  = vinculos[0] if nivel == 'chefia' and vinculos else request.form.get('setor','').strip()
-        mat   = request.form.get('matricula','').strip()
-
-        if db.execute(f"SELECT 1 FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=?", (cpf,)).fetchone():
-            flash("CPF já cadastrado.", "danger")
-        else:
-            senha_temp = gerar_senha_temp()
-            db.execute("""INSERT INTO usuarios (cpf,nome,email,senha_hash,nivel,secretaria,setor,matricula,vinculos,ativo,senha_temporaria)
-                          VALUES (?,?,?,?,?,?,?,?,?,1,1)""",
-                       (cpf, nome, email, generate_password_hash(senha_temp), nivel, sec, set_, mat, json.dumps(vinculos)))
-            db.commit()
-            flash(f"Usuário criado! Senha temporária: {senha_temp}", "success")
-            if email:
-                html = f"<p>Olá, <b>{nome}</b>!</p><p>Seu acesso foi criado no sistema Banco de Horas de Ibiporã.</p><p><b>CPF:</b> {cpf}<br><b>Senha temporária:</b> {senha_temp}</p><p>Altere a senha no primeiro acesso.</p>"
-                ok, _ = enviar_email_smtp(email, "Acesso ao Banco de Horas — Ibiporã", html)
-                if ok: flash("E-mail enviado ao usuário.", "info")
-            return redirect(url_for('admin_usuarios'))
-
-    srvs = db.execute("SELECT matricula,nome FROM servidores WHERE arquivado=0 ORDER BY nome").fetchall()
-    secs = _cadastros_nomes(db, "secretaria")
-    sets = _cadastros_nomes(db, "departamento")
-    return render_template('admin/usuario_form.html', usuario=None,
-                           servidores=srvs, secretarias=secs, setores=sets)
+        flash("O cadastro deve ser feito pela tela completa de Novo Servidor.", "warning")
+    return redirect(url_for('novo_servidor', origem='usuarios'))
 
 
 @app.route('/admin/usuarios/<int:uid>/editar', methods=['GET','POST'])
