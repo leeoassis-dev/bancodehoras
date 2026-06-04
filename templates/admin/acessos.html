@@ -1,6 +1,30 @@
 ﻿{% extends "base.html" %}
 {% block content %}
 
+<style>
+.access-actions{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:.35rem;
+  flex-wrap:nowrap;
+}
+.access-action-btn{
+  width:34px;
+  height:34px;
+  padding:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:.35rem;
+  line-height:1;
+}
+.access-actions form{
+  margin:0;
+  display:inline-flex;
+}
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
     <h4 class="mb-0"><i class="bi bi-shield-lock me-2 text-warning"></i>Gerenciamento de Acessos</h4>
@@ -125,9 +149,9 @@
                   {% endif %}
                 </td>
                 <td class="text-center">
-                  <div class="d-flex gap-1 justify-content-center">
+                  <div class="access-actions">
                     <!-- Alterar nível -->
-                    <button class="btn btn-sm btn-outline-primary px-2"
+                    <button class="btn btn-sm btn-outline-primary access-action-btn"
                             onclick='abrirModalNivel({{ u.id }}, {{ u.nivel|tojson }}, {{ u.vinculos_lista|tojson }}, {{ (u.matricula or "")|tojson }})'
                             title="Alterar nível e vínculos">
                       <i class="bi bi-person-gear"></i>
@@ -136,7 +160,7 @@
                     {% if u.ativo %}
                     <form method="post" action="/admin/acessos/usuario/{{ u.id }}/revogar"
                           onsubmit="return confirm('Revogar acesso de {{ u.nome }}?')">
-                      <button class="btn btn-sm btn-outline-danger px-2" title="Revogar acesso">
+                      <button class="btn btn-sm btn-outline-danger access-action-btn" title="Revogar acesso">
                         <i class="bi bi-person-x"></i>
                       </button>
                     </form>
@@ -144,7 +168,7 @@
                     <!-- Reset senha -->
                     <form method="post" action="/admin/usuarios/{{ u.id }}/reset-senha"
                           onsubmit="return confirm('Redefinir senha de {{ u.nome }}?')">
-                      <button class="btn btn-sm btn-outline-warning px-2" title="Redefinir senha">
+                      <button class="btn btn-sm btn-outline-warning access-action-btn" title="Redefinir senha">
                         <i class="bi bi-key-fill"></i>
                       </button>
                     </form>
@@ -516,6 +540,10 @@
               <option value="master">Master (RH)</option>
             </select>
           </div>
+          <div id="nvInfoVinculos" class="alert alert-info small py-2 d-none">
+            <i class="bi bi-info-circle me-1"></i>
+            Ajuste abaixo os vínculos de consulta aplicáveis ao nível selecionado.
+          </div>
           <div id="nvSecDiv" class="mb-3" style="display:none">
             <label class="form-label fw-semibold">Secretaria(s) <small class="text-muted">(uma ou mais)</small></label>
             <div class="border rounded p-2" style="max-height:160px;overflow-y:auto" id="nvSecChecks">
@@ -550,7 +578,9 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Salvar</button>
+          <button type="submit" class="btn btn-primary" id="btnSalvarNivel">
+            <i class="bi bi-check-lg me-1"></i>Salvar
+          </button>
         </div>
       </form>
     </div>
@@ -705,11 +735,14 @@ document.querySelector('#modalPreAuth form')?.addEventListener('submit', functio
 
 function ajustarModalNivel() {
   const nv = document.getElementById('nivelNvModal').value;
-  document.getElementById('nvSecDiv').style.display = nv==='secretario' ? '' : 'none';
-  document.getElementById('nvSetDiv').style.display = nv==='chefia'     ? '' : 'none';
+  const mostraSec = ['secretario','master','visualizacao'].includes(nv);
+  const mostraSet = ['chefia','master','visualizacao'].includes(nv);
+  document.getElementById('nvInfoVinculos').classList.toggle('d-none', !(mostraSec || mostraSet));
+  document.getElementById('nvSecDiv').style.display = mostraSec ? '' : 'none';
+  document.getElementById('nvSetDiv').style.display = mostraSet ? '' : 'none';
   document.getElementById('nvMatDiv').style.display = nv==='servidor'   ? '' : 'none';
-  document.querySelectorAll('#nvSecDiv input[name="vinculos"]').forEach(cb => cb.disabled = nv !== 'secretario');
-  document.querySelectorAll('#nvSetDiv input[name="vinculos"]').forEach(cb => cb.disabled = nv !== 'chefia');
+  document.querySelectorAll('#nvSecDiv input[name="vinculos"]').forEach(cb => cb.disabled = !mostraSec);
+  document.querySelectorAll('#nvSetDiv input[name="vinculos"]').forEach(cb => cb.disabled = !mostraSet);
 }
 
 function abrirModalNivel(uid, nivel, vinculosJson, mat) {
@@ -728,15 +761,57 @@ function abrirModalNivel(uid, nivel, vinculosJson, mat) {
   new bootstrap.Modal(document.getElementById('modalNivel')).show();
 }
 
-document.getElementById('formNivel')?.addEventListener('submit', function(e) {
+document.getElementById('formNivel')?.addEventListener('submit', async function(e) {
+  e.preventDefault();
   const nv = document.getElementById('nivelNvModal').value;
   if (nv === 'chefia' && !document.querySelector('#nvSetDiv input[name="vinculos"]:checked')) {
-    e.preventDefault();
     alert('Selecione ao menos um departamento para a chefia.');
+    return;
   }
   if (nv === 'secretario' && !document.querySelector('#nvSecDiv input[name="vinculos"]:checked')) {
-    e.preventDefault();
     alert('Selecione ao menos uma secretaria para o secretário.');
+    return;
+  }
+  const form = this;
+  const btn = document.getElementById('btnSalvarNivel');
+  const oldHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Salvando...';
+  const loading = _mostrarLoadingVinculo('Alterando nível e vínculos', 'Aplicando permissões do usuário');
+  try {
+    const res = await fetch(form.action, {
+      method: 'POST',
+      body: new FormData(form),
+      headers: {'X-Requested-With': 'XMLHttpRequest'}
+    });
+    const d = await res.json();
+    await new Promise(resolve => setTimeout(resolve, 900));
+    clearInterval(loading.timer);
+    loading.modal.hide();
+    btn.disabled = false;
+    btn.innerHTML = oldHtml;
+    if (!d.ok) {
+      alert(d.erro || 'Não foi possível salvar a alteração.');
+      return;
+    }
+    bootstrap.Modal.getInstance(document.getElementById('modalNivel'))?.hide();
+    setTimeout(() => {
+      _limparBackdrops();
+      document.querySelector('#modalVinculoConfirmacao .modal-title').textContent = 'Acesso Atualizado';
+      document.getElementById('vqConfAcao').textContent = 'atualizado para';
+      document.getElementById('vqConfNome').textContent = d.nome || '';
+      document.getElementById('vqConfMatricula').textContent = d.matricula || '—';
+      document.getElementById('vqConfNivel').textContent = d.nivel_label || d.nivel || '';
+      document.getElementById('vqConfLocal').textContent = (d.vinculos && d.vinculos.length) ? d.vinculos.join(' | ') : 'Sem vínculo específico';
+      document.getElementById('vqConfMsg').textContent = d.msg || 'Nível e vínculos salvos com sucesso.';
+      new bootstrap.Modal(document.getElementById('modalVinculoConfirmacao'), { backdrop: 'static' }).show();
+    }, 220);
+  } catch(err) {
+    clearInterval(loading.timer);
+    loading.modal.hide();
+    btn.disabled = false;
+    btn.innerHTML = oldHtml;
+    alert('Erro de comunicação ao salvar nível e vínculos.');
   }
 });
 

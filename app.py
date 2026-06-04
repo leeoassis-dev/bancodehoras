@@ -4422,11 +4422,40 @@ def admin_alterar_nivel(uid):
     nivel    = request.form['nivel']
     vinculos = request.form.getlist('vinculos')
     mat      = request.form.get('matricula','').strip()
-    vj = json.dumps(vinculos)
-    db.execute('UPDATE usuarios SET nivel=?,matricula=?,vinculos=? WHERE id=?',
-               (nivel, mat, vj, uid))
+    usuario = db.execute("SELECT id,nome,nivel,matricula,vinculos FROM usuarios WHERE id=?", (uid,)).fetchone()
+    if not usuario:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"ok": False, "erro": "Usuário não encontrado."}), 404
+        flash("Usuário não encontrado.", "danger")
+        return redirect(url_for('admin_acessos'))
+    if nivel != 'servidor':
+        mat = ''
+    sec = vinculos[0] if nivel == 'secretario' and vinculos else ''
+    set_ = vinculos[0] if nivel == 'chefia' and vinculos else ''
+    vj = json.dumps(vinculos, ensure_ascii=False)
+    db.execute('UPDATE usuarios SET nivel=?,matricula=?,secretaria=?,setor=?,vinculos=? WHERE id=?',
+               (nivel, mat, sec, set_, vj, uid))
+    labels = {'master':'Master', 'visualizacao':'Visualização', 'secretario':'Secretário', 'chefia':'Chefia', 'servidor':'Servidor'}
+    registrar_auditoria(
+        db, "Alterou nível e vínculos", "usuarios", uid, mat or None, usuario["nome"],
+        f"De {usuario['nivel']} para {nivel}; vínculos: {', '.join(vinculos) if vinculos else 'sem vínculo'}"
+    )
     db.commit()
-    flash('Nivel de acesso atualizado.', 'success')
+    if session.get("uid") == uid:
+        session["nivel"] = nivel
+        session["matricula"] = mat
+        session["vinculos"] = vinculos
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "ok": True,
+            "nome": usuario["nome"],
+            "nivel": nivel,
+            "nivel_label": labels.get(nivel, nivel),
+            "matricula": mat,
+            "vinculos": vinculos,
+            "msg": "Nível e vínculos atualizados com sucesso."
+        })
+    flash('Nível de acesso e vínculos atualizados.', 'success')
     return redirect(url_for('admin_acessos'))
 
 
