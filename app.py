@@ -36,6 +36,7 @@ configure_app_security(app)
 app.teardown_appcontext(close_db)
 app.url_map.strict_slashes = False
 app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_MB", "8")) * 1024 * 1024
+app.jinja_env.globals['status_meta'] = status_meta
 
 LIMITE_PAGAMENTO_MINUTOS = 45 * 60
 MESES_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
