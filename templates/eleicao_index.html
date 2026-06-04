@@ -3,13 +3,13 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
-    <h4 class="mb-0"><i class="bi bi-calendar2-check me-2" style="color:#b45309"></i>Banco de Dias de Eleição</h4>
-    <span class="text-muted small">Servidores com saldo de dias por trabalho eleitoral</span>
+    <h4 class="mb-0"><i class="bi bi-calendar2-check me-2" style="color:#b45309"></i>Dias de Eleição</h4>
+    <span class="text-muted small">Banco de dias concedidos por trabalho eleitoral.</span>
   </div>
   {% if nivel == 'master' %}
-  <button class="btn btn-lg text-white fw-bold px-4" style="background:#b45309;"
+  <button class="btn btn-sm text-white fw-semibold" style="background:#b45309;"
           data-bs-toggle="modal" data-bs-target="#modalLancarCredito" title="Lançar dias de eleição">
-    <i class="bi bi-plus-lg me-1"></i> Lançar Dias
+    <i class="bi bi-plus-lg me-1"></i>Lançar Dias
   </button>
   {% endif %}
 </div>
@@ -52,7 +52,7 @@
       </button>
       {% if busca or sec_sel or set_sel or saldo_sel %}
       <a href="{{ url_for('eleicao_index') }}" class="btn btn-outline-secondary" title="Limpar filtros">
-        <i class="bi bi-x-lg"></i>
+        <i class="bi bi-x-lg me-1"></i>Limpar
       </a>
       {% endif %}
     </div>

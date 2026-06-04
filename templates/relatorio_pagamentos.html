@@ -1,7 +1,7 @@
 ﻿{% extends "base.html" %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <h5 class="mb-0"><i class="bi bi-receipt me-2 text-danger"></i>Relatório de Pagamentos em Folha</h5>
+  <h5 class="mb-0"><i class="bi bi-receipt me-2 text-danger"></i>Relatório de Pagamentos de Banco de Horas</h5>
   <a href="/pagamentos" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
 </div>
 
@@ -28,12 +28,12 @@
       <input type="date" name="data_fim" class="form-control form-control-sm" value="{{ filtros.data_fim }}">
     </div>
     <div class="col-md-4 d-flex gap-2">
-      <button type="submit" name="fmt" value="html" class="btn btn-danger btn-sm flex-fill">Filtrar</button>
+      <button type="submit" name="fmt" value="html" class="btn btn-danger btn-sm flex-fill"><i class="bi bi-funnel me-1"></i>Filtrar</button>
       <button type="submit" name="fmt" value="csv" class="btn btn-outline-success btn-sm">
         <i class="bi bi-download"></i> CSV
       </button>
       {% if filtros.matricula or filtros.data_ini or filtros.data_fim %}
-      <a href="/pagamentos/relatorio" class="btn btn-outline-secondary btn-sm">Limpar</a>
+      <a href="/pagamentos/relatorio" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x-lg me-1"></i>Limpar</a>
       {% endif %}
     </div>
   </div>
@@ -46,7 +46,7 @@
     <div>
       <span class="fw-bold">{{ pag.nome }}</span>
       <span class="badge bg-secondary ms-2">{{ pag.matricula }}</span>
-      <span class="ms-3 text-muted small">Folha: <strong>{{ pag.data_pagamento|fmt_data }}</strong></span>
+      <span class="ms-3 text-muted small">Pagamento: <strong>{{ pag.data_pagamento|fmt_data }}</strong></span>
       {% if pag.descricao %}
       <span class="ms-2 text-muted small">| {{ pag.descricao }}</span>
       {% endif %}

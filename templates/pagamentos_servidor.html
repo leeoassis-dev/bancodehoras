@@ -5,7 +5,7 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
-    <h5 class="mb-0"><i class="bi bi-cash-coin me-2 text-danger"></i>Pagamento em Folha</h5>
+    <h5 class="mb-0"><i class="bi bi-cash-coin me-2 text-danger"></i>Pagamento de Banco de Horas</h5>
   </div>
   <a href="/pagamentos" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Voltar</a>
 </div>
@@ -87,7 +87,7 @@
             <th class="text-center">%</th>
             <th class="text-center">Saldo Banco</th>
             <th class="text-center text-danger fw-bold" style="min-width:120px">
-              H. Base p/ Folha <i class="bi bi-pencil-fill small"></i>
+              H. Base p/ Pagamento <i class="bi bi-pencil-fill small"></i>
             </th>
             <th>Descrição</th>
           </tr>
@@ -125,7 +125,7 @@
         </tbody>
         <tfoot class="table-light fw-bold">
           <tr>
-            <td colspan="5">Total p/ folha</td>
+            <td colspan="5">Total p/ pagamento</td>
             <td class="text-center text-danger" id="totalRodape">00:00</td>
             <td></td>
           </tr>
@@ -191,13 +191,13 @@
           Horas não vencidas incluídas — justificativa obrigatória.
         </div>
         <div class="mb-3">
-          <label class="form-label fw-semibold">Data do pagamento em folha</label>
+          <label class="form-label fw-semibold">Data do pagamento</label>
           <input type="date" id="modal_data" class="form-control" required>
         </div>
         <div class="mb-3">
           <label class="form-label fw-semibold">Referência / Competência da folha</label>
           <input type="text" id="modal_desc" class="form-control"
-                 placeholder="Ex: Folha 06/2026 – competência maio/2026">
+                 placeholder="Ex: Pagamento 06/2026 - competência maio/2026">
         </div>
         <div class="mb-3" id="campoJustificativa">
           <label class="form-label fw-semibold">

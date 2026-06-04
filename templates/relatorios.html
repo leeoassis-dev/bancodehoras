@@ -135,7 +135,7 @@
           </select>
         </div>
         <div class="col d-flex gap-1">
-          <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
+          <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filtrar</button>
           <button type="submit" name="fmt" value="csv" class="btn btn-outline-success btn-sm">
             <i class="bi bi-download"></i> CSV
           </button>
@@ -146,7 +146,7 @@
             <i class="bi bi-file-earmark-pdf"></i> PDF
           </button>
           {% if filtros.matricula or filtros.servidor or filtros.secretaria or filtros.setor or filtros.cargo or filtros.data_ini or filtros.data_fim or filtros.mes or filtros.rel %}
-          <a href="/relatorios?aba={{ aba }}{% if filtros.rel %}&rel={{ filtros.rel }}{% endif %}" class="btn btn-outline-secondary btn-sm">✕</a>
+          <a href="/relatorios?aba={{ aba }}{% if filtros.rel %}&rel={{ filtros.rel }}{% endif %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x-lg me-1"></i>Limpar</a>
           {% endif %}
         </div>
       </div>
@@ -257,7 +257,7 @@
                 {% elif e.tipo_evento == 'compensacao' %}
                   <span class="badge bg-warning text-dark">Compensação</span>
                 {% else %}
-                  <span class="badge bg-danger">Pagamento Folha</span>
+                  <span class="badge bg-danger">Pagamento</span>
                 {% endif %}
               </td>
               <td><span class="badge bg-secondary">{{ e.matricula }}</span></td>
@@ -314,7 +314,7 @@
 
     <!-- ══ ABA: Pagamentos ══ -->
     {% elif aba == 'pagamentos' %}
-    <h5 class="mb-1"><i class="bi bi-receipt me-2 text-danger"></i>{{ data.titulo or 'Pagamentos Realizados em Folha' }}</h5>
+    <h5 class="mb-1"><i class="bi bi-receipt me-2 text-danger"></i>{{ data.titulo or 'Pagamentos de Banco de Horas' }}</h5>
     <p class="text-muted mb-3">{{ data.descricao or 'Pagamentos registrados no banco com detalhamento das horas realizadas que originaram a baixa.' }}</p>
     {% if data.pagamentos %}
     {% for grupo, pagamentos in data.grupos.items() %}
@@ -334,7 +334,7 @@
           <span class="fw-bold">{{ pag.nome }}</span>
           <span class="badge bg-secondary ms-2">{{ pag.matricula }}</span>
           {% if pag.secretaria %}<span class="ms-2 text-muted small">{{ pag.secretaria }}</span>{% endif %}
-          <span class="ms-3 text-muted small">Folha: <strong>{{ pag.data_pagamento|fmt_data }}</strong></span>
+          <span class="ms-3 text-muted small">Pagamento: <strong>{{ pag.data_pagamento|fmt_data }}</strong></span>
           {% if pag.descricao %}<span class="ms-2 text-muted small">| {{ pag.descricao }}</span>{% endif %}
         </div>
         <div class="fw-bold text-danger">

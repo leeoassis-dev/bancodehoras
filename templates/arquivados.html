@@ -34,8 +34,8 @@
       </select>
     </div>
     <div class="col-md-2 d-flex gap-2">
-      <button type="submit" class="btn btn-secondary flex-fill">Buscar</button>
-      {% if busca or secretaria_sel or setor_sel %}<a href="/arquivados" class="btn btn-outline-secondary">✕</a>{% endif %}
+      <button type="submit" class="btn btn-secondary flex-fill"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+      {% if busca or secretaria_sel or setor_sel %}<a href="/arquivados" class="btn btn-outline-secondary"><i class="bi bi-x-lg me-1"></i>Limpar</a>{% endif %}
     </div>
   </div>
 </form>

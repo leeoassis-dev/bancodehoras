@@ -55,9 +55,9 @@
         <option value="0" {{ 'selected' if fg_sel=='0' }}>Ocultar FG</option>
       </select>
     </div>
-    <div class="col-md-1 d-flex gap-2">
-      <button type="submit" class="btn btn-primary flex-fill">Filtrar</button>
-      {% if busca or secretaria_sel or setor_sel or saldo_sel or fg_sel or vencimento_sel %}<a href="/servidores" class="btn btn-outline-secondary">✕</a>{% endif %}
+    <div class="col-md-2 d-flex gap-2">
+      <button type="submit" class="btn btn-primary flex-fill"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+      {% if busca or secretaria_sel or setor_sel or saldo_sel or fg_sel or vencimento_sel %}<a href="/servidores" class="btn btn-outline-secondary"><i class="bi bi-x-lg me-1"></i>Limpar</a>{% endif %}
     </div>
   </div>
 </form>
@@ -103,7 +103,7 @@
             <div class="d-flex flex-wrap gap-1 justify-content-center">
               {% if u_nivel != 'visualizacao' %}
               <a href="/lancamentos/{{ s.matricula }}" class="btn btn-sm btn-outline-success"><i class="bi bi-plus-circle"></i> Horas</a>
-              <a href="/compensacoes/{{ s.matricula }}" class="btn btn-sm btn-outline-warning"><i class="bi bi-arrow-left-right"></i> Comp.</a>
+              <a href="/compensacoes/{{ s.matricula }}" class="btn btn-sm btn-outline-warning"><i class="bi bi-arrow-left-right"></i> Compensar</a>
               <a href="/pagamentos/{{ s.matricula }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-cash-coin"></i> Pagar</a>
               <a href="/servidores/{{ s.matricula }}/editar" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
               <form method="post" action="/servidores/{{ s.matricula }}/arquivar"
@@ -212,9 +212,9 @@ function verHistorico(matricula, nome) {
       html+='</tbody></table></div>';
     } else html+='<p class="text-muted small">Nenhuma compensação.</p>';
 
-    html+='<h6 class="text-danger fw-bold mb-2"><i class="bi bi-cash-coin me-1"></i>Pagamentos em Folha</h6>';
+    html+='<h6 class="text-danger fw-bold mb-2"><i class="bi bi-cash-coin me-1"></i>Pagamentos de Banco de Horas</h6>';
     if(data.pagamentos.length){
-      html+='<div class="table-responsive"><table class="table table-sm table-hover align-middle small"><thead class="table-light"><tr><th>Data Folha</th><th>H.Base Pagas</th><th>Saldo Banco Baixado</th><th>Referência</th></tr></thead><tbody>';
+      html+='<div class="table-responsive"><table class="table table-sm table-hover align-middle small"><thead class="table-light"><tr><th>Data Pagamento</th><th>H.Base Pagas</th><th>Saldo Banco Baixado</th><th>Referência</th></tr></thead><tbody>';
       data.pagamentos.forEach(p=>{
         html+=`<tr><td>${fmtDataBR(p.data)}</td><td class="fw-bold text-danger">${p.base_fmt}</td><td class="text-muted">${p.banco_fmt}</td><td class="text-muted">${p.descricao||'–'}</td></tr>`;
       });

@@ -65,10 +65,10 @@
         <option value="cancelado" {{ 'selected' if filtros.status == 'cancelado' }}>Cancelado</option>
       </select>
     </div>
-    <div class="col-md-1 d-flex align-items-end gap-1">
-      <button type="submit" class="btn btn-primary btn-sm flex-fill"><i class="bi bi-funnel"></i></button>
+    <div class="col-md-2 d-flex align-items-end gap-1">
+      <button type="submit" class="btn btn-primary btn-sm flex-fill"><i class="bi bi-funnel me-1"></i>Filtrar</button>
       {% if filtros.matricula or filtros.secretaria or filtros.setor or filtros.tipo or filtros.status or filtros.dt_ini or filtros.dt_fim %}
-      <a href="/admin/tarefas" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x"></i></a>
+      <a href="/admin/tarefas" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x-lg me-1"></i>Limpar</a>
       {% endif %}
     </div>
   </div>

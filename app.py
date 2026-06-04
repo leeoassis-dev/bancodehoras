@@ -1861,7 +1861,7 @@ def registrar_pagamento(matricula):
         db.execute("INSERT INTO consumos (lancamento_id,tipo,referencia_id,minutos) VALUES (?,?,?,?)", (lid,"pagamento",pid,mins))
     registrar_auditoria(
         db, "Criou pagamento", "pagamento", pid, matricula, srv["nome"] if srv else "",
-        f"Data {data_pag}; horas base para folha {minutos_para_horas(total_base)}; itens pagos {len(pag_itens)}; descrição: {desc_final or '-'}"
+        f"Data {data_pag}; horas base para pagamento {minutos_para_horas(total_base)}; itens pagos {len(pag_itens)}; descrição: {desc_final or '-'}"
     )
     db.commit()
     aviso = f"\n⚠️ Total {minutos_para_horas(total_base)} ultrapassa o limite de 45h." if total_base>LIMITE_PAGAMENTO_MINUTOS else ""
@@ -3046,7 +3046,7 @@ def relatorios():
         titulos_historico = {
             "lancamentos": "Horas Lançadas por Período",
             "compensacoes": "Horas Compensadas por Período",
-            "pagamentos": "Pagamentos em Folha por Período",
+            "pagamentos": "Pagamentos de Banco de Horas por Período",
         }
         data["titulo"] = titulos_historico.get(rel, "Histórico Completo")
         data["descricao"] = "Histórico consolidado conforme filtros aplicados."
@@ -3079,7 +3079,7 @@ def relatorios():
                             detalhes = "Horas informadas"
                         tipo_ev = "Compensação"
                     else:
-                        pago = minutos_num(e["base_paga"]); detalhes = e.get("descricao",""); tipo_ev = "Pagamento Folha"
+                        pago = minutos_num(e["base_paga"]); detalhes = e.get("descricao",""); tipo_ev = "Pagamento"
                     subt["lanc"] += lanc; subt["comp"] += comp; subt["pago"] += pago
                     geral["lanc"] += lanc; geral["comp"] += comp; geral["pago"] += pago; geral["qtd"] += 1
                     rows.append([grupo, data_ev, e["matricula"], e["nome"], e.get("secretaria",""), e.get("setor",""), e.get("cargo",""), fg_s, tipo_ev, detalhes,
@@ -3093,7 +3093,7 @@ def relatorios():
             return _export_response(fmt_out, nome_export, f"Relatório de {data['titulo']}", headers, rows)
 
     elif aba == "pagamentos":
-        data["titulo"] = "Horas Pagas em Folha por Período"
+        data["titulo"] = "Horas Registradas para Pagamento por Período"
         data["descricao"] = "Pagamentos registrados no banco com detalhamento das horas realizadas que originaram a baixa."
         fp=f"WHERE p.matricula IN (SELECT matricula FROM servidores s {filt_srv})"; pp=list(params_srv)
         if di: fp+=" AND p.data_pagamento>=?"; pp.append(di)

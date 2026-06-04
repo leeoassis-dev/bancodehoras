@@ -36,9 +36,9 @@
       </select>
     </div>
     <div class="col-md-2 d-flex gap-2">
-      <button type="submit" class="btn btn-primary flex-fill">Filtrar</button>
+      <button type="submit" class="btn btn-primary flex-fill"><i class="bi bi-funnel me-1"></i>Filtrar</button>
       {% if busca or secretaria_sel or setor_sel %}
-      <a href="/" class="btn btn-outline-secondary">✕</a>
+      <a href="/" class="btn btn-outline-secondary"><i class="bi bi-x-lg me-1"></i>Limpar</a>
       {% endif %}
     </div>
   </div>
@@ -185,10 +185,10 @@ function verHistorico(matricula, nome) {
       } else html += '<p class="text-muted small">Nenhuma compensação registrada.</p>';
 
       // ─── Pagamentos ───
-      html += '<h6 class="text-danger fw-bold mb-2"><i class="bi bi-cash-coin me-1"></i>Pagamentos em Folha</h6>';
+      html += '<h6 class="text-danger fw-bold mb-2"><i class="bi bi-cash-coin me-1"></i>Pagamentos de Banco de Horas</h6>';
       if (data.pagamentos.length) {
         html += '<div class="table-responsive"><table class="table table-sm table-hover align-middle small">';
-        html += '<thead class="table-light"><tr><th>Data Folha</th><th>H. Base Pagas</th><th>Saldo Banco Baixado</th><th>Referência</th></tr></thead><tbody>';
+        html += '<thead class="table-light"><tr><th>Data Pagamento</th><th>H. Base Pagas</th><th>Saldo Banco Baixado</th><th>Referência</th></tr></thead><tbody>';
         data.pagamentos.forEach(p => {
           html += `<tr>
             <td>${fmtDataBR(p.data)}</td>
@@ -198,7 +198,7 @@ function verHistorico(matricula, nome) {
           </tr>`;
         });
         html += '</tbody></table></div>';
-      } else html += '<p class="text-muted small">Nenhum pagamento em folha registrado.</p>';
+      } else html += '<p class="text-muted small">Nenhum pagamento de banco de horas registrado.</p>';
 
       document.getElementById('modalBody').innerHTML = html;
       document.getElementById('modalLinks').innerHTML = `

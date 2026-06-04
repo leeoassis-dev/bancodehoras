@@ -3,7 +3,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <h4 class="mb-0"><i class="bi bi-cash-coin me-2 text-danger"></i>Pagamento de Banco de Horas</h4>
-    <p class="text-muted small mb-0">Todos os servidores com saldo disponível para pagamento</p>
+    <p class="text-muted small mb-0">Servidores com saldo disponível para registro de pagamento.</p>
   </div>
   <a href="/relatorios?aba=pagamentos" class="btn btn-outline-danger btn-sm">
     <i class="bi bi-file-earmark-text me-1"></i>Relatório de Pagamentos
@@ -56,7 +56,7 @@
       </button>
       {% if busca or sec_sel or set_sel or status_sel or ocultar_fg=='0' %}
       <a href="{{ url_for('pagamentos_index') }}" class="btn btn-outline-secondary btn-sm" title="Limpar filtros">
-        <i class="bi bi-x-lg"></i>
+        <i class="bi bi-x-lg me-1"></i>Limpar
       </a>
       {% endif %}
     </div>
@@ -208,7 +208,7 @@
 
         <!-- Total -->
         <div class="alert alert-danger py-2 mb-3 d-flex justify-content-between align-items-center">
-          <span><i class="bi bi-calculator me-1"></i>Total de horas base para a folha:</span>
+          <span><i class="bi bi-calculator me-1"></i>Total de horas base para pagamento:</span>
           <span class="fs-4 fw-bold" id="mp_total">00:00</span>
           <span class="small text-muted">(limite legal: {{ limite_fmt }})</span>
         </div>
@@ -224,13 +224,13 @@
         <!-- Dados do pagamento -->
         <div class="row g-3 mt-1">
           <div class="col-md-4">
-            <label class="form-label fw-semibold small">Data de competência da folha <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold small">Data do pagamento <span class="text-danger">*</span></label>
             <input type="date" id="mp_data" class="form-control" required>
           </div>
           <div class="col-md-8">
             <label class="form-label fw-semibold small">Referência / Competência</label>
             <input type="text" id="mp_desc" class="form-control"
-                   placeholder="Ex: Folha 06/2026 – competência maio/2026">
+                   placeholder="Ex: Pagamento 06/2026 - competência maio/2026">
           </div>
         </div>
         <div class="mt-3">
@@ -363,7 +363,7 @@ function buildTable(modo) {
           <th>Data Realização</th><th>Status</th>
           <th class="text-center">H.Base</th><th class="text-center">%</th>
           <th class="text-center">Saldo Banco</th>
-          <th class="text-center text-danger fw-bold" style="min-width:110px">H. Base p/ Folha <i class="bi bi-pencil-fill small"></i></th>
+          <th class="text-center text-danger fw-bold" style="min-width:110px">H. Base p/ Pagamento <i class="bi bi-pencil-fill small"></i></th>
           <th>Descrição</th>
         </tr>
       </thead><tbody>`;
