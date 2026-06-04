@@ -72,7 +72,7 @@
       <tbody>
         {% for c in compensacoes %}
         <tr>
-          <td>{{ c.data|fmt_data }}</td>
+          <td>{% if c.data_fim and c.data_fim != c.data %}de {{ c.data|fmt_data }} até {{ c.data_fim|fmt_data }}{% else %}{{ c.data|fmt_data }}{% endif %}</td>
           <td><span class="badge bg-secondary">{{ c.matricula }}</span></td>
           <td>{{ c.nome }}</td>
           <td><span class="badge bg-secondary">Horas informadas</span></td>

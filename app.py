@@ -1069,7 +1069,7 @@ def api_historico(matricula):
         SELECT l.data, l.horas_base, l.percentual, l.minutos_creditados, l.descricao,
                COALESCE((SELECT SUM(c.minutos) FROM consumos c WHERE c.lancamento_id=l.id),0) AS consumido
         FROM lancamentos l WHERE l.matricula=? ORDER BY l.data DESC LIMIT 30""", (matricula,)).fetchall()
-    comps = db.execute("SELECT data,tipo,minutos_compensados,descricao FROM compensacoes WHERE matricula=? ORDER BY data DESC LIMIT 30", (matricula,)).fetchall()
+    comps = db.execute("SELECT data,data_fim,tipo,minutos_compensados,descricao FROM compensacoes WHERE matricula=? ORDER BY data DESC LIMIT 30", (matricula,)).fetchall()
     pags  = db.execute("""
         SELECT p.data_pagamento AS data, p.descricao,
                COALESCE(SUM(ROUND(c.minutos*l.minutos_base*1.0/l.minutos_creditados)),0) AS base_paga,
@@ -1114,7 +1114,7 @@ def historico_servidor_pdf(matricula):
         ORDER BY l.data DESC
     """, (matricula,)).fetchall()
     comps = db.execute("""
-        SELECT data,tipo,minutos_compensados,descricao
+        SELECT data,data_fim,tipo,minutos_compensados,descricao
         FROM compensacoes
         WHERE matricula=?
         ORDER BY data DESC
@@ -1492,8 +1492,9 @@ def arquivado_historico_pdf(matricula):
 
     story.append(Paragraph("Compensações", section_style))
     story.append(tabela(
-        ["Data", "Compensado", "Descrição", "Criado em"],
-        [[fmt_data(c["data"]), minutos_para_horas(c["minutos_compensados"]), c["descricao"] or "-", fmt_datetime(c["criado_em"])] for c in dados["compensacoes"]],
+        ["Registro", "Compensado", "Descrição", "Criado em"],
+        [[f"de {fmt_data(c['data'])} até {fmt_data(c['data_fim'])}" if c["data_fim"] and c["data_fim"] != c["data"] else fmt_data(c["data"]),
+          minutos_para_horas(c["minutos_compensados"]), c["descricao"] or "-", fmt_datetime(c["criado_em"])] for c in dados["compensacoes"]],
         [65, 70, 430, 95]
     ))
     story.append(Spacer(1, 5))
@@ -1595,22 +1596,35 @@ def compensacoes(matricula):
     saldo = calcular_saldo(db, matricula)
     if request.method == "POST":
         data = request.form["data"]; tipo = "parcial"; desc = request.form["descricao"].strip()
+        data_fim = request.form.get("data_fim", "").strip() or data
         mc   = horas_para_minutos(request.form.get("horas","").strip())
-        if mc <= 0: flash("Valor inválido.","danger")
+        erro = None
+        try:
+            data_ini_dt = date.fromisoformat(data)
+            data_fim_dt = date.fromisoformat(data_fim)
+            if data_fim_dt < data_ini_dt:
+                erro = "A data final não pode ser anterior à data inicial."
+        except Exception:
+            erro = "Informe um período válido para a compensação."
+        if mc <= 0:
+            erro = "Valor inválido."
+        if erro:
+            flash(erro, "danger")
         else:
-            cid = db.insert("INSERT INTO compensacoes (matricula,data,tipo,minutos_compensados,descricao) VALUES (?,?,?,?,?)",
-                            (matricula, data, tipo, mc, desc))
+            cid = db.insert("INSERT INTO compensacoes (matricula,data,data_fim,tipo,minutos_compensados,descricao) VALUES (?,?,?,?,?,?)",
+                            (matricula, data, data_fim, tipo, mc, desc))
             _consumir_fifo_raw(db, matricula, mc, "compensacao", cid)
+            periodo_txt = f"de {fmt_data(data)} até {fmt_data(data_fim)}" if data_fim != data else fmt_data(data)
             registrar_auditoria(
                 db, "Criou compensação", "compensacao", cid, matricula, srv["nome"],
-                f"Data {data}; tipo {tipo}; compensado {minutos_para_horas(mc)}; saldo anterior {minutos_para_horas(saldo)}; descrição: {desc or '-'}"
+                f"Período {periodo_txt}; tipo {tipo}; compensado {minutos_para_horas(mc)}; saldo anterior {minutos_para_horas(saldo)}; descrição: {desc or '-'}"
             )
             db.commit()
             novo_saldo = saldo - mc
             if novo_saldo < 0:
-                flash(f"{srv['nome']} ({matricula})\nCompensação de {minutos_para_horas(mc)} registrada. Atenção: saldo ficou negativo em {minutos_para_horas(novo_saldo)}.", "warning")
+                flash(f"{srv['nome']} ({matricula})\nCompensação de {minutos_para_horas(mc)} registrada no período {periodo_txt}. Atenção: saldo ficou negativo em {minutos_para_horas(novo_saldo)}.", "warning")
             else:
-                flash(f"{srv['nome']} ({matricula})\nCompensação de {minutos_para_horas(mc)} registrada com sucesso.", "success")
+                flash(f"{srv['nome']} ({matricula})\nCompensação de {minutos_para_horas(mc)} registrada com sucesso no período {periodo_txt}.", "success")
             if request.form.get('_source') == 'dashboard':
                 return redirect(url_for("dashboard"))
             return redirect(url_for("compensacoes", matricula=matricula))
@@ -1923,9 +1937,10 @@ def admin_estornar_exclusao_servidor(exclusao_id):
              l.get("percentual"), l.get("minutos_creditados"), l.get("descricao"), l.get("criado_em")))
     for c in payload.get("compensacoes", []):
         db.execute("""INSERT INTO compensacoes
-            (id,matricula,data,tipo,minutos_compensados,descricao,criado_em)
-            VALUES (?,?,?,?,?,?,?)""",
-            (c.get("id"), c.get("matricula"), c.get("data"), c.get("tipo"), c.get("minutos_compensados"), c.get("descricao"), c.get("criado_em")))
+            (id,matricula,data,data_fim,tipo,minutos_compensados,descricao,criado_em)
+            VALUES (?,?,?,?,?,?,?,?)""",
+            (c.get("id"), c.get("matricula"), c.get("data"), c.get("data_fim") or c.get("data"),
+             c.get("tipo"), c.get("minutos_compensados"), c.get("descricao"), c.get("criado_em")))
     for p in payload.get("pagamentos", []):
         db.execute("""INSERT INTO pagamentos
             (id,matricula,data_pagamento,descricao,criado_em)
@@ -3044,7 +3059,12 @@ def relatorios():
                     if e["tipo_evento"]=="lancamento":
                         lanc = minutos_num(e["minutos_creditados"]); detalhes = f"{e['horas_base']} + {e['percentual']}%"; tipo_ev = "Lançamento"
                     elif e["tipo_evento"]=="compensacao":
-                        comp = minutos_num(e["minutos_compensados"]); detalhes = "Horas informadas"; tipo_ev = "Compensação"
+                        comp = minutos_num(e["minutos_compensados"])
+                        if e.get("data_fim") and e.get("data_fim") != e.get("data"):
+                            detalhes = f"Período de {fmt_data(e['data'])} até {fmt_data(e['data_fim'])}"
+                        else:
+                            detalhes = "Horas informadas"
+                        tipo_ev = "Compensação"
                     else:
                         pago = minutos_num(e["base_paga"]); detalhes = e.get("descricao",""); tipo_ev = "Pagamento Folha"
                     subt["lanc"] += lanc; subt["comp"] += comp; subt["pago"] += pago

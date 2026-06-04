@@ -210,6 +210,7 @@ _SCHEMA_SQLITE = """
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         matricula TEXT NOT NULL REFERENCES servidores(matricula),
         data TEXT NOT NULL, tipo TEXT NOT NULL,
+        data_fim TEXT,
         minutos_compensados INTEGER NOT NULL, descricao TEXT,
         criado_em TEXT DEFAULT (datetime('now','localtime'))
     );
@@ -334,6 +335,7 @@ _SCHEMA_POSTGRES = """
         id SERIAL PRIMARY KEY,
         matricula TEXT NOT NULL REFERENCES servidores(matricula),
         data TEXT NOT NULL, tipo TEXT NOT NULL,
+        data_fim TEXT,
         minutos_compensados INTEGER NOT NULL, descricao TEXT,
         criado_em TEXT DEFAULT TO_CHAR(NOW(),'YYYY-MM-DD HH24:MI:SS')
     );
@@ -461,6 +463,7 @@ def init_db():
         ("usuarios",          "vinculos",           "TEXT DEFAULT '[]'"),
         ("pre_autorizacoes",  "vinculos",           "TEXT DEFAULT '[]'"),
         ("usuarios",          "secretaria",         "TEXT"),
+        ("compensacoes",      "data_fim",           "TEXT"),
         ("solicitacoes",      "data_fim",           "TEXT"),
         ("solicitacoes",      "despacho_chefia",    "TEXT"),
     ]

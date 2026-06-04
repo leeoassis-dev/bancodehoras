@@ -45,8 +45,25 @@
       <form method="post">
         <input type="hidden" name="tipo" value="parcial">
         <div class="mb-3">
-          <label class="form-label fw-semibold">Data da compensação</label>
+          <label class="form-label fw-semibold">Tipo de lançamento</label>
+          <div class="btn-group w-100" role="group">
+            <input type="radio" class="btn-check" name="periodo_tipo" id="tipoUmDia" value="um" checked>
+            <label class="btn btn-outline-warning fw-semibold" for="tipoUmDia">Um dia</label>
+            <input type="radio" class="btn-check" name="periodo_tipo" id="tipoPeriodo" value="periodo">
+            <label class="btn btn-outline-warning fw-semibold" for="tipoPeriodo">Dias em sequência</label>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Data inicial</label>
           <input type="date" name="data" class="form-control" required>
+        </div>
+        <div class="mb-3 d-none" id="dataFimBox">
+          <label class="form-label fw-semibold">Data final</label>
+          <input type="date" name="data_fim" class="form-control">
+        </div>
+        <div id="avisoPeriodo" class="alert alert-info small py-2 d-none">
+          <i class="bi bi-info-circle me-1"></i>
+          Para dias em sequência, informe abaixo o total de horas de todos os dias.
         </div>
 
         <div class="mb-3">
@@ -100,7 +117,12 @@
             <tr>
               <td>{{ c.data|fmt_data }}</td>
               <td>
-                <span class="badge bg-secondary">Horas informadas</span>
+                {% if c.data_fim and c.data_fim != c.data %}
+                  <span class="fw-semibold">de {{ c.data|fmt_data }} até {{ c.data_fim|fmt_data }}</span>
+                  <span class="badge bg-info text-dark ms-1">Período</span>
+                {% else %}
+                  <span class="badge bg-secondary">Horas informadas</span>
+                {% endif %}
               </td>
               <td class="fw-semibold text-warning">{{ fmt(c.minutos_compensados) }}</td>
               <td class="text-muted">{{ c.descricao or '–' }}</td>
@@ -132,9 +154,16 @@
   const saldoAtual = {{ saldo|int }};
 
   function horasParaMinutos(valor) {
-    const m = /^(\d{1,3}):(\d{2})$/.exec((valor || '').trim());
+    const raw = (valor || '').trim();
+    if (/^\d{3,6}$/.test(raw)) {
+      const h = parseInt(raw.slice(0, -2), 10);
+      const m = parseInt(raw.slice(-2), 10);
+      return (isNaN(h) || isNaN(m) || m > 59) ? 0 : h * 60 + m;
+    }
+    const m = /^(\d{1,3}):(\d{2})$/.exec(raw);
     if (!m) return 0;
-    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    const minutos = parseInt(m[2], 10);
+    return minutos > 59 ? 0 : parseInt(m[1], 10) * 60 + minutos;
   }
 
   function minutosParaHoras(minutos) {
@@ -153,7 +182,35 @@
     document.getElementById('avisoNegativo').classList.toggle('d-none', projetado >= 0);
   }
 
-  document.getElementById('horasInput').addEventListener('input', atualizarSaldoProjetado);
+  function atualizarModoPeriodo() {
+    const periodo = document.getElementById('tipoPeriodo').checked;
+    document.getElementById('dataFimBox').classList.toggle('d-none', !periodo);
+    document.getElementById('avisoPeriodo').classList.toggle('d-none', !periodo);
+    if (!periodo) document.querySelector('[name=data_fim]').value = '';
+  }
+
+  document.getElementById('horasInput').addEventListener('input', () => setTimeout(atualizarSaldoProjetado, 0));
+  document.querySelectorAll('input[name="periodo_tipo"]').forEach(r => r.addEventListener('change', atualizarModoPeriodo));
+  document.querySelector('form[method="post"]').addEventListener('submit', e => {
+    const data = document.querySelector('[name=data]').value;
+    const dataFimInput = document.querySelector('[name=data_fim]');
+    if (document.getElementById('tipoPeriodo').checked) {
+      if (!dataFimInput.value) {
+        e.preventDefault();
+        alert('Informe a data final do período.');
+        dataFimInput.focus();
+        return;
+      }
+      if (dataFimInput.value < data) {
+        e.preventDefault();
+        alert('A data final não pode ser anterior à data inicial.');
+        dataFimInput.focus();
+      }
+    } else {
+      dataFimInput.value = data;
+    }
+  });
+  atualizarModoPeriodo();
   atualizarSaldoProjetado();
 </script>
 {% endblock %}

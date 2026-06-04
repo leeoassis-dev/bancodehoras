@@ -229,16 +229,33 @@
           <i class="bi bi-info-circle me-1"></i>
           O sistema permite compensação acima do saldo, mas avisará quando o banco ficar negativo.
         </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Tipo de lançamento</label>
+          <div class="btn-group w-100" role="group">
+            <input type="radio" class="btn-check" name="comp_periodo_tipo" id="comp_tipo_um" value="um" checked>
+            <label class="btn btn-outline-warning fw-semibold" for="comp_tipo_um">Um dia</label>
+            <input type="radio" class="btn-check" name="comp_periodo_tipo" id="comp_tipo_periodo" value="periodo">
+            <label class="btn btn-outline-warning fw-semibold" for="comp_tipo_periodo">Dias em sequência</label>
+          </div>
+        </div>
         <div class="row g-3 mb-3">
           <div class="col-6">
-            <label class="form-label fw-semibold small">Data da compensação <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold small">Data inicial <span class="text-danger">*</span></label>
             <input type="date" id="comp_data" class="form-control" required>
           </div>
-          <div class="col-6">
+          <div class="col-6" id="comp_data_fim_wrap" style="display:none">
+            <label class="form-label fw-semibold small">Data final <span class="text-danger">*</span></label>
+            <input type="date" id="comp_data_fim" class="form-control">
+          </div>
+          <div class="col-6" id="comp_horas_wrap">
             <label class="form-label fw-semibold small">Quantidade de horas <span class="text-danger">*</span></label>
             <input type="text" id="comp_horas" class="form-control js-hora" placeholder="HH:MM" inputmode="numeric"
                    pattern="\d{1,3}:\d{2}" required>
           </div>
+        </div>
+        <div id="comp_aviso_periodo" class="alert alert-info small py-2 d-none">
+          <i class="bi bi-info-circle me-1"></i>
+          Informe em "Quantidade de horas" o total de horas de todos os dias do período.
         </div>
         <div class="mb-3">
           <label class="form-label fw-semibold small">Saldo após compensação</label>
@@ -271,6 +288,7 @@
 <form id="formComp" method="post" action="" style="display:none">
   <input type="hidden" name="_source"   value="dashboard">
   <input type="hidden" name="data"      id="comp_hid_data">
+  <input type="hidden" name="data_fim"  id="comp_hid_data_fim">
   <input type="hidden" name="horas"     id="comp_hid_horas">
   <input type="hidden" name="descricao" id="comp_hid_desc">
 </form>
@@ -766,6 +784,9 @@ function abrirModalComp(srv) {
   document.getElementById('comp_info').textContent = [srv.matricula, srv.info].filter(Boolean).join(' · ');
   document.getElementById('formComp').action = `/compensacoes/${encodeURIComponent(srv.matricula)}`;
   document.getElementById('comp_data').valueAsDate = new Date();
+  document.getElementById('comp_data_fim').value = '';
+  document.getElementById('comp_tipo_um').checked = true;
+  atualizarModoComp();
   document.getElementById('comp_horas').value = '';
   document.getElementById('comp_desc').value = '';
   document.getElementById('comp_saldo_atual').textContent = '…';
@@ -785,6 +806,14 @@ function abrirModalComp(srv) {
   setTimeout(() => document.getElementById('comp_horas').focus(), 400);
 }
 
+function atualizarModoComp() {
+  const periodo = document.getElementById('comp_tipo_periodo').checked;
+  document.getElementById('comp_data_fim_wrap').style.display = periodo ? '' : 'none';
+  document.getElementById('comp_horas_wrap').className = periodo ? 'col-12' : 'col-6';
+  document.getElementById('comp_aviso_periodo').classList.toggle('d-none', !periodo);
+  if (!periodo) document.getElementById('comp_data_fim').value = '';
+}
+
 function atualizarPreviewComp() {
   const mc = parseHM(document.getElementById('comp_horas').value);
   const proj = _compSaldoMin - mc;
@@ -793,14 +822,22 @@ function atualizarPreviewComp() {
   document.getElementById('comp_aviso_neg').classList.toggle('d-none', proj >= 0 || mc === 0);
 }
 
-document.getElementById('comp_horas').addEventListener('input', atualizarPreviewComp);
+document.getElementById('comp_horas').addEventListener('input', () => setTimeout(atualizarPreviewComp, 0));
+document.querySelectorAll('input[name="comp_periodo_tipo"]').forEach(r =>
+  r.addEventListener('change', atualizarModoComp));
 
 function submitComp() {
   const data  = document.getElementById('comp_data').value;
+  const dataFim = document.getElementById('comp_tipo_periodo').checked
+    ? document.getElementById('comp_data_fim').value
+    : data;
   const horas = document.getElementById('comp_horas').value.trim();
   if (!data) { alert('Informe a data.'); return; }
+  if (!dataFim) { alert('Informe a data final do período.'); document.getElementById('comp_data_fim').focus(); return; }
+  if (dataFim < data) { alert('A data final não pode ser anterior à data inicial.'); document.getElementById('comp_data_fim').focus(); return; }
   if (parseHM(horas) <= 0) { alert('Informe as horas no formato HH:MM.'); document.getElementById('comp_horas').focus(); return; }
   document.getElementById('comp_hid_data').value  = data;
+  document.getElementById('comp_hid_data_fim').value  = dataFim;
   document.getElementById('comp_hid_horas').value = horas;
   document.getElementById('comp_hid_desc').value  = document.getElementById('comp_desc').value;
   mostrarCarregamento('Registrando compensação…', 'warning', () => document.getElementById('formComp').submit());
