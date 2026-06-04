@@ -1258,7 +1258,7 @@ def novo_servidor():
             db.commit()
             flash("Servidor cadastrado!", "success")
             return redirect(url_for("servidores"))
-    return render_template("servidor_form.html", servidor=None, **_opcoes_servidor_form(db))
+    return render_template("servidor_form.html", servidor=None, voltar_url=url_for("servidores"), **_opcoes_servidor_form(db))
 
 @app.route("/servidores/<matricula>/editar", methods=["GET","POST"])
 @master_required
@@ -1266,21 +1266,32 @@ def editar_servidor(matricula):
     db  = get_db()
     srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
     if not srv: flash("Não encontrado.", "danger"); return redirect(url_for("servidores"))
+    origem = request.args.get("origem", "").strip()
+    voltar_url = url_for("admin_usuarios") if origem == "usuarios" else url_for("servidores")
     if request.method == "POST":
         fg = 1 if request.form.get("funcao_gratificada") else 0
         cargo = request.form["cargo"].strip()
         setor = request.form["setor"].strip()
         secretaria = request.form["secretaria"].strip()
+        nome_novo = request.form["nome"].strip()
+        cpf_novo = somente_digitos(request.form["cpf"])
+        email_novo = request.form["email"].strip()
+        cpf_antigo = somente_digitos(srv["cpf"] or "")
         _garantir_cadastro_auxiliar(db, "cargo", cargo)
         _garantir_cadastro_auxiliar(db, "departamento", setor)
         _garantir_cadastro_auxiliar(db, "secretaria", secretaria)
         db.execute("UPDATE servidores SET nome=?,cpf=?,email=?,cargo=?,setor=?,secretaria=?,funcao_gratificada=? WHERE matricula=?",
-                   (request.form["nome"].strip(), somente_digitos(request.form["cpf"]), request.form["email"].strip(),
-                    cargo, setor, secretaria, fg, matricula))
+                   (nome_novo, cpf_novo, email_novo, cargo, setor, secretaria, fg, matricula))
+        db.execute(f"""
+            UPDATE usuarios
+               SET nome=?, cpf=?, email=?, matricula=?
+             WHERE matricula=?
+                OR ({cpf_sem_pontuacao_sql('cpf')}=? AND ?<>'')
+        """, (nome_novo, cpf_novo, email_novo, matricula, matricula, cpf_antigo, cpf_antigo))
         db.commit()
         flash("Dados atualizados.", "success")
-        return redirect(url_for("servidores"))
-    return render_template("servidor_form.html", servidor=srv, **_opcoes_servidor_form(db))
+        return redirect(voltar_url)
+    return render_template("servidor_form.html", servidor=srv, voltar_url=voltar_url, **_opcoes_servidor_form(db))
 
 @app.route("/servidores/<matricula>/arquivar", methods=["POST"])
 @master_required
@@ -4017,6 +4028,16 @@ def admin_editar_usuario(uid):
     db = get_db()
     u  = db.execute("SELECT * FROM usuarios WHERE id=?", (uid,)).fetchone()
     if not u: flash("Usuário não encontrado.", "danger"); return redirect(url_for('admin_usuarios'))
+    if request.method == 'GET':
+        mat = str(u["matricula"] or "").strip()
+        srv = None
+        if mat:
+            srv = db.execute("SELECT matricula FROM servidores WHERE matricula=?", (mat,)).fetchone()
+        if not srv and u["cpf"]:
+            cpf = somente_digitos(u["cpf"])
+            srv = db.execute(f"SELECT matricula FROM servidores WHERE {cpf_sem_pontuacao_sql('cpf')}=?", (cpf,)).fetchone()
+        if srv:
+            return redirect(url_for("editar_servidor", matricula=srv["matricula"], origem="usuarios"))
     if request.method == 'POST':
         nome  = request.form['nome'].strip()
         email = request.form['email'].strip()

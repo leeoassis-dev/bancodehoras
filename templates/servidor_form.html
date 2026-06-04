@@ -94,7 +94,7 @@
           <button type="submit" class="btn btn-primary">
             <i class="bi bi-check-lg me-1"></i>Salvar
           </button>
-          <a href="/servidores" class="btn btn-outline-secondary">Cancelar</a>
+          <a href="{{ voltar_url or url_for('servidores') }}" class="btn btn-outline-secondary">Cancelar</a>
         </div>
       </form>
     </div>

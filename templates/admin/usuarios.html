@@ -86,9 +86,13 @@
           </td>
           <td class="text-muted">{{ u.ultimo_acesso|fmt_datetime if u.ultimo_acesso else 'Nunca' }}</td>
           <td class="text-center">
-            {% if u.possui_conta %}
             <div class="d-flex gap-1 justify-content-center">
-              <a href="/admin/usuarios/{{ u.id }}/editar" class="btn btn-sm btn-outline-primary" title="Editar"><i class="bi bi-pencil"></i></a>
+              {% if u.matricula %}
+                <a href="{{ url_for('editar_servidor', matricula=u.matricula, origem='usuarios') }}" class="btn btn-sm btn-outline-primary" title="Editar cadastro completo"><i class="bi bi-pencil"></i></a>
+              {% elif u.possui_conta %}
+                <a href="/admin/usuarios/{{ u.id }}/editar" class="btn btn-sm btn-outline-primary" title="Editar usuário"><i class="bi bi-pencil"></i></a>
+              {% endif %}
+              {% if u.possui_conta %}
               <form method="post" action="/admin/usuarios/{{ u.id }}/toggle">
                 <button class="btn btn-sm {{ 'btn-success' if u.ativo else 'btn-outline-secondary' }}" title="{{ 'Desativar' if u.ativo else 'Ativar' }}">
                   <i class="bi {{ 'bi-toggle-on' if u.ativo else 'bi-toggle-off' }}"></i>
@@ -98,10 +102,8 @@
                     onsubmit="return confirm('Redefinir senha de {{ u.nome }}? Uma senha temporária será gerada.')">
                 <button class="btn btn-sm btn-outline-warning" title="Redefinir senha"><i class="bi bi-key"></i></button>
               </form>
+              {% endif %}
             </div>
-            {% else %}
-              <span class="text-muted small">Criar pelo RH</span>
-            {% endif %}
           </td>
         </tr>
         {% endfor %}
