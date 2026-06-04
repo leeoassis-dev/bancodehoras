@@ -201,9 +201,15 @@
           {% if saldo > 0 %}
           <form method="post">
             <input type="hidden" name="acao" value="add_baixa">
-            <div class="mb-2">
-              <label class="form-label small fw-semibold mb-1">Data da Folga <span class="text-danger">*</span></label>
-              <input type="date" name="data" class="form-control form-control-sm" required>
+            <div class="row g-2 mb-2">
+              <div class="col-md-6">
+                <label class="form-label small fw-semibold mb-1">Data inicial <span class="text-danger">*</span></label>
+                <input type="date" name="data" class="form-control form-control-sm" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-semibold mb-1">Data final</label>
+                <input type="date" name="data_fim" class="form-control form-control-sm">
+              </div>
             </div>
             <div class="mb-3">
               <label class="form-label small fw-semibold mb-1">Observação</label>

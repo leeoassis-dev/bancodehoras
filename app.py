@@ -4610,29 +4610,56 @@ def eleicao_servidor(matricula):
 
         elif acao == 'add_baixa':
             data_baixa = request.form.get('data', '').strip()
+            data_fim = request.form.get('data_fim', '').strip() or data_baixa
             obs = request.form.get('observacao', '').strip()
+            erro_baixa = None
+            datas_baixadas = []
+            qtd_dias = 0
             if not data_baixa:
-                if ajax:
-                    return jsonify({"ok": False, "erro": "Informe a data da folga."}), 400
-                flash("Informe a data da folga.", "danger")
-            elif calcular_saldo_eleicao(db, matricula) <= 0:
-                if ajax:
-                    return jsonify({"ok": False, "erro": "Saldo insuficiente de dias de eleição."}), 400
-                flash("Saldo insuficiente de dias de eleição.", "danger")
+                erro_baixa = "Informe a data da folga."
             else:
-                db.insert("""
-                    INSERT INTO eleicao_baixas (matricula, data, observacao, criado_por)
-                    VALUES (?,?,?,?)
-                """, (matricula, data_baixa, obs or None, session.get('nome')))
+                try:
+                    inicio_dt = date.fromisoformat(data_baixa)
+                    fim_dt = date.fromisoformat(data_fim)
+                    if fim_dt < inicio_dt:
+                        raise ValueError("fim_antes_inicio")
+                    qtd_dias = (fim_dt - inicio_dt).days + 1
+                    datas_baixadas = datas_periodo_consecutivo(data_baixa, qtd_dias)
+                except Exception:
+                    erro_baixa = "Informe um período válido para a folga."
+            saldo_eleicao = calcular_saldo_eleicao(db, matricula)
+            if not erro_baixa and saldo_eleicao <= 0:
+                erro_baixa = "Saldo insuficiente de dias de eleição."
+            if not erro_baixa and saldo_eleicao < qtd_dias:
+                erro_baixa = f"Saldo insuficiente. Período selecionado usa {qtd_dias} dia(s), mas o saldo disponível é {saldo_eleicao}."
+            if erro_baixa:
+                if ajax:
+                    return jsonify({"ok": False, "erro": erro_baixa}), 400
+                flash(erro_baixa, "danger")
+            else:
+                desc_base = obs or None
+                if qtd_dias > 1:
+                    periodo = f"Período: {fmt_data(datas_baixadas[0])} a {fmt_data(datas_baixadas[-1])} | Total: {qtd_dias} dias"
+                    desc_base = f"{obs} | {periodo}" if obs else periodo
+                ids_baixa = []
+                for data_item in datas_baixadas:
+                    bid = db.insert("""
+                        INSERT INTO eleicao_baixas (matricula, data, observacao, criado_por)
+                        VALUES (?,?,?,?)
+                    """, (matricula, data_item, desc_base, session.get('nome')))
+                    ids_baixa.append(bid)
                 db.commit()
                 registrar_auditoria(db, "ELEICAO_BAIXA_ADD", "eleicao_baixas",
                                     matricula=matricula, servidor_nome=srv['nome'],
-                                    detalhe=f"Folga em {data_baixa}")
+                                    detalhe=f"{qtd_dias} dia(s) de folga eleitoral: {datas_baixadas[0]} a {datas_baixadas[-1]}")
                 db.commit()
-                msg = f"Dia de folga eleitoral registrado para {srv['nome']} ({matricula}) em {data_baixa}."
+                if qtd_dias == 1:
+                    msg = f"Dia de folga eleitoral registrado para {srv['nome']} ({matricula}) em {data_baixa}."
+                else:
+                    msg = f"{qtd_dias} dias de folga eleitoral registrados para {srv['nome']} ({matricula}) de {fmt_data(datas_baixadas[0])} a {fmt_data(datas_baixadas[-1])}."
                 if ajax:
-                    return jsonify({"ok": True, "tipo": "baixa", "mensagem": msg, "nome": srv["nome"], "matricula": matricula, "data": data_baixa})
-                flash(f"{srv['nome']} ({matricula})\nDia de folga eleitoral registrado em {data_baixa}.", "success")
+                    return jsonify({"ok": True, "tipo": "baixa", "mensagem": msg, "nome": srv["nome"], "matricula": matricula, "data": data_baixa, "data_fim": data_fim, "dias": qtd_dias})
+                flash(f"{srv['nome']} ({matricula})\n{msg}", "success")
 
         if request.form.get('_source') == 'dashboard':
             return redirect(url_for('dashboard'))

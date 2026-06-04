@@ -423,9 +423,15 @@
             <div class="fw-bold" id="elbaixa_saldo">–</div>
           </div>
         </div>
-        <div class="mb-3">
-          <label class="form-label fw-semibold small">Data da Folga <span class="text-danger">*</span></label>
-          <input type="date" id="elbaixa_data" class="form-control" required>
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-semibold small">Data inicial <span class="text-danger">*</span></label>
+            <input type="date" id="elbaixa_data" class="form-control" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-semibold small">Data final</label>
+            <input type="date" id="elbaixa_data_fim" class="form-control">
+          </div>
         </div>
         <div class="mb-2">
           <label class="form-label fw-semibold small">Observação</label>
@@ -447,6 +453,7 @@
   <input type="hidden" name="_source"    value="dashboard">
   <input type="hidden" name="acao"       value="add_baixa">
   <input type="hidden" name="data"       id="elbaixa_hid_data">
+  <input type="hidden" name="data_fim"   id="elbaixa_hid_data_fim">
   <input type="hidden" name="observacao" id="elbaixa_hid_obs">
 </form>
 
@@ -966,6 +973,7 @@ function abrirModalElBaixa(srv) {
   document.getElementById('elbaixa_info').textContent = [srv.matricula, srv.info].filter(Boolean).join(' · ');
   document.getElementById('formElBaixa').action = `/eleicao/${encodeURIComponent(srv.matricula)}`;
   document.getElementById('elbaixa_data').valueAsDate = new Date();
+  document.getElementById('elbaixa_data_fim').value = '';
   document.getElementById('elbaixa_obs').value = '';
   document.getElementById('elbaixa_saldo').textContent = '…';
   document.getElementById('elbaixa_saldo').style.color = '';
@@ -983,8 +991,11 @@ function abrirModalElBaixa(srv) {
 
 function submitElBaixa() {
   const data = document.getElementById('elbaixa_data').value;
+  const dataFim = document.getElementById('elbaixa_data_fim').value || data;
   if (!data) { alert('Informe a data da folga.'); return; }
+  if (dataFim < data) { alert('A data final não pode ser anterior à data inicial.'); document.getElementById('elbaixa_data_fim').focus(); return; }
   document.getElementById('elbaixa_hid_data').value = data;
+  document.getElementById('elbaixa_hid_data_fim').value = dataFim;
   document.getElementById('elbaixa_hid_obs').value  = document.getElementById('elbaixa_obs').value;
   mostrarCarregamento('Registrando folga eleitoral…', 'secondary', () => document.getElementById('formElBaixa').submit());
 }
