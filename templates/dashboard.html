@@ -686,6 +686,13 @@ function fmtHM(min) {
   return String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
 }
 
+function calcularCreditoLancamento(horas, percentual) {
+  const minutosBase = parseHM(horas);
+  const pct = Number.parseInt(percentual, 10) || 0;
+  if (minutosBase <= 0) return 0;
+  return Math.round(minutosBase * (100 + pct) / 100);
+}
+
 function abrirModal(tipo) {
   const srv = encontrarServidorAtalho();
   if (!srv) {
@@ -714,9 +721,9 @@ function abrirModalLanc(srv) {
 }
 
 function atualizarPreviewLanc() {
-  const mb = parseHM(document.getElementById('lanc_horas').value);
-  const pct = parseInt(document.querySelector('input[name="lanc_pct_radio"]:checked')?.value || '50');
-  const mc = mb + Math.floor(mb * pct / 100);
+  const horas = document.getElementById('lanc_horas').value;
+  const pct = document.querySelector('input[name="lanc_pct_radio"]:checked')?.value || '50';
+  const mc = calcularCreditoLancamento(horas, pct);
   document.getElementById('lanc_preview').textContent = mc > 0 ? fmtHM(mc) : '–';
   document.getElementById('lanc_preview').style.color = mc > 0 ? '#198754' : '';
 }
