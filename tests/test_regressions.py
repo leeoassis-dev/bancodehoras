@@ -1,6 +1,6 @@
 import unittest
 
-from app import app
+from app import app, _historico_individual_pdf_response, _pdf_response, _xlsx_response
 from utils import (
     calcular_data_fim_periodo,
     datas_periodo_consecutivo,
@@ -53,6 +53,43 @@ class BasicRegressionTests(unittest.TestCase):
         response = client.get("/admin/saude")
         self.assertEqual(response.status_code, 302)
         self.assertIn("/admin/status", response.headers.get("Location", ""))
+
+    def test_report_generators_return_valid_files(self):
+        with app.test_request_context():
+            pdf = _pdf_response("teste", "Relatório de Teste", ["Nome", "Saldo"], [["Servidor", "01:30"]])
+            xlsx = _xlsx_response("teste", "Relatório de Teste", ["Nome", "Saldo"], [["Servidor", "01:30"]])
+            history = _historico_individual_pdf_response(
+                {
+                    "nome": "Servidor Teste",
+                    "matricula": "100",
+                    "cargo": "Cargo",
+                    "secretaria": "Secretaria",
+                    "setor": "Departamento",
+                },
+                {
+                    "lancamentos": [
+                        {
+                            "data": "2026-06-04",
+                            "horas_base": "02:00",
+                            "percentual": 50,
+                            "minutos_creditados": 180,
+                            "consumido": 60,
+                            "descricao": f"Lançamento de teste {i}",
+                        }
+                        for i in range(80)
+                    ],
+                    "compensacoes": [],
+                    "pagamentos": [],
+                    "eleicao_creditos": [],
+                    "eleicao_baixas": [],
+                    "saldo": 0,
+                    "saldo_eleicao": 0,
+                },
+                "historico_teste",
+            )
+        self.assertTrue(pdf.data.startswith(b"%PDF"))
+        self.assertTrue(history.data.startswith(b"%PDF"))
+        self.assertTrue(xlsx.data.startswith(b"PK"))
 
 
 if __name__ == "__main__":

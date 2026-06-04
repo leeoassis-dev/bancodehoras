@@ -517,25 +517,53 @@ def _xlsx_response(filename, title, headers, rows):
     cell.font = Font(bold=True, color="FFFFFF", size=14)
     cell.fill = PatternFill("solid", fgColor="1A3A6B")
     cell.alignment = Alignment(horizontal="center")
-    ws.append([])
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=max(1, len(headers)))
+    meta = ws.cell(2, 1, f"Prefeitura Municipal de Ibiporã | Emitido em {datetime.now().strftime('%d/%m/%Y %H:%M')} | {len(rows)} linha(s)")
+    meta.font = Font(italic=True, color="4B5563", size=9)
+    meta.alignment = Alignment(horizontal="center")
     ws.append(headers)
+    border = Border(
+        left=Side(style="thin", color="D0D7DE"),
+        right=Side(style="thin", color="D0D7DE"),
+        top=Side(style="thin", color="D0D7DE"),
+        bottom=Side(style="thin", color="D0D7DE"),
+    )
     for c in ws[3]:
         c.font = Font(bold=True, color="FFFFFF")
         c.fill = PatternFill("solid", fgColor="1A3A6B")
         c.alignment = Alignment(horizontal="center")
+        c.border = border
     for row in rows:
         ws.append([_safe_excel(v) for v in row])
         label = str(row[0] if row else "")
-        if label.startswith("TOTAL DO GRUPO") or label.startswith("TOTAL GERAL"):
+        for c in ws[ws.max_row]:
+            c.border = border
+            c.alignment = Alignment(vertical="top", wrap_text=True)
+            if ws.max_row % 2 == 0:
+                c.fill = PatternFill("solid", fgColor="F4F6F9")
+        if label.startswith("TOTAL DO GRUPO") or label.startswith("TOTAL GERAL") or label.startswith("Subtotal"):
             fill = "D9EAF7" if label.startswith("TOTAL DO GRUPO") else "1A3A6B"
-            font_color = "000000" if label.startswith("TOTAL DO GRUPO") else "FFFFFF"
+            if label.startswith("Subtotal"):
+                fill = "E7F5EE"
+            font_color = "000000" if not label.startswith("TOTAL GERAL") else "FFFFFF"
             for c in ws[ws.max_row]:
                 c.font = Font(bold=True, color=font_color)
                 c.fill = PatternFill("solid", fgColor=fill)
                 c.alignment = Alignment(horizontal="center" if c.column >= 5 else "left")
+    ws.freeze_panes = "A4"
+    if headers and ws.max_row >= 3:
+        ws.auto_filter.ref = f"A3:{get_column_letter(len(headers))}{ws.max_row}"
+    ws.sheet_view.showGridLines = False
+    ws.page_setup.orientation = "landscape" if len(headers) >= 6 else "portrait"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_title_rows = "1:3"
+    ws.oddFooter.center.text = "Página &P de &N"
+    ws.oddFooter.right.text = "Banco de Horas - Ibiporã"
     for col in range(1, len(headers) + 1):
         max_len = max(len(str(ws.cell(r, col).value or "")) for r in range(1, ws.max_row + 1))
-        ws.column_dimensions[get_column_letter(col)].width = min(max(max_len + 2, 12), 45)
+        ws.column_dimensions[get_column_letter(col)].width = min(max(max_len + 2, 12), 55)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -560,7 +588,12 @@ def _pdf_response(filename, title, headers, rows):
     cell_style = ParagraphStyle("CellWrap", parent=styles["BodyText"], fontSize=cell_font, leading=cell_font + 2, wordWrap="CJK")
     header_style = ParagraphStyle("HeaderWrap", parent=cell_style, fontName="Helvetica-Bold", textColor=colors.white, alignment=1)
     title_style = ParagraphStyle("TitleBlue", parent=styles["Title"], fontSize=16, leading=19, alignment=1)
-    story = [Paragraph(f"<b>{escape(title)}</b>", title_style), Spacer(1, 10)]
+    subtitle_style = ParagraphStyle("ReportMeta", parent=styles["BodyText"], fontSize=7, leading=9, alignment=1, textColor=colors.HexColor("#4B5563"))
+    story = [
+        Paragraph(f"<b>{escape(title)}</b>", title_style),
+        Paragraph(f"Prefeitura Municipal de Ibiporã | Emitido em {datetime.now().strftime('%d/%m/%Y %H:%M')} | {len(rows)} linha(s)", subtitle_style),
+        Spacer(1, 10),
+    ]
 
     def pcell(value, style=cell_style):
         return Paragraph(escape(str(value or "")), style)
@@ -600,9 +633,25 @@ def _pdf_response(filename, title, headers, rows):
                 ("TEXTCOLOR", (0, idx), (-1, idx), colors.white),
                 ("FONTNAME", (0, idx), (-1, idx), "Helvetica-Bold"),
             ])
+        elif label.startswith("Subtotal"):
+            estilos.extend([
+                ("BACKGROUND", (0, idx), (-1, idx), colors.HexColor("#E7F5EE")),
+                ("FONTNAME", (0, idx), (-1, idx), "Helvetica-Bold"),
+            ])
     table.setStyle(TableStyle(estilos))
     story.append(table)
-    doc.build(story)
+
+    def footer(canvas, document):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#D0D7DE"))
+        canvas.line(document.leftMargin, 12, page_size[0] - document.rightMargin, 12)
+        canvas.setFillColor(colors.HexColor("#4B5563"))
+        canvas.setFont("Helvetica", 6)
+        canvas.drawString(document.leftMargin, 4, "Banco de Horas - Prefeitura Municipal de Ibiporã")
+        canvas.drawRightString(page_size[0] - document.rightMargin, 4, f"Página {document.page}")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
     buf.seek(0)
     r = make_response(buf.getvalue())
     r.headers["Content-Type"] = "application/pdf"
@@ -617,6 +666,166 @@ def _export_response(fmt_out, filename, title, headers, rows):
     if fmt_out == "pdf":
         return _pdf_response(filename, title, headers, rows)
     return None
+
+def _historico_individual_pdf_response(srv, dados, filename, arquivado=False):
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, KeepTogether
+    from xml.sax.saxutils import escape
+
+    def value(row, key, default=""):
+        try:
+            result = row[key]
+        except Exception:
+            result = row.get(key, default) if hasattr(row, "get") else default
+        return default if result is None else result
+
+    azul = colors.HexColor("#1A3A6B")
+    azul_claro = colors.HexColor("#D9EAF7")
+    cinza = colors.HexColor("#4B5563")
+    borda = colors.HexColor("#D0D7DE")
+    verde = colors.HexColor("#E7F5EE")
+    page_size = landscape(A4)
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=page_size, rightMargin=18, leftMargin=18, topMargin=20, bottomMargin=22)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("HistoryTitle", parent=styles["Title"], fontSize=15, leading=18, alignment=1, textColor=azul)
+    subtitle_style = ParagraphStyle("HistorySubtitle", parent=styles["BodyText"], fontSize=8, leading=10, alignment=1, textColor=cinza)
+    section_style = ParagraphStyle("HistorySection", parent=styles["Heading3"], fontSize=10, leading=12, textColor=azul, spaceBefore=8, spaceAfter=4)
+    cell_style = ParagraphStyle("HistoryCell", parent=styles["BodyText"], fontSize=7, leading=9, wordWrap="CJK")
+    header_style = ParagraphStyle("HistoryHeader", parent=cell_style, fontName="Helvetica-Bold", textColor=colors.white, alignment=1)
+    summary_label = ParagraphStyle("SummaryLabel", parent=cell_style, fontName="Helvetica-Bold", textColor=cinza)
+    summary_value = ParagraphStyle("SummaryValue", parent=cell_style, fontName="Helvetica-Bold", textColor=azul, alignment=2)
+
+    def p(v, style=cell_style):
+        return Paragraph(escape(str(v if v is not None else "")), style)
+
+    def tabela(headers, rows, widths=None, total_row=False):
+        if not rows:
+            return Paragraph("Nenhum registro encontrado.", cell_style)
+        data = [[p(h, header_style) for h in headers]] + [[p(c) for c in row] for row in rows]
+        table = Table(data, repeatRows=1, colWidths=widths)
+        table_style = [
+            ("BACKGROUND", (0, 0), (-1, 0), azul),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.25, borda),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F6F9")]),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]
+        if total_row:
+            table_style.extend([
+                ("BACKGROUND", (0, -1), (-1, -1), azul_claro),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ])
+        table.setStyle(TableStyle(table_style))
+        return table
+
+    lancamentos = dados.get("lancamentos", [])
+    compensacoes = dados.get("compensacoes", [])
+    pagamentos = dados.get("pagamentos", [])
+    eleicao_creditos = dados.get("eleicao_creditos", [])
+    eleicao_baixas = dados.get("eleicao_baixas", [])
+    saldo = minutos_num(dados.get("saldo", 0))
+    saldo_eleicao = int(dados.get("saldo_eleicao", 0) or 0)
+    total_creditado = sum(minutos_num(value(r, "minutos_creditados", 0)) for r in lancamentos)
+    total_consumido = sum(minutos_num(value(r, "consumido", 0)) for r in lancamentos)
+    total_compensado = sum(minutos_num(value(r, "minutos_compensados", 0)) for r in compensacoes)
+    total_pago_banco = sum(minutos_num(value(r, "minutos_pagos", 0)) for r in pagamentos)
+    total_pago_base = sum(minutos_num(value(r, "base_paga", 0)) for r in pagamentos)
+    total_eleicao = sum(int(value(r, "quantidade_dias", 0) or 0) for r in eleicao_creditos)
+
+    status = "Servidor arquivado - consulta somente leitura" if arquivado else "Servidor ativo"
+    story = [
+        Paragraph("Histórico Completo do Servidor", title_style),
+        Paragraph(
+            f"{escape(str(value(srv, 'nome')))} ({escape(str(value(srv, 'matricula')))}) | "
+            f"{escape(str(value(srv, 'cargo', 'Sem cargo') or 'Sem cargo'))} | "
+            f"{escape(str(value(srv, 'secretaria', 'Sem secretaria') or 'Sem secretaria'))} | "
+            f"{escape(str(value(srv, 'setor', 'Sem departamento') or 'Sem departamento'))}",
+            subtitle_style,
+        ),
+        Paragraph(f"{status} | Emitido em {datetime.now().strftime('%d/%m/%Y %H:%M')}", subtitle_style),
+        Spacer(1, 8),
+    ]
+
+    resumo = Table([
+        [p("Saldo atual do banco", summary_label), p(minutos_para_horas(saldo), summary_value),
+         p("Total creditado", summary_label), p(minutos_para_horas(total_creditado), summary_value),
+         p("Total baixado", summary_label), p(minutos_para_horas(total_consumido), summary_value)],
+        [p("Compensado", summary_label), p(minutos_para_horas(total_compensado), summary_value),
+         p("Pago - horas base", summary_label), p(minutos_para_horas(total_pago_base), summary_value),
+         p("Saldo eleitoral", summary_label), p(f"{saldo_eleicao} dia(s)", summary_value)],
+    ], colWidths=[92, 62, 92, 62, 92, 62])
+    resumo.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), verde),
+        ("BOX", (0, 0), (-1, -1), 0.5, borda),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, borda),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.extend([resumo, Spacer(1, 6)])
+
+    lanc_rows = [[
+        fmt_data(value(l, "data")), value(l, "horas_base"), f"{value(l, 'percentual')}%",
+        minutos_para_horas(value(l, "minutos_creditados", 0)), minutos_para_horas(value(l, "consumido", 0)),
+        minutos_para_horas(minutos_num(value(l, "minutos_creditados", 0)) - minutos_num(value(l, "consumido", 0))),
+        value(l, "descricao") or "-",
+    ] for l in lancamentos]
+    lanc_rows.append(["TOTAL", "", "", minutos_para_horas(total_creditado), minutos_para_horas(total_consumido), minutos_para_horas(saldo), ""])
+    story.append(KeepTogether([Paragraph("Lançamentos de Horas", section_style), tabela(
+        ["Data", "H.Base", "%", "Creditado", "Consumido", "Saldo", "Descrição"], lanc_rows,
+        [55, 50, 35, 60, 60, 55, 310], True)]))
+
+    comp_rows = [[
+        f"de {fmt_data(value(c, 'data'))} até {fmt_data(value(c, 'data_fim'))}" if value(c, "data_fim") and value(c, "data_fim") != value(c, "data") else fmt_data(value(c, "data")),
+        minutos_para_horas(value(c, "minutos_compensados", 0)), value(c, "descricao") or "-", fmt_datetime(value(c, "criado_em")),
+    ] for c in compensacoes]
+    comp_rows.append(["TOTAL", minutos_para_horas(total_compensado), "", ""])
+    story.extend([Spacer(1, 5), KeepTogether([Paragraph("Compensações", section_style), tabela(
+        ["Registro", "Compensado", "Descrição", "Criado em"], comp_rows, [105, 70, 385, 100], True)])])
+
+    pag_rows = [[
+        fmt_data(value(pg, "data_pagamento", value(pg, "data"))), minutos_para_horas(value(pg, "base_paga", 0)),
+        minutos_para_horas(value(pg, "minutos_pagos", 0)), value(pg, "descricao") or "-", fmt_datetime(value(pg, "criado_em")),
+    ] for pg in pagamentos]
+    pag_rows.append(["TOTAL", minutos_para_horas(total_pago_base), minutos_para_horas(total_pago_banco), "", ""])
+    story.extend([Spacer(1, 5), KeepTogether([Paragraph("Pagamentos Registrados", section_style), tabela(
+        ["Data", "H.Base Pagas", "Banco Baixado", "Referência", "Criado em"], pag_rows, [65, 75, 80, 340, 100], True)])])
+
+    cred_rows = [[value(e, "referencia_eleicao"), value(e, "quantidade_dias"), value(e, "observacao") or "-", fmt_datetime(value(e, "criado_em"))] for e in eleicao_creditos]
+    cred_rows.append(["TOTAL", total_eleicao, "", ""])
+    story.extend([Spacer(1, 5), KeepTogether([Paragraph("Créditos de Eleição", section_style), tabela(
+        ["Referência", "Dias", "Observação", "Lançado em"], cred_rows, [230, 45, 330, 95], True)])])
+
+    baixa_rows = [[fmt_data(value(b, "data")), value(b, "observacao") or "-", fmt_datetime(value(b, "criado_em"))] for b in eleicao_baixas]
+    baixa_rows.append(["TOTAL", f"{len(eleicao_baixas)} dia(s) utilizado(s)", ""])
+    story.extend([Spacer(1, 5), KeepTogether([Paragraph("Baixas / Fruições Eleitorais", section_style), tabela(
+        ["Data", "Observação", "Criado em"], baixa_rows, [65, 500, 95], True)])])
+
+    def footer(canvas, document):
+        canvas.saveState()
+        canvas.setStrokeColor(borda)
+        canvas.line(document.leftMargin, 13, page_size[0] - document.rightMargin, 13)
+        canvas.setFillColor(cinza)
+        canvas.setFont("Helvetica", 6)
+        canvas.drawString(document.leftMargin, 5, "Banco de Horas - Prefeitura Municipal de Ibiporã")
+        canvas.drawRightString(page_size[0] - document.rightMargin, 5, f"Página {document.page}")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    buf.seek(0)
+    resp = make_response(buf.getvalue())
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = f"attachment; filename={filename}.pdf"
+    return resp
 
 def _grupo_relatorio(row, agr):
     if agr == "secretaria":
@@ -1114,20 +1323,20 @@ def historico_servidor_pdf(matricula):
         ORDER BY l.data DESC
     """, (matricula,)).fetchall()
     comps = db.execute("""
-        SELECT data,data_fim,tipo,minutos_compensados,descricao
+        SELECT data,data_fim,tipo,minutos_compensados,descricao,criado_em
         FROM compensacoes
         WHERE matricula=?
         ORDER BY data DESC
     """, (matricula,)).fetchall()
     pags = db.execute("""
-        SELECT p.data_pagamento AS data, p.descricao,
+        SELECT p.data_pagamento AS data, p.descricao, p.criado_em,
                COALESCE(SUM(ROUND(c.minutos*l.minutos_base*1.0/l.minutos_creditados)),0) AS base_paga,
                COALESCE(SUM(c.minutos),0) AS minutos_pagos
         FROM pagamentos p
-        JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
-        JOIN lancamentos l ON l.id=c.lancamento_id
+        LEFT JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
+        LEFT JOIN lancamentos l ON l.id=c.lancamento_id
         WHERE p.matricula=?
-        GROUP BY p.id,p.data_pagamento,p.descricao
+        GROUP BY p.id,p.data_pagamento,p.descricao,p.criado_em
         ORDER BY p.data_pagamento DESC
     """, (matricula,)).fetchall()
     eleicao_creditos = db.execute("""
@@ -1143,97 +1352,18 @@ def historico_servidor_pdf(matricula):
         ORDER BY data DESC
     """, (matricula,)).fetchall()
 
-    rows = []
-    total_creditado = total_compensado = total_pago_base = total_pago_banco = 0
-
-    if lancs:
-        rows.append(["LANÇAMENTOS", "", "", "", "", "", ""])
-        for l in lancs:
-            creditado = minutos_num(l["minutos_creditados"])
-            saldo = creditado - minutos_num(l["consumido"])
-            total_creditado += creditado
-            rows.append([
-                "Lançamento",
-                fmt_data(l["data"]),
-                l["horas_base"],
-                f'{l["percentual"]}%',
-                minutos_para_horas(creditado),
-                minutos_para_horas(saldo),
-                l["descricao"] or "",
-            ])
-
-    if comps:
-        rows.append(["COMPENSAÇÕES", "", "", "", "", "", ""])
-        for c in comps:
-            compensado = minutos_num(c["minutos_compensados"])
-            total_compensado += compensado
-            rows.append([
-                "Compensação",
-                fmt_data(c["data"]),
-                "Horas informadas",
-                "",
-                "",
-                minutos_para_horas(compensado),
-                c["descricao"] or "",
-            ])
-
-    if pags:
-        rows.append(["PAGAMENTOS", "", "", "", "", "", ""])
-        for p in pags:
-            base_paga = minutos_num(p["base_paga"])
-            banco_pago = minutos_num(p["minutos_pagos"])
-            total_pago_base += base_paga
-            total_pago_banco += banco_pago
-            rows.append([
-                "Pagamento",
-                fmt_data(p["data"]),
-                "Registrado no banco",
-                "",
-                minutos_para_horas(base_paga),
-                minutos_para_horas(banco_pago),
-                p["descricao"] or "",
-            ])
-
-    if eleicao_creditos or eleicao_baixas:
-        rows.append(["DIAS DE ELEIÇÃO", "", "", "", "", "", ""])
-        for e in eleicao_creditos:
-            rows.append([
-                "Crédito eleição",
-                fmt_datetime(e["criado_em"]),
-                e["referencia_eleicao"] or "",
-                "",
-                f'{e["quantidade_dias"]} dia(s)',
-                "",
-                e["observacao"] or "",
-            ])
-        for e in eleicao_baixas:
-            rows.append([
-                "Baixa eleição",
-                fmt_data(e["data"]),
-                fmt_datetime(e["criado_em"]),
-                "",
-                "",
-                "1 dia",
-                e["observacao"] or "",
-            ])
-
-    if not rows:
-        rows.append(["Sem registros", "", "", "", "", "", ""])
-
-    rows.append([
-        "TOTAL GERAL",
-        "",
-        "",
-        "",
-        f"Lançado {minutos_para_horas(total_creditado)} | Pago base {minutos_para_horas(total_pago_base)}",
-        f"Compensado {minutos_para_horas(total_compensado)} | Banco pago {minutos_para_horas(total_pago_banco)}",
-        f"Saldo atual {minutos_para_horas(calcular_saldo(db, matricula))}",
-    ])
-
-    headers = ["Tipo", "Data", "Registro", "%", "Crédito/Base", "Saldo/Débito", "Descrição"]
-    filename = f"historico_banco_horas_{matricula}"
-    title = f"Histórico do Banco de Horas - {srv['nome']} ({matricula})"
-    return _export_response("pdf", filename, title, headers, rows)
+    dados = {
+        "lancamentos": lancs,
+        "compensacoes": comps,
+        "pagamentos": pags,
+        "eleicao_creditos": eleicao_creditos,
+        "eleicao_baixas": eleicao_baixas,
+        "saldo": calcular_saldo(db, matricula),
+        "saldo_eleicao": calcular_saldo_eleicao(db, matricula),
+    }
+    return _historico_individual_pdf_response(
+        srv, dados, f"historico_completo_servidor_{matricula}"
+    )
 
 @app.route("/servidores/novo", methods=["GET","POST"])
 @master_required
@@ -1446,101 +1576,15 @@ def _carregar_historico_arquivado(db, matricula):
 @app.route("/arquivados/<matricula>/historico/pdf")
 @master_required
 def arquivado_historico_pdf(matricula):
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from xml.sax.saxutils import escape
-
     db = get_db()
     dados = _carregar_historico_arquivado(db, matricula)
     srv = dados["servidor"]
     if not srv:
         flash("Servidor arquivado não encontrado.", "danger")
         return redirect(url_for("arquivados"))
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=18, leftMargin=18, topMargin=18, bottomMargin=18)
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("TitleBlue", parent=styles["Title"], fontSize=15, leading=18, alignment=1, textColor=colors.HexColor("#1A3A6B"))
-    subtitle_style = ParagraphStyle("Subtitle", parent=styles["BodyText"], fontSize=8, leading=10, alignment=1, textColor=colors.HexColor("#4B5563"))
-    section_style = ParagraphStyle("Section", parent=styles["Heading3"], fontSize=10, leading=12, textColor=colors.HexColor("#1A3A6B"), spaceBefore=8, spaceAfter=4)
-    cell_style = ParagraphStyle("Cell", parent=styles["BodyText"], fontSize=7, leading=9, wordWrap="CJK")
-    header_style = ParagraphStyle("Header", parent=cell_style, fontName="Helvetica-Bold", textColor=colors.white, alignment=1)
-
-    def p(v, style=cell_style):
-        return Paragraph(escape(str(v if v is not None else "")), style)
-
-    def tabela(headers, rows, widths=None):
-        if not rows:
-            return Paragraph("Nenhum registro encontrado.", cell_style)
-        table = Table([[p(h, header_style) for h in headers]] + [[p(c) for c in row] for row in rows], repeatRows=1, colWidths=widths)
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1A3A6B")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D0D7DE")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F6F9")]),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 3),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ]))
-        return table
-
-    story = [
-        Paragraph("Histórico do Servidor Arquivado", title_style),
-        Paragraph(f"{srv['nome']} ({srv['matricula']}) | {srv['cargo'] or 'Sem cargo'} | {srv['secretaria'] or 'Sem secretaria'} | {srv['setor'] or 'Sem departamento'}", subtitle_style),
-        Paragraph(f"Saldo banco: {minutos_para_horas(dados['saldo'])} | Saldo eleição: {dados['saldo_eleicao']} dia(s) | Emitido em {datetime.now().strftime('%d/%m/%Y %H:%M')}", subtitle_style),
-        Spacer(1, 8),
-    ]
-
-    story.append(Paragraph("Lançamentos de Horas", section_style))
-    story.append(tabela(
-        ["Data", "H.Base", "%", "Creditado", "Consumido", "Saldo", "Descrição"],
-        [[fmt_data(l["data"]), l["horas_base"], f"{l['percentual']}%", minutos_para_horas(l["minutos_creditados"]), minutos_para_horas(l["consumido"]), minutos_para_horas(int(l["minutos_creditados"] or 0) - int(l["consumido"] or 0)), l["descricao"] or "-"] for l in dados["lancamentos"]],
-        [55, 50, 35, 60, 60, 55, 310]
-    ))
-    story.append(Spacer(1, 5))
-
-    story.append(Paragraph("Compensações", section_style))
-    story.append(tabela(
-        ["Registro", "Compensado", "Descrição", "Criado em"],
-        [[f"de {fmt_data(c['data'])} até {fmt_data(c['data_fim'])}" if c["data_fim"] and c["data_fim"] != c["data"] else fmt_data(c["data"]),
-          minutos_para_horas(c["minutos_compensados"]), c["descricao"] or "-", fmt_datetime(c["criado_em"])] for c in dados["compensacoes"]],
-        [65, 70, 430, 95]
-    ))
-    story.append(Spacer(1, 5))
-
-    story.append(Paragraph("Pagamentos", section_style))
-    story.append(tabela(
-        ["Data", "H.Base Pagas", "Banco Baixado", "Referência", "Criado em"],
-        [[fmt_data(pg["data_pagamento"]), minutos_para_horas(int(pg["base_paga"] or 0)), minutos_para_horas(int(pg["minutos_pagos"] or 0)), pg["descricao"] or "-", fmt_datetime(pg["criado_em"])] for pg in dados["pagamentos"]],
-        [65, 75, 80, 345, 95]
-    ))
-    story.append(Spacer(1, 5))
-
-    story.append(Paragraph("Créditos de Eleição", section_style))
-    story.append(tabela(
-        ["Referência", "Dias", "Observação", "Lançado em"],
-        [[e["referencia_eleicao"], e["quantidade_dias"], e["observacao"] or "-", fmt_datetime(e["criado_em"])] for e in dados["eleicao_creditos"]],
-        [230, 45, 330, 95]
-    ))
-    story.append(Spacer(1, 5))
-
-    story.append(Paragraph("Baixas / Fruições Eleitorais", section_style))
-    story.append(tabela(
-        ["Data", "Observação", "Criado em"],
-        [[fmt_data(b["data"]), b["observacao"] or "-", fmt_datetime(b["criado_em"])] for b in dados["eleicao_baixas"]],
-        [65, 500, 95]
-    ))
-
-    doc.build(story)
-    buf.seek(0)
-    resp = make_response(buf.getvalue())
-    resp.headers["Content-Type"] = "application/pdf"
-    resp.headers["Content-Disposition"] = f"attachment; filename=historico_servidor_arquivado_{matricula}.pdf"
-    return resp
+    return _historico_individual_pdf_response(
+        srv, dados, f"historico_completo_servidor_arquivado_{matricula}", arquivado=True
+    )
 
 @app.route("/lancamentos/<matricula>", methods=["GET","POST"])
 @master_required
@@ -2418,8 +2462,16 @@ def admin_backup_excel():
                     c.font = Font(bold=True)
                     c.fill = PatternFill("solid", fgColor=claro)
         ws.freeze_panes = "A4"
+        ws.sheet_view.showGridLines = False
         if ws.max_row >= 3 and headers:
             ws.auto_filter.ref = f"A3:{get_column_letter(len(headers))}{ws.max_row}"
+        ws.page_setup.orientation = "landscape" if len(headers) >= 6 else "portrait"
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.print_title_rows = "1:3"
+        ws.oddFooter.center.text = "Página &P de &N"
+        ws.oddFooter.right.text = "Backup Banco de Horas - Ibiporã"
         for col in range(1, len(headers) + 1):
             mx = max(len(str(ws.cell(r, col).value or "")) for r in range(1, ws.max_row + 1))
             ws.column_dimensions[get_column_letter(col)].width = min(max(mx + 2, 12), 55)
@@ -4980,6 +5032,16 @@ def eleicao_exportar(matricula, fmt):
                     for col_c in ws[ws.max_row]:
                         col_c.font = Font(bold=True)
                         col_c.fill = PatternFill("solid", fgColor=LIGHT)
+            ws.freeze_panes = "A4"
+            ws.sheet_view.showGridLines = False
+            ws.auto_filter.ref = f"A3:{get_column_letter(len(headers))}{ws.max_row}"
+            ws.page_setup.orientation = "landscape"
+            ws.page_setup.fitToWidth = 1
+            ws.page_setup.fitToHeight = 0
+            ws.sheet_properties.pageSetUpPr.fitToPage = True
+            ws.print_title_rows = "1:3"
+            ws.oddFooter.center.text = "Página &P de &N"
+            ws.oddFooter.right.text = "Dias de Eleição - Ibiporã"
             for col in range(1, len(headers) + 1):
                 mx = max(len(str(ws.cell(r, col).value or "")) for r in range(1, ws.max_row + 1))
                 ws.column_dimensions[get_column_letter(col)].width = min(max(mx + 2, 12), 50)
@@ -4999,6 +5061,9 @@ def eleicao_exportar(matricula, fmt):
         ws3.append(["Saldo atual (dias)", saldo])
         for r in ws3.iter_rows():
             r[0].font = Font(bold=True)
+        ws3.column_dimensions["A"].width = 28
+        ws3.column_dimensions["B"].width = 50
+        ws3.sheet_view.showGridLines = False
 
         buf = io.BytesIO()
         wb.save(buf); buf.seek(0)
@@ -5075,7 +5140,17 @@ def eleicao_exportar(matricula, fmt):
             Spacer(1, 4),
             make_table(h_baixas, rows_baixas, col_ratios=[2, 4, 2, 2]),
         ]
-        doc.build(story)
+        def footer(canvas, document):
+            canvas.saveState()
+            canvas.setStrokeColor(colors.HexColor("#D0D7DE"))
+            canvas.line(document.leftMargin, 13, landscape(A4)[0] - document.rightMargin, 13)
+            canvas.setFillColor(colors.HexColor("#6B7280"))
+            canvas.setFont("Helvetica", 6)
+            canvas.drawString(document.leftMargin, 5, "Dias de Eleição - Prefeitura Municipal de Ibiporã")
+            canvas.drawRightString(landscape(A4)[0] - document.rightMargin, 5, f"Página {document.page}")
+            canvas.restoreState()
+
+        doc.build(story, onFirstPage=footer, onLaterPages=footer)
         buf.seek(0)
         resp = make_response(buf.getvalue())
         resp.headers["Content-Type"] = "application/pdf"
