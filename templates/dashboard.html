@@ -683,10 +683,16 @@ function mostrarCarregamento(titulo, cor, callback, mensagens) {
 const LIMITE_PAG = 45 * 60;
 
 function parseHM(str) {
-  const p = String(str || '').trim().split(':');
+  const raw = String(str || '').trim();
+  if (/^\d{3,6}$/.test(raw)) {
+    const h = parseInt(raw.slice(0, -2), 10);
+    const m = parseInt(raw.slice(-2), 10);
+    return (isNaN(h) || isNaN(m) || m > 59) ? 0 : h * 60 + m;
+  }
+  const p = raw.split(':');
   if (p.length !== 2) return 0;
   const h = parseInt(p[0], 10), m = parseInt(p[1], 10);
-  return (isNaN(h) || isNaN(m)) ? 0 : h * 60 + m;
+  return (isNaN(h) || isNaN(m) || m > 59) ? 0 : h * 60 + m;
 }
 function fmtHM(min) {
   min = Math.abs(Math.round(min));
@@ -735,7 +741,7 @@ function atualizarPreviewLanc() {
   document.getElementById('lanc_preview').style.color = mc > 0 ? '#198754' : '';
 }
 
-document.getElementById('lanc_horas').addEventListener('input', atualizarPreviewLanc);
+document.getElementById('lanc_horas').addEventListener('input', () => setTimeout(atualizarPreviewLanc, 0));
 document.querySelectorAll('input[name="lanc_pct_radio"]').forEach(r =>
   r.addEventListener('change', atualizarPreviewLanc));
 
