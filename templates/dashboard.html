@@ -558,10 +558,10 @@
 
 {% block scripts %}
 <script>
-const labels  = {{ meses_labels|safe }};
-const lancData = {{ lanc_mes|safe }};
-const compData = {{ comp_mes|safe }};
-const pagData  = {{ pag_mes|safe }};
+const labels  = {{ meses_labels|tojson }};
+const lancData = {{ lanc_mes|tojson }};
+const compData = {{ comp_mes|tojson }};
+const pagData  = {{ pag_mes|tojson }};
 
 const servidoresAtalho = [
   {% for s in servidores_atalho %}

@@ -30,6 +30,7 @@
         {% endwith %}
 
         <form method="post" id="formCadastro" action="{{ url_for('criar_conta') }}">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
           <!-- STEP 1: CPF -->
           <div id="step1">
             <h6 class="fw-bold mb-3">Passo 1 — Identificação</h6>

@@ -192,6 +192,12 @@ def get_db() -> DbConn:
         g.db = _new_conn()
     return g.db
 
+def close_db(_error=None):
+    """Fecha a conexão vinculada ao contexto atual da requisição."""
+    db = g.pop("db", None)
+    if db is not None:
+        db.close()
+
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
 _SCHEMA_SQLITE = """
@@ -479,7 +485,6 @@ def init_db():
     _popular_cadastros_auxiliares(db)
     _migrar_vinculos(db)
     _migrar_consumos(db)
-    _criar_master_padrao(db)
     _garantir_config_solicitacoes(db)
     _popular_demo_render(db)
     _popular_demo_eleicao(db)
@@ -506,6 +511,10 @@ def _criar_indices(db):
         CREATE INDEX IF NOT EXISTS idx_eleicao_baixas_matricula ON eleicao_baixas (matricula, data);
         CREATE INDEX IF NOT EXISTS idx_solicitacoes_matricula ON solicitacoes (matricula, status);
         CREATE INDEX IF NOT EXISTS idx_solicitacoes_status ON solicitacoes (status, tipo);
+        CREATE INDEX IF NOT EXISTS idx_visualizacoes_usuario_data ON visualizacoes (usuario_id, criado_em);
+        CREATE INDEX IF NOT EXISTS idx_auditoria_criado_em ON auditoria (criado_em);
+        CREATE INDEX IF NOT EXISTS idx_importacoes_criado_em ON importacoes (criado_em);
+        CREATE INDEX IF NOT EXISTS idx_exclusoes_criado_em ON exclusoes_servidores (criado_em);
     """)
     db.commit()
 
@@ -584,16 +593,6 @@ def _garantir_config_solicitacoes(db):
         )
         db.commit()
 
-
-def _criar_master_padrao(db):
-    """Cria usuário master padrão se nenhum existir."""
-    if db.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] > 0:
-        return
-    from werkzeug.security import generate_password_hash
-    db.execute(
-        "INSERT INTO usuarios (cpf,nome,email,senha_hash,nivel,ativo,senha_temporaria) VALUES (?,?,?,?,?,1,1)",
-        ("000.000.000-00", "Administrador Master", "", generate_password_hash("Ibipora@2024"), "master"))
-    db.commit()
 
 _DEMO_SERVIDORES_CSV = """matricula,nome,cpf,email,cargo,secretaria,setor,funcao_gratificada
 10001,Ana Clara Martins,000.000.000-01,ana.martins@ibipora.pr.gov.br,Agente Administrativo,Secretaria de Gestão de Pessoas,Departamento de Gestão de Pessoas,FG-1

@@ -54,6 +54,53 @@ class BasicRegressionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/admin/status", response.headers.get("Location", ""))
 
+    def test_authenticated_post_requires_csrf(self):
+        client = app.test_client()
+        with client.session_transaction() as sess:
+            sess.update({'uid': 1, 'nivel': 'master', 'nome': 'Master', 'cpf': '0', 'temp': False, '_csrf_token': 'valid'})
+        response = client.post("/admin/alternar-visao", data={"visao": "master"})
+        self.assertEqual(response.status_code, 302)
+        with client.session_transaction() as sess:
+            self.assertNotIn("visao_master", sess)
+
+    def test_security_headers(self):
+        response = app.test_client().get("/login")
+        self.assertEqual(response.headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertEqual(response.headers.get("X-Frame-Options"), "SAMEORIGIN")
+        self.assertIn("default-src", response.headers.get("Content-Security-Policy", ""))
+
+    def test_login_does_not_expose_fixed_password(self):
+        response = app.test_client().get("/login")
+        self.assertNotIn(b"123456", response.data)
+        self.assertNotIn(b"Ibipora@2024", response.data)
+
+    def test_authenticated_post_accepts_valid_csrf(self):
+        client = app.test_client()
+        with client.session_transaction() as sess:
+            sess.update({
+                'uid': 1, 'nivel': 'master', 'nome': 'Master', 'cpf': '0',
+                'temp': False, '_csrf_token': 'valid',
+            })
+        response = client.post(
+            "/admin/alternar-visao",
+            data={"visao": "master", "_csrf_token": "valid"},
+        )
+        self.assertEqual(response.status_code, 302)
+        with client.session_transaction() as sess:
+            self.assertEqual(sess.get("visao_master"), "master")
+
+    def test_master_administrative_pages_render(self):
+        client = app.test_client()
+        with client.session_transaction() as sess:
+            sess.update({
+                'uid': 1, 'nivel': 'master', 'nome': 'Master', 'cpf': '0',
+                'temp': False, 'vinculos': [],
+            })
+        for path in ("/admin/usuarios", "/admin/acessos", "/arquivados", "/admin/backup", "/relatorios"):
+            with self.subTest(path=path):
+                response = client.get(path)
+                self.assertEqual(response.status_code, 200)
+
     def test_report_generators_return_valid_files(self):
         with app.test_request_context():
             pdf = _pdf_response("teste", "Relatório de Teste", ["Nome", "Saldo"], [["Servidor", "01:30"]])

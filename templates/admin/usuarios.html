@@ -37,6 +37,9 @@
 
 <div class="card">
   {% if usuarios %}
+  <div class="card-header bg-white small text-muted">
+    {{ total }} registro(s) encontrado(s) · página {{ page }} de {{ total_pages }}
+  </div>
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0 small">
       <thead class="table-dark">
@@ -113,6 +116,19 @@
       </tbody>
     </table>
   </div>
+  {% if total_pages > 1 %}
+  <div class="card-footer bg-white">
+    <nav aria-label="Paginação de usuários">
+      <ul class="pagination pagination-sm justify-content-center mb-0">
+        {% for p in range(1, total_pages + 1) %}
+        <li class="page-item {{ 'active' if p == page }}">
+          <a class="page-link" href="?{{ base_args|urlencode }}&page={{ p }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
   {% else %}
   <div class="text-center text-muted py-4"><i class="bi bi-people" style="font-size:2rem"></i><p class="mt-2">Nenhum usuário.</p></div>
   {% endif %}

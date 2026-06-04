@@ -42,7 +42,9 @@
 
 {% if servidores %}
 <div class="card">
-  <div class="card-header bg-white small text-muted">{{ servidores|length }} arquivado(s) encontrado(s)</div>
+  <div class="card-header bg-white small text-muted">
+    {{ total }} arquivado(s) encontrado(s) · página {{ page }} de {{ total_pages }}
+  </div>
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
       <thead class="table-dark">
@@ -81,6 +83,19 @@
       </tbody>
     </table>
   </div>
+  {% if total_pages > 1 %}
+  <div class="card-footer bg-white">
+    <nav aria-label="Paginação de servidores arquivados">
+      <ul class="pagination pagination-sm justify-content-center mb-0">
+        {% for p in range(1, total_pages + 1) %}
+        <li class="page-item {{ 'active' if p == page }}">
+          <a class="page-link" href="?{{ base_args|urlencode }}&page={{ p }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
 </div>
 {% else %}
 <div class="text-center py-5 text-muted">
@@ -93,7 +108,7 @@
 {% block scripts %}
 <script>
 const _arquivados = [
-  {% for s in servidores %}
+  {% for s in arquivados_lista %}
   {mat: {{ s.matricula|tojson }}, nome: {{ s.nome|tojson }}, info: {{ ((s.secretaria or '') ~ ' · ' ~ (s.setor or ''))|tojson }}}{{ ',' if not loop.last }}
   {% endfor %}
 ];

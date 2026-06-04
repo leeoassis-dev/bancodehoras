@@ -1,4 +1,5 @@
 ﻿{% extends "base.html" %}
+{% from "macros/ui.html" import status_badge %}
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -219,10 +220,7 @@
             <td>{{ s.data_autorizacao|fmt_datetime }}</td>
             <td class="text-muted small" style="max-width:160px">{{ s.despacho_chefia or '–' }}</td>
             <td>
-              {% if s.status == 'autorizado' %}<span class="badge bg-info text-dark">Aguard. RH</span>
-              {% elif s.status == 'lancado' %}<span class="badge bg-success">Lançado</span>
-              {% elif s.status == 'indeferido' %}<span class="badge bg-danger">Indeferido</span>
-              {% else %}<span class="badge bg-secondary">{{ s.status }}</span>{% endif %}
+              {{ status_badge(s.status, s.motivo_indeferimento or '') }}
             </td>
           </tr>
           {% endfor %}

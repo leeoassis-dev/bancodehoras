@@ -64,9 +64,9 @@ class EleicaoTarefasTests(unittest.TestCase):
     def test_lancar_eleicao_baixa_todo_periodo_e_estorna(self):
         client = self.app.test_client()
         with client.session_transaction() as sess:
-            sess.update({'uid': 1, 'nivel': 'master', 'nome': 'Master', 'cpf': '0', 'temp': False})
+            sess.update({'uid': 1, 'nivel': 'master', 'nome': 'Master', 'cpf': '0', 'temp': False, '_csrf_token': 'teste-csrf'})
 
-        response = client.post("/admin/tarefas/10/lancar")
+        response = client.post("/admin/tarefas/10/lancar", headers={"X-CSRF-Token": "teste-csrf"})
         self.assertEqual(response.status_code, 200)
 
         baixas = self.db.execute(
@@ -75,7 +75,7 @@ class EleicaoTarefasTests(unittest.TestCase):
         self.assertEqual([b["data"] for b in baixas], ["2026-06-04", "2026-06-05", "2026-06-06"])
         self.assertTrue(all("Solicitação #10" in (b["observacao"] or "") for b in baixas))
 
-        response = client.post("/admin/tarefas/10/estornar")
+        response = client.post("/admin/tarefas/10/estornar", headers={"X-CSRF-Token": "teste-csrf"})
         self.assertEqual(response.status_code, 200)
 
         total = self.db.execute("SELECT COUNT(*) FROM eleicao_baixas WHERE matricula='100'").fetchone()[0]

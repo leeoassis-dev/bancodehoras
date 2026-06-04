@@ -1,0 +1,13 @@
+{% macro status_badge(status, detail='') -%}
+  {% set meta = status_meta(status) %}
+  <span class="badge bg-{{ meta.class }}" {% if detail %}title="{{ detail }}"{% endif %}>
+    <i class="bi bi-{{ meta.icon }} me-1"></i>{{ meta.label }}
+  </span>
+{%- endmacro %}
+
+{% macro empty_state(message, icon='inbox') -%}
+  <div class="app-empty-state">
+    <i class="bi bi-{{ icon }}"></i>
+    <p class="mb-0">{{ message }}</p>
+  </div>
+{%- endmacro %}

@@ -1,4 +1,5 @@
 ﻿{% extends "base.html" %}
+{% from "macros/ui.html" import status_badge %}
 {% block content %}
 
 <div class="row mb-4 align-items-center">
@@ -244,11 +245,7 @@
               </td>
               <td>{{ s.data_pretendida|fmt_data }}</td>
               <td>
-                {% if s.status == 'solicitado' %}<span class="badge bg-warning text-dark">{{ status_display(s) }}</span>
-                {% elif s.status == 'autorizado' %}<span class="badge bg-info text-dark">{{ status_display(s) }}</span>
-                {% elif s.status == 'lancado' %}<span class="badge bg-success">{{ status_display(s) }}</span>
-                {% elif s.status == 'indeferido' %}<span class="badge bg-danger">Indeferido{% if s.motivo_indeferimento %} — {{ s.motivo_indeferimento }}{% endif %}</span>
-                {% else %}<span class="badge bg-secondary">{{ status_display(s) }}</span>{% endif %}
+                {{ status_badge(s.status, s.motivo_indeferimento or '') }}
               </td>
               <td class="text-muted">{{ s.justificativa or '–' }}</td>
               <td>
@@ -283,7 +280,7 @@
 {% block scripts %}
 <script>
 async function cancelarSolicitacao(id) {
-  if (!confirm('Deseja cancelar esta solicitação?')) return;
+  if (!await appConfirm('Deseja cancelar esta solicitação?', { danger: true })) return;
   const res = await fetch(`/solicitacoes/${id}/cancelar`, { method: 'POST' });
   const d = await res.json();
   if (d.ok) location.reload();

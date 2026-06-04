@@ -1,0 +1,75 @@
+:root {
+  --app-primary: #1a3a6b;
+  --app-primary-soft: #d9eaf7;
+  --app-border: #d0d7de;
+  --app-surface-muted: #f4f6f9;
+  --app-success-soft: #e7f5ee;
+  --app-warning-soft: #fff4d6;
+  --app-danger-soft: #fde2e1;
+}
+
+.app-empty-state {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: #6c757d;
+}
+
+.app-empty-state i {
+  display: block;
+  margin-bottom: .65rem;
+  font-size: 2.25rem;
+}
+
+.app-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  white-space: nowrap;
+}
+
+.app-icon-button {
+  width: 2rem;
+  height: 2rem;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.app-flash-message {
+  white-space: pre-line;
+}
+
+.app-confirm-detail {
+  white-space: pre-line;
+  color: #495057;
+}
+
+.app-autocomplete-item {
+  cursor: pointer;
+  transition: background-color .1s ease;
+}
+
+.app-autocomplete-item:hover,
+.app-autocomplete-item:focus {
+  background: #f0f7ff;
+  outline: none;
+}
+
+.app-loading-overlay .modal-content {
+  border: 0;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .2);
+}
+
+.table > thead {
+  vertical-align: middle;
+}
+
+.table > tbody > tr > td {
+  vertical-align: middle;
+}
+
+@media (max-width: 767.98px) {
+  .app-action-group {
+    flex-wrap: wrap;
+  }
+}

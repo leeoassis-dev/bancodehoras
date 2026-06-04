@@ -3,10 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>Banco de Horas – Prefeitura de Ibiporã</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
   <style>
     body { background:#f4f6f9; }
     .navbar { background:#1a3a6b !important; }
@@ -384,7 +386,7 @@
         {% if success_msgs.append(msg) %}{% endif %}
       {% else %}
         <div class="alert alert-{{ cat }} alert-dismissible fade show">
-          {{ msg|safe }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          <span class="app-flash-message">{{ msg }}</span><button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
       {% endif %}
     {% endfor %}
@@ -433,8 +435,44 @@
 </main>
 {% endif %}
 
+<div class="modal fade" id="appConfirmModal" tabindex="-1" data-bs-backdrop="static" aria-labelledby="appConfirmTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="appConfirmTitle" data-confirm-title>Confirmar operação</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="app-confirm-detail" data-confirm-message>Deseja continuar?</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" data-confirm-action>
+          <i class="bi bi-check-lg me-1"></i>Confirmar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="appAlertModal" tabindex="-1" aria-labelledby="appAlertTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="appAlertTitle"><i class="bi bi-info-circle me-2 text-primary"></i>Atenção</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body app-confirm-detail" data-alert-message></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/app-core.js') }}"></script>
 <script>
 // ── Autocomplete global de busca por servidor ────────────────────────────────
 let __srvCache = null;

@@ -1,5 +1,5 @@
 ﻿from flask import Flask, render_template, request, redirect, url_for, flash, make_response, jsonify, session, g
-from database import init_db, get_db, _consumir_fifo_raw, six_months_ago, five_months_ago, IS_POSTGRES
+from database import close_db, init_db, get_db, _consumir_fifo_raw, six_months_ago, five_months_ago, IS_POSTGRES
 from utils import (
     calcular_data_fim_periodo,
     cpf_sem_pontuacao_sql,
@@ -18,9 +18,22 @@ from functools import wraps
 import os, json, io, csv, secrets, string, smtplib, time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from web_core import (
+    api_error,
+    api_response,
+    api_success,
+    apply_security_headers,
+    configure_app_security,
+    configure_logging,
+    ensure_csrf_token,
+    status_meta,
+    validate_csrf,
+)
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "ibipora_banco_horas_2024_seguro")
+configure_logging(app)
+configure_app_security(app)
+app.teardown_appcontext(close_db)
 app.url_map.strict_slashes = False
 app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_MB", "8")) * 1024 * 1024
 
@@ -71,6 +84,18 @@ def pagina_nao_encontrada(e):
 def arquivo_muito_grande(e):
     flash("Arquivo muito grande. Envie um CSV de até 8 MB.", "danger")
     return redirect(request.referrer or url_for("portal"))
+
+@app.errorhandler(500)
+def erro_interno(e):
+    codigo = secrets.token_hex(4).upper()
+    try:
+        get_db().rollback()
+    except Exception:
+        pass
+    app.logger.exception("Erro interno %s em %s", codigo, request.path)
+    if request.path.startswith("/api/") or request.is_json:
+        return api_error(f"Não foi possível concluir a operação. Código: {codigo}", status=500)
+    return render_template("500.html", codigo=codigo), 500
 
 def gerar_senha_temp(n=10):
     chars = string.ascii_letters + string.digits + "!@#$"
@@ -180,6 +205,8 @@ def injetar_usuario():
         'u_sol_habilitado': False,
         'u_visao_master': session.get('visao_master', 'master') if session.get('nivel') == 'master' else '',
         'u_master_visoes': {'secretario': False, 'chefia': False},
+        'csrf_token': ensure_csrf_token,
+        'status_meta': status_meta,
     }
     uid   = session.get('uid')
     nivel = session.get('nivel')
@@ -239,7 +266,17 @@ def injetar_usuario():
 
 @app.before_request
 def verificar_acesso():
-    if request.endpoint in ROTAS_PUBLICAS or request.endpoint is None:
+    if request.endpoint == "static" or request.endpoint is None:
+        return None
+
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and not validate_csrf():
+        app.logger.warning("CSRF bloqueado: usuário=%s rota=%s", session.get("uid"), request.path)
+        if request.path.startswith("/api/") or request.is_json:
+            return api_error("Sessão de segurança expirada. Atualize a página e tente novamente.", status=403)
+        flash("Sessão de segurança expirada. Atualize a página e tente novamente.", "danger")
+        return redirect(request.referrer or url_for("login"))
+
+    if request.endpoint in ROTAS_PUBLICAS:
         return None
 
     if 'uid' not in session:
@@ -305,7 +342,7 @@ def verificar_acesso():
 def invalidar_cache_em_gravacao(response):
     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
         limpar_cache()
-    return response
+    return apply_security_headers(response)
 
 # â”€â”€â”€ Utilitários â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -1191,10 +1228,10 @@ def dashboard():
     top5_deptos = [r for r in top5_deptos if minutos_num(r["saldo"]) > 0]
 
     dados = {
-        "meses_labels": json.dumps([m["label"] for m in meses6]),
-        "lanc_mes": json.dumps(lanc_mes),
-        "comp_mes": json.dumps(comp_mes),
-        "pag_mes": json.dumps(pag_mes),
+        "meses_labels": [m["label"] for m in meses6],
+        "lanc_mes": lanc_mes,
+        "comp_mes": comp_mes,
+        "pag_mes": pag_mes,
         "saldo_total": saldo_total,
         "total_serv": total_serv,
         "serv_fg": serv_fg,
@@ -1495,17 +1532,28 @@ def arquivados():
     busca = request.args.get("busca","").strip()
     sec   = request.args.get("secretaria","").strip()
     set_  = request.args.get("setor","").strip()
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = 20
     f, p  = _filtro_servidores(busca, sec, set_, arquivado=1)
+    total = db.execute(f"SELECT COUNT(*) FROM servidores s {f}", p).fetchone()[0] or 0
+    page, total_pages, offset = _paginar(total, page, per_page)
     lista = db.execute(f"""
         SELECT s.*,
             (SELECT COALESCE(SUM(minutos_creditados),0) FROM lancamentos WHERE matricula=s.matricula)
             -(SELECT COALESCE(SUM(c.minutos),0) FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=s.matricula)
             AS saldo_minutos
-        FROM servidores s {f} ORDER BY s.nome""", p).fetchall()
+        FROM servidores s {f} ORDER BY s.nome LIMIT ? OFFSET ?""", p + [per_page, offset]).fetchall()
     secs, sets = _listas_filtro(db, 1)
+    arquivados_lista = db.execute("""
+        SELECT matricula,nome,secretaria,setor
+        FROM servidores WHERE arquivado=1 ORDER BY nome
+    """).fetchall()
     return render_template("arquivados.html", servidores=lista, fmt=minutos_para_horas,
                            secretarias=secs, setores=sets,
-                           busca=busca, secretaria_sel=sec, setor_sel=set_)
+                           busca=busca, secretaria_sel=sec, setor_sel=set_,
+                           page=page, total_pages=total_pages, total=total,
+                           base_args={"busca": busca, "secretaria": sec, "setor": set_},
+                           arquivados_lista=arquivados_lista)
 
 # â”€â”€â”€ Lançamentos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -2091,8 +2139,9 @@ def admin_importar_servidores():
         return redirect(url_for("admin_importacao"))
     try:
         leitor = _csv_reader_upload(arquivo)
-    except ValueError as e:
-        flash(str(e), "danger")
+    except ValueError:
+        app.logger.exception("CSV de servidores recusado")
+        flash("Não foi possível ler o CSV. Verifique o formato e tente novamente.", "danger")
         return redirect(url_for("admin_importacao"))
     campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
     if not {"matricula", "nome"}.issubset(campos):
@@ -2181,8 +2230,9 @@ def admin_importar_banco_horas():
         return redirect(url_for("admin_importacao"))
     try:
         leitor = _csv_reader_upload(arquivo)
-    except ValueError as e:
-        flash(str(e), "danger")
+    except ValueError:
+        app.logger.exception("CSV de banco de horas recusado")
+        flash("Não foi possível ler o CSV. Verifique o formato e tente novamente.", "danger")
         return redirect(url_for("admin_importacao"))
     campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
     if "matricula" not in campos or not ({"saldo_horas", "horas", "saldo"} & campos):
@@ -2252,8 +2302,9 @@ def admin_importar_eleicao():
         return redirect(url_for("admin_importacao"))
     try:
         leitor = _csv_reader_upload(arquivo)
-    except ValueError as e:
-        flash(str(e), "danger")
+    except ValueError:
+        app.logger.exception("CSV de dias de eleição recusado")
+        flash("Não foi possível ler o CSV. Verifique o formato e tente novamente.", "danger")
         return redirect(url_for("admin_importacao"))
     campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
     if "matricula" not in campos or not ({"quantidade_dias", "dias"} & campos):
@@ -2573,15 +2624,27 @@ def admin_backup_excel():
     add_sheet("Painel de Vínculos", ["Tipo","Local","Secretaria vinculada","Servidores ativos","Status","Usuários vinculados","Observação"], painel_rows)
 
     add_sheet("Configurações", ["Chave","Valor"], [
-        [c["chave"], c["valor"]]
+        [c["chave"], "********" if c["chave"] in ("smtp_pass", "secret_key", "api_key") else c["valor"]]
         for c in db.execute("SELECT * FROM config ORDER BY chave").fetchall()
     ])
 
     saldo_rows = []
-    for s in db.execute("SELECT * FROM servidores ORDER BY arquivado,nome").fetchall():
-        credito = db.execute("SELECT COALESCE(SUM(minutos_creditados),0) v FROM lancamentos WHERE matricula=?", (s["matricula"],)).fetchone()["v"] or 0
-        usado = db.execute("""SELECT COALESCE(SUM(c.minutos),0) v FROM consumos c
-                              JOIN lancamentos l ON l.id=c.lancamento_id WHERE l.matricula=?""", (s["matricula"],)).fetchone()["v"] or 0
+    for s in db.execute("""
+        SELECT s.*, COALESCE(l.credito,0) AS credito, COALESCE(c.usado,0) AS usado
+        FROM servidores s
+        LEFT JOIN (
+            SELECT matricula, SUM(minutos_creditados) AS credito
+            FROM lancamentos GROUP BY matricula
+        ) l ON l.matricula=s.matricula
+        LEFT JOIN (
+            SELECT l.matricula, SUM(c.minutos) AS usado
+            FROM consumos c JOIN lancamentos l ON l.id=c.lancamento_id
+            GROUP BY l.matricula
+        ) c ON c.matricula=s.matricula
+        ORDER BY s.arquivado,s.nome
+    """).fetchall():
+        credito = int(s["credito"] or 0)
+        usado = int(s["usado"] or 0)
         saldo_rows.append([s["matricula"], s["nome"], v(s, "secretaria"), v(s, "setor"),
                            "Arquivado" if v(s, "arquivado", 0) else "Ativo",
                            minutos_para_horas(credito), minutos_para_horas(usado), minutos_para_horas(credito - usado)])
@@ -2613,9 +2676,21 @@ def admin_backup_excel():
     add_sheet("Histórico Banco de Horas", ["Matrícula","Servidor","Tipo","Data","H.Base","%","Crédito no Banco","Débito no Banco","H.Base Pagas","Justificativa/Descrição","Criado em","Status"], hist_bh)
 
     eleicao_saldo = []
-    for s in db.execute("SELECT * FROM servidores ORDER BY arquivado,nome").fetchall():
-        cred = db.execute("SELECT COALESCE(SUM(quantidade_dias),0) v FROM eleicao_creditos WHERE matricula=?", (s["matricula"],)).fetchone()["v"] or 0
-        baix = db.execute("SELECT COUNT(*) v FROM eleicao_baixas WHERE matricula=?", (s["matricula"],)).fetchone()["v"] or 0
+    for s in db.execute("""
+        SELECT s.*, COALESCE(ec.cred,0) AS cred, COALESCE(eb.baix,0) AS baix
+        FROM servidores s
+        LEFT JOIN (
+            SELECT matricula, SUM(quantidade_dias) AS cred
+            FROM eleicao_creditos GROUP BY matricula
+        ) ec ON ec.matricula=s.matricula
+        LEFT JOIN (
+            SELECT matricula, COUNT(*) AS baix
+            FROM eleicao_baixas GROUP BY matricula
+        ) eb ON eb.matricula=s.matricula
+        ORDER BY s.arquivado,s.nome
+    """).fetchall():
+        cred = int(s["cred"] or 0)
+        baix = int(s["baix"] or 0)
         eleicao_saldo.append([s["matricula"], s["nome"], v(s, "secretaria"), v(s, "setor"),
                               "Arquivado" if v(s, "arquivado", 0) else "Ativo", cred, baix, cred - baix])
     add_sheet("Banco Dias Eleição", ["Matrícula","Servidor","Secretaria","Departamento","Status","Dias concedidos","Dias utilizados","Saldo"], eleicao_saldo)
@@ -2693,8 +2768,9 @@ def admin_importar_cadastros_auxiliares():
         return redirect(url_for("admin_importacao"))
     try:
         leitor = _csv_reader_upload(arquivo)
-    except ValueError as e:
-        flash(str(e), "danger")
+    except ValueError:
+        app.logger.exception("CSV de cadastros auxiliares recusado")
+        flash("Não foi possível ler o CSV. Verifique o formato e tente novamente.", "danger")
         return redirect(url_for("admin_importacao"))
     campos = {str(c or "").strip().lower() for c in (leitor.fieldnames or [])}
     if not {"tipo", "nome"}.issubset(campos):
@@ -3542,32 +3618,6 @@ def login():
         senha = request.form['senha']
         u = db.execute(f"SELECT * FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND ativo=1", (cpf,)).fetchone()
 
-        # ── Primeiro acesso: auto-cria conta para servidores cadastrados ─────
-        if not u:
-            srv = db.execute(
-                f"SELECT * FROM servidores WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND arquivado=0", (cpf,)).fetchone()
-            if srv:
-                try:
-                    pre = db.execute(
-                        f"SELECT * FROM pre_autorizacoes WHERE {cpf_sem_pontuacao_sql('cpf')}=?", (cpf,)).fetchone()
-                    nivel_auto     = pre['nivel']     if pre else 'servidor'
-                    vinculos_auto  = get_vinculos(pre) if pre else []
-                    matricula_auto = (pre['matricula'] or srv['matricula']) if pre else srv['matricula']
-                    db.insert("""
-                        INSERT INTO usuarios
-                            (cpf, nome, email, senha_hash, nivel, matricula, vinculos, ativo, senha_temporaria)
-                        VALUES (?,?,?,?,?,?,?,1,1)
-                    """, (cpf, srv['nome'], srv.get('email') or '',
-                          generate_password_hash('123456'),
-                          nivel_auto, matricula_auto, json.dumps(vinculos_auto)))
-                    db.commit()
-                    u = db.execute(
-                        f"SELECT * FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND ativo=1", (cpf,)).fetchone()
-                except Exception:
-                    db.commit()
-                    u = db.execute(
-                        f"SELECT * FROM usuarios WHERE {cpf_sem_pontuacao_sql('cpf')}=? AND ativo=1", (cpf,)).fetchone()
-
         if not u or not check_password_hash(u['senha_hash'], senha):
             msg_senha = (
                 "CPF ou senha inválidos. Caso não tenha acesso ou não se recorde da senha, "
@@ -3594,6 +3644,7 @@ def login():
         db.commit()
 
         session.clear()
+        session.permanent = True
         session['uid']   = u['id']
         session['nivel'] = u['nivel']
         session['nome']  = u['nome']
@@ -3630,15 +3681,12 @@ def trocar_senha():
         db = get_db()
         u  = db.execute("SELECT * FROM usuarios WHERE id=?", (session['uid'],)).fetchone()
         if not check_password_hash(u['senha_hash'], atual):
-            msg_atual = ("Senha temporária incorreta. Use <strong>123456</strong> no campo acima."
-                         if u.get('senha_temporaria') else "Senha atual incorreta.")
+            msg_atual = "Senha temporária incorreta." if u.get('senha_temporaria') else "Senha atual incorreta."
             flash(msg_atual, "danger")
         elif nova != conf:
             flash("As novas senhas não coincidem.", "danger")
-        elif nova == '123456':
-            flash("Escolha uma senha diferente da senha temporária padrão.", "danger")
-        elif len(nova) < 6:
-            flash("A senha deve ter pelo menos 6 caracteres.", "danger")
+        elif len(nova) < 8:
+            flash("A senha deve ter pelo menos 8 caracteres.", "danger")
         else:
             db.execute("UPDATE usuarios SET senha_hash=?, senha_temporaria=0 WHERE id=?",
                        (generate_password_hash(nova), session['uid']))
@@ -3968,8 +4016,10 @@ def consulta():
 @master_required
 def admin_usuarios():
     db   = get_db()
-    page = request.args.get('nivel','')
+    filtro_nivel = request.args.get('nivel','')
     busca = request.args.get('busca','').strip()
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = 30
     usuarios_rows = db.execute("SELECT * FROM usuarios ORDER BY nome").fetchall()
     por_matricula = {str(u["matricula"] or "").strip(): u for u in usuarios_rows if str(u["matricula"] or "").strip()}
     por_cpf = {somente_digitos(u["cpf"] or ""): u for u in usuarios_rows if somente_digitos(u["cpf"] or "")}
@@ -3977,15 +4027,17 @@ def admin_usuarios():
     servidores_rows = db.execute("SELECT * FROM servidores ORDER BY arquivado, nome").fetchall()
     usrs, usuarios_usados = [], set()
 
-    def ultimas_visualizacoes(uid):
-        if not uid:
-            return []
-        return db.execute("""
-            SELECT titulo,caminho,criado_em FROM visualizacoes
-            WHERE usuario_id=?
-            ORDER BY criado_em DESC, id DESC
-            LIMIT 3
-        """, (uid,)).fetchall()
+    visualizacoes_por_usuario = {}
+    for vis in db.execute("""
+        SELECT usuario_id,titulo,caminho,criado_em FROM (
+            SELECT usuario_id,titulo,caminho,criado_em,id,
+                   ROW_NUMBER() OVER (PARTITION BY usuario_id ORDER BY criado_em DESC,id DESC) AS rn
+            FROM visualizacoes
+        ) ranked
+        WHERE rn<=3
+        ORDER BY usuario_id,criado_em DESC,id DESC
+    """).fetchall():
+        visualizacoes_por_usuario.setdefault(vis["usuario_id"], []).append(vis)
 
     termo = busca.lower()
     for s in servidores_rows:
@@ -4009,9 +4061,9 @@ def admin_usuarios():
             "arquivado": int(s["arquivado"] or 0),
             "possui_conta": bool(u),
             "vinculos_lista": get_vinculos(u) if u else [],
-            "ultimas_visualizacoes": ultimas_visualizacoes(u["id"] if u else None),
+            "ultimas_visualizacoes": visualizacoes_por_usuario.get(u["id"], []) if u else [],
         }
-        if page and d["nivel"] != page:
+        if filtro_nivel and d["nivel"] != filtro_nivel:
             continue
         if termo:
             campos = [d["nome"], d["cpf"], d["email"], d["matricula"], d["servidor_nome"], d["secretaria"], d["setor"], d["cargo"]]
@@ -4029,15 +4081,22 @@ def admin_usuarios():
             "servidor_nome": None, "secretaria": u["secretaria"], "setor": u["setor"],
             "cargo": "", "arquivado": 0, "possui_conta": True,
             "vinculos_lista": get_vinculos(u),
-            "ultimas_visualizacoes": ultimas_visualizacoes(u["id"]),
+            "ultimas_visualizacoes": visualizacoes_por_usuario.get(u["id"], []),
         })
-        if page and d["nivel"] != page:
+        if filtro_nivel and d["nivel"] != filtro_nivel:
             continue
         if termo and not any(termo in str(d.get(c) or "").lower() for c in ("nome", "cpf", "email", "matricula", "secretaria", "setor")):
             continue
         usrs.append(d)
 
-    return render_template('admin/usuarios.html', usuarios=usrs, filtro_nivel=page, busca=busca)
+    total = len(usrs)
+    page, total_pages, offset = _paginar(total, page, per_page)
+    usrs = usrs[offset:offset + per_page]
+    return render_template(
+        'admin/usuarios.html', usuarios=usrs, filtro_nivel=filtro_nivel, busca=busca,
+        page=page, total_pages=total_pages, total=total,
+        base_args={"busca": busca, "nivel": filtro_nivel},
+    )
 
 
 @app.route('/admin/usuarios/novo', methods=['GET','POST'])
@@ -4267,6 +4326,8 @@ def admin_acessos():
     filtro_nivel = request.args.get('nivel','').strip()
     busca = request.args.get('busca','').strip()
     departamento = request.args.get('departamento','').strip()
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = 30
 
     # Usuários por nível
     q = "WHERE u.ativo=1 AND (u.nivel IN ('master','visualizacao') OR s.matricula IS NOT NULL)"
@@ -4294,6 +4355,9 @@ def admin_acessos():
         d['vinculos_lista'] = get_vinculos(u)
         d['vinculos_json'] = json.dumps(d['vinculos_lista'])
         usuarios.append(d)
+    usuarios_total = len(usuarios)
+    page, total_pages, offset = _paginar(usuarios_total, page, per_page)
+    usuarios = usuarios[offset:offset + per_page]
 
     # Contadores por nível
     contadores = {r['nivel']: r['qtd'] for r in db.execute("""
@@ -4423,6 +4487,8 @@ def admin_acessos():
                             pre_autorizacoes=pre, ultimos=ultimos,
                             secretarias=secs, setores=sets, servidores=srvs,
                             busca=busca, filtro_nivel=filtro_nivel, departamento=departamento,
+                            page=page, total_pages=total_pages, usuarios_total=usuarios_total,
+                            base_args={"busca": busca, "nivel": filtro_nivel, "departamento": departamento},
                             painel_secretarias=painel_secretarias,
                             painel_setores=painel_setores)
 
@@ -4546,17 +4612,17 @@ def admin_vincular_rapido():
     tipo      = request.form.get('tipo', '').strip()    # 'secretaria' ou 'setor'
     vinculo   = request.form.get('vinculo', '').strip() # nome da secretaria/setor
     if not matricula or not tipo or not vinculo:
-        return json.dumps({'erro': 'Dados incompletos.'}), 400, {'Content-Type': 'application/json'}
+        return api_error("Dados incompletos.")
     if tipo not in ('secretaria', 'setor'):
-        return json.dumps({'erro': 'Tipo inválido.'}), 400, {'Content-Type': 'application/json'}
+        return api_error("Tipo inválido.")
 
     nivel = 'secretario' if tipo == 'secretaria' else 'chefia'
     srv = db.execute("SELECT nome, cpf FROM servidores WHERE matricula=? AND arquivado=0", (matricula,)).fetchone()
     if not srv:
-        return json.dumps({'erro': 'Servidor não encontrado.'}), 404, {'Content-Type': 'application/json'}
+        return api_error("Servidor não encontrado.", 404)
     cpf = (srv['cpf'] or '').strip()
     if not cpf:
-        return json.dumps({'erro': 'Servidor sem CPF cadastrado. Atualize o cadastro antes de vincular.'}), 400, {'Content-Type': 'application/json'}
+        return api_error("Servidor sem CPF cadastrado. Atualize o cadastro antes de vincular.")
 
     cpf_norm = somente_digitos(cpf)
     usuario = db.execute(f"""
@@ -4623,7 +4689,7 @@ def admin_vincular_rapido():
                         f"Tipo: {tipo}; Nível: {nivel}; Ação: {acao}")
     db.commit()
     limpar_cache()
-    return json.dumps({'ok': True, 'acao': acao, 'nome': srv['nome'], 'matricula': matricula, 'nivel': nivel, 'vinculo': vinculo, 'msg': msg}), 200, {'Content-Type': 'application/json'}
+    return api_success(msg, acao=acao, nome=srv["nome"], matricula=matricula, nivel=nivel, vinculo=vinculo, msg=msg)
 
 
 @app.route('/admin/acessos/vinculo-remover', methods=['POST'])
@@ -4635,7 +4701,7 @@ def admin_remover_vinculo_rapido():
     vinculo    = request.form.get('vinculo', '').strip()
 
     if not usuario_id or not vinculo or tipo not in ('secretaria', 'setor'):
-        return json.dumps({'erro': 'Dados incompletos para remoção.'}), 400, {'Content-Type': 'application/json'}
+        return api_error("Dados incompletos para remoção.")
 
     nivel_esperado = 'secretario' if tipo == 'secretaria' else 'chefia'
     usuario = db.execute(
@@ -4643,13 +4709,13 @@ def admin_remover_vinculo_rapido():
         (usuario_id,)
     ).fetchone()
     if not usuario:
-        return json.dumps({'erro': 'Usuário ativo não encontrado.'}), 404, {'Content-Type': 'application/json'}
+        return api_error("Usuário ativo não encontrado.", 404)
     if usuario['nivel'] != nivel_esperado and usuario['nivel'] != 'master':
-        return json.dumps({'erro': 'O vínculo informado não pertence ao nível atual do usuário.'}), 400, {'Content-Type': 'application/json'}
+        return api_error("O vínculo informado não pertence ao nível atual do usuário.")
 
     vinculos_atuais = get_vinculos(usuario)
     if vinculo not in vinculos_atuais:
-        return json.dumps({'erro': 'Este vínculo já não está associado ao usuário.'}), 400, {'Content-Type': 'application/json'}
+        return api_error("Este vínculo já não está associado ao usuário.")
 
     novos_vinculos = [v for v in vinculos_atuais if v != vinculo]
     nova_secretaria = '' if tipo == 'secretaria' and (usuario['secretaria'] or '') == vinculo else (usuario['secretaria'] or '')
@@ -4672,14 +4738,7 @@ def admin_remover_vinculo_rapido():
     msg = f"Vínculo removido de {nome}."
     if not novos_vinculos:
         msg += " O usuário permanece ativo, mas sem vínculo de consulta nesse nível."
-    return json.dumps({
-        'ok': True,
-        'nome': nome,
-        'matricula': matricula,
-        'nivel': nivel_esperado,
-        'vinculo': vinculo,
-        'msg': msg
-    }, ensure_ascii=False), 200, {'Content-Type': 'application/json'}
+    return api_success(msg, nome=nome, matricula=matricula, nivel=nivel_esperado, vinculo=vinculo, msg=msg)
 
 
 # ─── Banco de Dias de Eleição ─────────────────────────────────────────────────
@@ -5296,7 +5355,7 @@ def api_saldo_solicitacao(matricula, tipo):
 def solicitacoes_nova():
     db = get_db()
     if not _solicitacoes_habilitado(db):
-        return json.dumps({'erro': 'Funcionalidade desabilitada pelo RH.'}), 403, {'Content-Type': 'application/json'}
+        return api_error("Funcionalidade desabilitada pelo RH.", 403)
     uid  = session.get('uid')
     nome = session.get('nome')
     tipo = request.form.get('tipo', '').strip()
@@ -5307,25 +5366,25 @@ def solicitacoes_nova():
     u_row = db.execute("SELECT matricula FROM usuarios WHERE id=?", (uid,)).fetchone()
     matricula = (u_row['matricula'] if u_row else None) or session.get('matricula') or ''
     if not matricula:
-        return json.dumps({'erro': 'Não foi localizado cadastro de servidor vinculado ao usuário logado.'}), 400, {'Content-Type': 'application/json'}
+        return api_error("Não foi localizado cadastro de servidor vinculado ao usuário logado.")
 
     if not tipo or not data_pretendida:
-        return json.dumps({'erro': 'Preencha todos os campos obrigatórios.'}), 400, {'Content-Type': 'application/json'}
+        return api_error("Preencha todos os campos obrigatórios.")
     if tipo not in ('banco_horas', 'eleicao'):
-        return json.dumps({'erro': 'Tipo de solicitação inválido.'}), 400, {'Content-Type': 'application/json'}
+        return api_error("Tipo de solicitação inválido.")
 
     srv = db.execute("SELECT nome FROM servidores WHERE matricula=? AND arquivado=0", (matricula,)).fetchone()
     if not srv:
-        return json.dumps({'erro': 'Não foi localizado cadastro de servidor vinculado ao usuário logado.'}), 404, {'Content-Type': 'application/json'}
+        return api_error("Não foi localizado cadastro de servidor vinculado ao usuário logado.", 404)
 
     if tipo == 'banco_horas':
         horas_txt = request.form.get('quantidade', '').strip()
         quantidade = horas_para_minutos(horas_txt)
         if quantidade <= 0:
-            return json.dumps({'erro': 'Informe uma quantidade válida de horas.'}), 400, {'Content-Type': 'application/json'}
+            return api_error("Informe uma quantidade válida de horas.")
         saldo_disponivel = calcular_saldo(db, matricula)
         if quantidade > saldo_disponivel:
-            return json.dumps({'erro': 'Quantidade de horas solicitada superior ao saldo disponível.'}), 400, {'Content-Type': 'application/json'}
+            return api_error("Quantidade de horas solicitada superior ao saldo disponível.")
         data_fim = data_pretendida
     else:
         try:
@@ -5333,10 +5392,10 @@ def solicitacoes_nova():
         except (ValueError, TypeError):
             quantidade = 0
         if quantidade <= 0:
-            return json.dumps({'erro': 'Informe uma quantidade válida de dias.'}), 400, {'Content-Type': 'application/json'}
+            return api_error("Informe uma quantidade válida de dias.")
         saldo_disponivel = calcular_saldo_eleicao(db, matricula)
         if quantidade > saldo_disponivel:
-            return json.dumps({'erro': 'Quantidade de dias solicitada superior ao saldo disponível.'}), 400, {'Content-Type': 'application/json'}
+            return api_error("Quantidade de dias solicitada superior ao saldo disponível.")
         data_fim = _calcular_data_fim(data_pretendida, quantidade, tipo)
 
     sid = db.insert("""
@@ -5346,7 +5405,7 @@ def solicitacoes_nova():
     registrar_auditoria(db, "Solicitação criada", "solicitacoes", sid, matricula, srv['nome'],
                         f"Tipo: {tipo}; Quantidade: {quantidade}; Período: {data_pretendida} a {data_fim}")
     db.commit()
-    return json.dumps({'ok': True, 'id': sid}), 200, {'Content-Type': 'application/json'}
+    return api_success("Solicitação registrada.", id=sid)
 
 @app.route("/solicitacoes/<int:sid>/autorizar", methods=["POST"])
 @login_required

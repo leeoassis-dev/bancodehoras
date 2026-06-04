@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/ui.html" import status_badge %}
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -139,21 +140,7 @@
             {% if s.data_fim and s.data_fim != s.data_pretendida %}<br><span class="text-muted" style="font-size:.72rem">até {{ s.data_fim|fmt_data }}</span>{% endif %}
           </td>
           <td>
-            {% if s.status == 'solicitado' %}
-              <span class="badge bg-warning text-dark">Pendente Autorização</span>
-            {% elif s.status == 'autorizado' %}
-              <span class="badge bg-info text-dark">Aguard. Lançamento RH</span>
-            {% elif s.status == 'lancado' %}
-              <span class="badge bg-success">Lançado</span>
-            {% elif s.status == 'estornado' %}
-              <span class="badge bg-warning text-dark">Estornado</span>
-            {% elif s.status == 'indeferido' %}
-              <span class="badge bg-danger" title="{{ s.motivo_indeferimento or '' }}">Indeferido</span>
-            {% elif s.status == 'cancelado' %}
-              <span class="badge bg-secondary">Cancelado</span>
-            {% else %}
-              <span class="badge bg-secondary">{{ s.status }}</span>
-            {% endif %}
+            {{ status_badge(s.status, s.motivo_indeferimento or '') }}
           </td>
           <td>{{ s.criado_em|fmt_datetime }}</td>
           <td class="text-muted small">
@@ -495,7 +482,7 @@ async function confirmarEstorno(sid, nome, tipo, qtd) {
   const label = tipo === 'banco_horas'
     ? Math.floor(qtd/60).toString().padStart(2,'0')+':'+(qtd%60).toString().padStart(2,'0')
     : qtd + (qtd===1?' dia':' dias');
-  if (!confirm(`Estornar lançamento de ${label} para ${nome}?\n\nA compensação será removida e o saldo devolvido ao servidor.`)) return;
+  if (!await appConfirm(`Estornar lançamento de ${label} para ${nome}?\n\nA compensação será removida e o saldo devolvido ao servidor.`, { danger: true })) return;
   const res = await fetch(`/admin/tarefas/${sid}/estornar`, { method: 'POST' });
   const d = await res.json();
   if (d.ok) location.reload();

@@ -81,7 +81,7 @@
 <!-- Abas -->
 <ul class="nav nav-tabs mb-3">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabUsuarios">
-    <i class="bi bi-people me-1"></i>Contas Ativas ({{ usuarios|length }})
+    <i class="bi bi-people me-1"></i>Contas Ativas ({{ usuarios_total }})
   </button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPre">
     <i class="bi bi-clock me-1"></i>Pré-autorizações Pendentes ({{ pre_autorizacoes|length }})
@@ -183,6 +183,17 @@
     </div>
     {% endif %}
     {% endfor %}
+    {% if total_pages > 1 %}
+    <nav aria-label="Paginação de acessos ativos">
+      <ul class="pagination pagination-sm justify-content-center">
+        {% for p in range(1, total_pages + 1) %}
+        <li class="page-item {{ 'active' if p == page }}">
+          <a class="page-link" href="?{{ base_args|urlencode }}&page={{ p }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </nav>
+    {% endif %}
   </div>
 
   <!-- ── Tab Pré-autorizações ── -->
@@ -438,7 +449,7 @@
         <div class="modal-body">
           <div class="alert alert-info small">
             Busque o servidor pela matrícula. O sistema vinculará automaticamente o CPF cadastrado.
-            No primeiro acesso, o servidor usará a senha padrão <strong>123456</strong>.
+            A pré-autorização define o nível e os vínculos. A conta e a senha temporária devem ser gerenciadas pelo RH.
           </div>
 
           <!-- Campo matrícula com busca -->

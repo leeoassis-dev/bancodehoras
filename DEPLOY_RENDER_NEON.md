@@ -42,6 +42,7 @@ Start Command: gunicorn app:app
 ```text
 DATABASE_URL = connection string do Neon
 SECRET_KEY   = uma senha longa aleatória
+SESSION_HOURS = 8
 ```
 
 O arquivo `render.yaml` também já foi criado para facilitar o Blueprint.
@@ -50,14 +51,8 @@ O arquivo `render.yaml` também já foi criado para facilitar o Blueprint.
 
 No primeiro deploy, o sistema cria as tabelas automaticamente.
 
-Usuário master padrão:
-
-```text
-CPF: 000.000.000-00
-Senha: Ibipora@2024
-```
-
-O sistema solicitará troca de senha se este for o primeiro usuário criado.
+Em um banco novo, acesse `/setup` e cadastre o primeiro usuário master. O
+sistema não cria credenciais padrão, evitando senhas conhecidas em produção.
 
 ## 5. Migrar dados locais para o Neon
 
@@ -75,3 +70,5 @@ Use `--clear` apenas se quiser limpar o Neon antes de copiar os dados locais.
 - O SQLite local continuará funcionando quando `DATABASE_URL` não existir.
 - No Render, o sistema usará PostgreSQL/Neon automaticamente.
 - Configure o SMTP no painel **Admin > E-mail** se quiser recuperação de senha por e-mail.
+- Nunca remova a `SECRET_KEY` em produção. A troca dessa chave encerra todas as sessões ativas.
+- O sistema aplica cookies seguros, proteção CSRF e cabeçalhos de segurança automaticamente no Render.

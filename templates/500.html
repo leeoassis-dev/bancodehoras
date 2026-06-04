@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="app-empty-state">
+  <i class="bi bi-exclamation-octagon text-danger"></i>
+  <h3>Não foi possível concluir a operação</h3>
+  <p>O erro foi registrado para análise. Código de atendimento: <strong>{{ codigo }}</strong>.</p>
+  <a href="{{ url_for('portal') }}" class="btn btn-primary">
+    <i class="bi bi-house me-1"></i>Voltar ao início
+  </a>
+</div>
+{% endblock %}
