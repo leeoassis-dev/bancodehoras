@@ -1370,10 +1370,23 @@ def arquivados():
 @master_required
 def arquivado_historico(matricula):
     db = get_db()
-    srv = db.execute("SELECT * FROM servidores WHERE matricula=? AND arquivado=1", (matricula,)).fetchone()
+    dados = _carregar_historico_arquivado(db, matricula)
+    srv = dados["servidor"]
     if not srv:
         flash("Servidor arquivado não encontrado.", "danger")
         return redirect(url_for("arquivados"))
+    return render_template(
+        "arquivado_historico.html",
+        servidor=srv, lancamentos=dados["lancamentos"], compensacoes=dados["compensacoes"], pagamentos=dados["pagamentos"],
+        eleicao_creditos=dados["eleicao_creditos"], eleicao_baixas=dados["eleicao_baixas"],
+        saldo=dados["saldo"], saldo_eleicao=dados["saldo_eleicao"],
+        fmt=minutos_para_horas
+    )
+
+def _carregar_historico_arquivado(db, matricula):
+    srv = db.execute("SELECT * FROM servidores WHERE matricula=? AND arquivado=1", (matricula,)).fetchone()
+    if not srv:
+        return {"servidor": None}
     lancs = db.execute("""
         SELECT l.*, COALESCE((SELECT SUM(c.minutos) FROM consumos c WHERE c.lancamento_id=l.id),0) AS consumido
         FROM lancamentos l
@@ -1406,13 +1419,114 @@ def arquivado_historico(matricula):
         WHERE matricula=?
         ORDER BY data DESC, id DESC
     """, (matricula,)).fetchall()
-    return render_template(
-        "arquivado_historico.html",
-        servidor=srv, lancamentos=lancs, compensacoes=comps, pagamentos=pags,
-        eleicao_creditos=eleicao_creditos, eleicao_baixas=eleicao_baixas,
-        saldo=calcular_saldo(db, matricula), saldo_eleicao=calcular_saldo_eleicao(db, matricula),
-        fmt=minutos_para_horas
-    )
+    return {
+        "servidor": srv,
+        "lancamentos": lancs,
+        "compensacoes": comps,
+        "pagamentos": pags,
+        "eleicao_creditos": eleicao_creditos,
+        "eleicao_baixas": eleicao_baixas,
+        "saldo": calcular_saldo(db, matricula),
+        "saldo_eleicao": calcular_saldo_eleicao(db, matricula),
+    }
+
+@app.route("/arquivados/<matricula>/historico/pdf")
+@master_required
+def arquivado_historico_pdf(matricula):
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from xml.sax.saxutils import escape
+
+    db = get_db()
+    dados = _carregar_historico_arquivado(db, matricula)
+    srv = dados["servidor"]
+    if not srv:
+        flash("Servidor arquivado não encontrado.", "danger")
+        return redirect(url_for("arquivados"))
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=18, leftMargin=18, topMargin=18, bottomMargin=18)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("TitleBlue", parent=styles["Title"], fontSize=15, leading=18, alignment=1, textColor=colors.HexColor("#1A3A6B"))
+    subtitle_style = ParagraphStyle("Subtitle", parent=styles["BodyText"], fontSize=8, leading=10, alignment=1, textColor=colors.HexColor("#4B5563"))
+    section_style = ParagraphStyle("Section", parent=styles["Heading3"], fontSize=10, leading=12, textColor=colors.HexColor("#1A3A6B"), spaceBefore=8, spaceAfter=4)
+    cell_style = ParagraphStyle("Cell", parent=styles["BodyText"], fontSize=7, leading=9, wordWrap="CJK")
+    header_style = ParagraphStyle("Header", parent=cell_style, fontName="Helvetica-Bold", textColor=colors.white, alignment=1)
+
+    def p(v, style=cell_style):
+        return Paragraph(escape(str(v if v is not None else "")), style)
+
+    def tabela(headers, rows, widths=None):
+        if not rows:
+            return Paragraph("Nenhum registro encontrado.", cell_style)
+        table = Table([[p(h, header_style) for h in headers]] + [[p(c) for c in row] for row in rows], repeatRows=1, colWidths=widths)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1A3A6B")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D0D7DE")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F6F9")]),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        return table
+
+    story = [
+        Paragraph("Histórico do Servidor Arquivado", title_style),
+        Paragraph(f"{srv['nome']} ({srv['matricula']}) | {srv['cargo'] or 'Sem cargo'} | {srv['secretaria'] or 'Sem secretaria'} | {srv['setor'] or 'Sem departamento'}", subtitle_style),
+        Paragraph(f"Saldo banco: {minutos_para_horas(dados['saldo'])} | Saldo eleição: {dados['saldo_eleicao']} dia(s) | Emitido em {datetime.now().strftime('%d/%m/%Y %H:%M')}", subtitle_style),
+        Spacer(1, 8),
+    ]
+
+    story.append(Paragraph("Lançamentos de Horas", section_style))
+    story.append(tabela(
+        ["Data", "H.Base", "%", "Creditado", "Consumido", "Saldo", "Descrição"],
+        [[fmt_data(l["data"]), l["horas_base"], f"{l['percentual']}%", minutos_para_horas(l["minutos_creditados"]), minutos_para_horas(l["consumido"]), minutos_para_horas(int(l["minutos_creditados"] or 0) - int(l["consumido"] or 0)), l["descricao"] or "-"] for l in dados["lancamentos"]],
+        [55, 50, 35, 60, 60, 55, 310]
+    ))
+    story.append(Spacer(1, 5))
+
+    story.append(Paragraph("Compensações", section_style))
+    story.append(tabela(
+        ["Data", "Compensado", "Descrição", "Criado em"],
+        [[fmt_data(c["data"]), minutos_para_horas(c["minutos_compensados"]), c["descricao"] or "-", fmt_datetime(c["criado_em"])] for c in dados["compensacoes"]],
+        [65, 70, 430, 95]
+    ))
+    story.append(Spacer(1, 5))
+
+    story.append(Paragraph("Pagamentos", section_style))
+    story.append(tabela(
+        ["Data", "H.Base Pagas", "Banco Baixado", "Referência", "Criado em"],
+        [[fmt_data(pg["data_pagamento"]), minutos_para_horas(int(pg["base_paga"] or 0)), minutos_para_horas(int(pg["minutos_pagos"] or 0)), pg["descricao"] or "-", fmt_datetime(pg["criado_em"])] for pg in dados["pagamentos"]],
+        [65, 75, 80, 345, 95]
+    ))
+    story.append(Spacer(1, 5))
+
+    story.append(Paragraph("Créditos de Eleição", section_style))
+    story.append(tabela(
+        ["Referência", "Dias", "Observação", "Lançado em"],
+        [[e["referencia_eleicao"], e["quantidade_dias"], e["observacao"] or "-", fmt_datetime(e["criado_em"])] for e in dados["eleicao_creditos"]],
+        [230, 45, 330, 95]
+    ))
+    story.append(Spacer(1, 5))
+
+    story.append(Paragraph("Baixas / Fruições Eleitorais", section_style))
+    story.append(tabela(
+        ["Data", "Observação", "Criado em"],
+        [[fmt_data(b["data"]), b["observacao"] or "-", fmt_datetime(b["criado_em"])] for b in dados["eleicao_baixas"]],
+        [65, 500, 95]
+    ))
+
+    doc.build(story)
+    buf.seek(0)
+    resp = make_response(buf.getvalue())
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = f"attachment; filename=historico_servidor_arquivado_{matricula}.pdf"
+    return resp
 
 @app.route("/lancamentos/<matricula>", methods=["GET","POST"])
 @master_required

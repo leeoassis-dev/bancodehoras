@@ -6,9 +6,14 @@
     <h4 class="mb-0"><i class="bi bi-archive-fill me-2 text-secondary"></i>Histórico do Servidor Arquivado</h4>
     <div class="text-muted small">Consulta somente leitura. Para editar ou movimentar, restaure o servidor.</div>
   </div>
-  <a href="{{ url_for('arquivados') }}" class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-arrow-left me-1"></i>Voltar
-  </a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('arquivado_historico_pdf', matricula=servidor.matricula) }}" class="btn btn-outline-danger btn-sm">
+      <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+    </a>
+    <a href="{{ url_for('arquivados') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Voltar
+    </a>
+  </div>
 </div>
 
 <div class="alert alert-secondary border d-flex align-items-center gap-3">
