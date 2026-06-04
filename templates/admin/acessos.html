@@ -296,7 +296,11 @@
                     {% if sec.secretarios %}
                       {% for u in sec.secretarios %}
                       <span class="badge bg-primary me-1 mb-1 d-inline-flex align-items-center gap-1">
-                        <i class="bi bi-person-badge"></i>{{ u.nome }}
+                        <button type="button" class="btn btn-sm p-0 text-white border-0"
+                                style="line-height:1" title="Alterar nível e vínculos"
+                                onclick='abrirModalNivel({{ u.id }}, {{ u.nivel|tojson }}, {{ u.vinculos|tojson }}, {{ u.matricula|tojson }})'>
+                          <i class="bi bi-person-badge"></i> {{ u.nome }}
+                        </button>
                         <button type="button" class="btn btn-sm p-0 text-white border-0"
                                 style="line-height:1" title="Remover vínculo"
                                 onclick='removerVinculoRapido("secretaria", {{ sec.nome|tojson }}, {{ u.id }}, {{ u.nome|tojson }})'>
@@ -357,7 +361,11 @@
                     {% if s.chefias %}
                       {% for c in s.chefias %}
                       <span class="badge bg-info text-dark me-1 mb-1 d-inline-flex align-items-center gap-1">
-                        <i class="bi bi-person-fill"></i>{{ c.nome }}
+                        <button type="button" class="btn btn-sm p-0 text-dark border-0"
+                                style="line-height:1" title="Alterar nível e vínculos"
+                                onclick='abrirModalNivel({{ c.id }}, {{ c.nivel|tojson }}, {{ c.vinculos|tojson }}, {{ c.matricula|tojson }})'>
+                          <i class="bi bi-person-fill"></i> {{ c.nome }}
+                        </button>
                         <button type="button" class="btn btn-sm p-0 text-dark border-0"
                                 style="line-height:1" title="Remover vínculo"
                                 onclick='removerVinculoRapido("setor", {{ s.nome|tojson }}, {{ c.id }}, {{ c.nome|tojson }})'>

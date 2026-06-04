@@ -13,7 +13,11 @@
   <div class="row g-2 align-items-end">
     <div class="col-md-4">
       <label class="form-label small fw-semibold mb-1"><i class="bi bi-search me-1"></i>Buscar arquivado</label>
-      <input type="text" name="busca" class="form-control" placeholder="Matrícula ou nome..." value="{{ busca }}">
+      <div class="position-relative">
+        <input type="text" name="busca" id="buscaArquivado" class="form-control" placeholder="Matrícula ou nome..." value="{{ busca }}" autocomplete="off">
+        <div id="dropArquivados" class="position-absolute w-100 bg-white border rounded shadow-sm d-none"
+             style="top:100%;left:0;z-index:1060;max-height:240px;overflow-y:auto;margin-top:2px;"></div>
+      </div>
     </div>
     <div class="col-md-3">
       <label class="form-label small fw-semibold mb-1">Secretaria</label>
@@ -61,7 +65,7 @@
           </td>
           <td class="text-center">
             <div class="d-flex gap-1 justify-content-center">
-              <a href="/lancamentos/{{ s.matricula }}" class="btn btn-sm btn-outline-secondary" title="Consultar histórico">
+              <a href="{{ url_for('arquivado_historico', matricula=s.matricula) }}" class="btn btn-sm btn-outline-secondary" title="Consultar histórico completo">
                 <i class="bi bi-eye"></i> Consultar
               </a>
               <form method="post" action="/servidores/{{ s.matricula }}/restaurar"
@@ -84,4 +88,44 @@
   <p class="mt-3">Nenhum servidor arquivado{{ ' para os filtros aplicados' if busca or secretaria_sel or setor_sel }}.</p>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const _arquivados = [
+  {% for s in servidores %}
+  {mat: {{ s.matricula|tojson }}, nome: {{ s.nome|tojson }}, info: {{ ((s.secretaria or '') ~ ' · ' ~ (s.setor or ''))|tojson }}}{{ ',' if not loop.last }}
+  {% endfor %}
+];
+function _normArq(v){ return (v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function _htmlArq(v){ return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const inputArq = document.getElementById('buscaArquivado');
+const dropArq = document.getElementById('dropArquivados');
+inputArq?.addEventListener('input', () => {
+  const q = _normArq(inputArq.value.trim());
+  if (q.length < 2) { dropArq.classList.add('d-none'); dropArq.innerHTML=''; return; }
+  const matches = _arquivados.filter(s => _normArq(s.mat).includes(q) || _normArq(s.nome).includes(q)).slice(0,8);
+  if (!matches.length) {
+    dropArq.innerHTML = '<div class="px-3 py-2 text-muted small">Nenhum arquivado encontrado.</div>';
+    dropArq.classList.remove('d-none');
+    return;
+  }
+  dropArq.innerHTML = matches.map((s, i) => `
+    <div class="arq-item px-3 py-2 border-bottom" data-idx="${i}" style="cursor:pointer">
+      <span class="badge bg-secondary me-1">${_htmlArq(s.mat)}</span>
+      <span class="fw-semibold small">${_htmlArq(s.nome)}</span>
+      <div class="text-muted" style="font-size:.72rem">${_htmlArq(s.info || '')}</div>
+    </div>`).join('');
+  dropArq.classList.remove('d-none');
+  dropArq.querySelectorAll('.arq-item').forEach(el => {
+    el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const s = matches[parseInt(el.dataset.idx)];
+      inputArq.value = s.mat;
+      dropArq.classList.add('d-none');
+    });
+  });
+});
+inputArq?.addEventListener('blur', () => setTimeout(() => dropArq.classList.add('d-none'), 160));
+</script>
 {% endblock %}

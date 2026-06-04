@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-archive-fill me-2 text-secondary"></i>Histórico do Servidor Arquivado</h4>
+    <div class="text-muted small">Consulta somente leitura. Para editar ou movimentar, restaure o servidor.</div>
+  </div>
+  <a href="{{ url_for('arquivados') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Voltar
+  </a>
+</div>
+
+<div class="alert alert-secondary border d-flex align-items-center gap-3">
+  <i class="bi bi-person-badge fs-4"></i>
+  <div class="flex-grow-1">
+    <div class="fw-bold">{{ servidor.nome }} <span class="badge bg-secondary ms-1">{{ servidor.matricula }}</span></div>
+    <div class="small">{{ servidor.cargo or 'Sem cargo' }} · {{ servidor.secretaria or 'Sem secretaria' }} · {{ servidor.setor or 'Sem departamento' }}</div>
+  </div>
+  <div class="text-end">
+    <div class="small text-muted">Saldo banco</div>
+    <div class="fw-bold">{{ fmt(saldo) }}</div>
+  </div>
+  <div class="text-end">
+    <div class="small text-muted">Saldo eleição</div>
+    <div class="fw-bold">{{ saldo_eleicao }} dia(s)</div>
+  </div>
+</div>
+
+<div class="alert alert-warning small">
+  <i class="bi bi-lock-fill me-1"></i>
+  Servidor arquivado: lançamentos, compensações, pagamentos e dias de eleição estão bloqueados para edição.
+</div>
+
+<div class="card mb-3">
+  <div class="card-header bg-white fw-semibold text-success"><i class="bi bi-plus-circle me-1"></i>Lançamentos de Horas</div>
+  {% if lancamentos %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light"><tr><th>Data</th><th>H.Base</th><th>%</th><th>Creditado</th><th>Consumido</th><th>Saldo</th><th>Descrição</th></tr></thead>
+      <tbody>
+        {% for l in lancamentos %}
+        {% set saldo_l = l.minutos_creditados|int - l.consumido|int %}
+        <tr>
+          <td>{{ l.data|fmt_data }}</td>
+          <td>{{ l.horas_base }}</td>
+          <td><span class="badge {{ 'badge-50' if l.percentual==50 else 'badge-100' }}">{{ l.percentual }}%</span></td>
+          <td class="fw-semibold text-success">{{ fmt(l.minutos_creditados) }}</td>
+          <td class="text-muted">{{ fmt(l.consumido) }}</td>
+          <td class="fw-semibold">{{ fmt(saldo_l) }}</td>
+          <td class="small text-muted">{{ l.descricao or '–' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="card-body text-muted small">Nenhum lançamento registrado.</div>{% endif %}
+</div>
+
+<div class="card mb-3">
+  <div class="card-header bg-white fw-semibold text-warning"><i class="bi bi-arrow-left-right me-1"></i>Compensações</div>
+  {% if compensacoes %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light"><tr><th>Data</th><th>Compensado</th><th>Descrição</th><th>Criado em</th></tr></thead>
+      <tbody>
+        {% for c in compensacoes %}
+        <tr>
+          <td>{{ c.data|fmt_data }}</td>
+          <td class="fw-semibold text-warning">{{ fmt(c.minutos_compensados) }}</td>
+          <td class="small text-muted">{{ c.descricao or '–' }}</td>
+          <td class="small text-muted">{{ c.criado_em|fmt_datetime }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="card-body text-muted small">Nenhuma compensação registrada.</div>{% endif %}
+</div>
+
+<div class="card mb-3">
+  <div class="card-header bg-white fw-semibold text-danger"><i class="bi bi-cash-coin me-1"></i>Pagamentos</div>
+  {% if pagamentos %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light"><tr><th>Data</th><th>H.Base Pagas</th><th>Banco Baixado</th><th>Referência</th><th>Criado em</th></tr></thead>
+      <tbody>
+        {% for p in pagamentos %}
+        <tr>
+          <td>{{ p.data_pagamento|fmt_data }}</td>
+          <td class="fw-semibold text-danger">{{ fmt(p.base_paga|int) }}</td>
+          <td class="text-muted">{{ fmt(p.minutos_pagos|int) }}</td>
+          <td class="small text-muted">{{ p.descricao or '–' }}</td>
+          <td class="small text-muted">{{ p.criado_em|fmt_datetime }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="card-body text-muted small">Nenhum pagamento registrado.</div>{% endif %}
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-semibold" style="color:#b45309"><i class="bi bi-calendar2-plus me-1"></i>Créditos de Eleição</div>
+      {% if eleicao_creditos %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light"><tr><th>Referência</th><th>Dias</th><th>Observação</th><th>Lançado em</th></tr></thead>
+          <tbody>
+            {% for e in eleicao_creditos %}
+            <tr><td class="fw-semibold">{{ e.referencia_eleicao }}</td><td>{{ e.quantidade_dias }}</td><td class="small text-muted">{{ e.observacao or '–' }}</td><td class="small text-muted">{{ e.criado_em|fmt_datetime }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<div class="card-body text-muted small">Nenhum crédito eleitoral registrado.</div>{% endif %}
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-semibold text-secondary"><i class="bi bi-calendar-minus me-1"></i>Baixas / Fruições Eleitorais</div>
+      {% if eleicao_baixas %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light"><tr><th>Data</th><th>Observação</th><th>Criado em</th></tr></thead>
+          <tbody>
+            {% for b in eleicao_baixas %}
+            <tr><td class="fw-semibold">{{ b.data|fmt_data }}</td><td class="small text-muted">{{ b.observacao or '–' }}</td><td class="small text-muted">{{ b.criado_em|fmt_datetime }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<div class="card-body text-muted small">Nenhuma fruição eleitoral registrada.</div>{% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

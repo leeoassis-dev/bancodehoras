@@ -223,6 +223,44 @@
   </div>
 </div>
 
+<div class="modal fade" id="modalEleicaoLoading" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header text-white" style="background:#78350f;">
+        <h5 class="modal-title"><i class="bi bi-arrow-repeat me-2"></i>Registrando dias de eleição</h5>
+      </div>
+      <div class="modal-body">
+        <div class="progress mb-3" style="height:18px">
+          <div id="elLoadBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%;background:#b45309">0%</div>
+        </div>
+        <div class="small text-muted mb-2" id="elLoadMsg">Preparando lançamento...</div>
+        <div class="small border rounded bg-light p-2">
+          <strong>Etapa atual:</strong> <span id="elLoadStep">Iniciando</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalEleicaoConfirmacao" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title"><i class="bi bi-check-circle-fill me-2"></i>Lançamento Confirmado</h5>
+      </div>
+      <div class="modal-body">
+        <div class="fw-bold" id="elConfServidor"></div>
+        <p class="mb-0 mt-2" id="elConfMsg"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-success px-4" id="btnElConfOk">
+          <i class="bi bi-check-lg me-1"></i>OK
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 const _servidores = [
   {% for s in todos_servidores %}
@@ -247,7 +285,7 @@ document.getElementById('buscaServidor').addEventListener('input', function() {
   if (q.length < 2) { box.classList.add('d-none'); box.innerHTML = ''; return; }
   _matchesAtual = _servidores.filter(s =>
     s.nome.toLowerCase().includes(q) || s.mat.toLowerCase().includes(q)
-  ).slice(0, 10);
+  ).slice(0, 8);
   if (!_matchesAtual.length) {
     box.innerHTML = '<div class="p-2 text-muted small">Nenhum resultado.</div>';
     box.classList.remove('d-none');
@@ -290,6 +328,88 @@ function limparSelecao() {
 
 // Reseta modal ao fechar
 document.getElementById('modalLancarCredito').addEventListener('hidden.bs.modal', limparSelecao);
+
+function mostrarLoadingEleicao() {
+  const bar = document.getElementById('elLoadBar');
+  const msg = document.getElementById('elLoadMsg');
+  const step = document.getElementById('elLoadStep');
+  bar.style.width = '0%';
+  bar.textContent = '0%';
+  msg.textContent = 'Preparando lançamento...';
+  step.textContent = 'Iniciando';
+  const modal = new bootstrap.Modal(document.getElementById('modalEleicaoLoading'), {backdrop:'static', keyboard:false});
+  modal.show();
+  const etapas = [
+    [20, 'Validando servidor selecionado...', 'Conferindo matrícula'],
+    [42, 'Validando referência e quantidade de dias...', 'Conferindo lançamento'],
+    [68, 'Gravando crédito no banco de dias de eleição...', 'Salvando registro'],
+    [88, 'Registrando auditoria do lançamento...', 'Gravando histórico'],
+    [100, 'Finalizando operação...', 'Concluído']
+  ];
+  let i = 0;
+  const timer = setInterval(() => {
+    const atual = etapas[Math.min(i, etapas.length - 1)];
+    bar.style.width = atual[0] + '%';
+    bar.textContent = atual[0] + '%';
+    msg.textContent = atual[1];
+    step.textContent = atual[2];
+    i++;
+    if (i >= etapas.length) clearInterval(timer);
+  }, 300);
+  return {modal, timer};
+}
+
+function limparBackdropsEleicao() {
+  document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+  document.body.classList.remove('modal-open');
+  document.body.style.removeProperty('overflow');
+  document.body.style.removeProperty('padding-right');
+}
+
+document.getElementById('formCredito')?.addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const form = this;
+  const btn = form.querySelector('button[type="submit"]');
+  const oldHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Salvando...';
+  const loading = mostrarLoadingEleicao();
+  try {
+    const res = await fetch(form.action, {
+      method: 'POST',
+      body: new FormData(form),
+      headers: {'X-Requested-With': 'XMLHttpRequest'}
+    });
+    const data = await res.json();
+    await new Promise(resolve => setTimeout(resolve, 900));
+    clearInterval(loading.timer);
+    loading.modal.hide();
+    if (!data.ok) {
+      alert(data.erro || 'Não foi possível registrar o lançamento.');
+      btn.disabled = false;
+      btn.innerHTML = oldHtml;
+      return;
+    }
+    bootstrap.Modal.getInstance(document.getElementById('modalLancarCredito'))?.hide();
+    setTimeout(() => {
+      limparBackdropsEleicao();
+      document.getElementById('elConfServidor').textContent = `${data.nome || ''} (${data.matricula || ''})`;
+      document.getElementById('elConfMsg').textContent = data.mensagem || 'Lançamento registrado com sucesso.';
+      new bootstrap.Modal(document.getElementById('modalEleicaoConfirmacao'), {backdrop:'static'}).show();
+    }, 220);
+  } catch(err) {
+    clearInterval(loading.timer);
+    loading.modal.hide();
+    alert('Erro de comunicação ao registrar o lançamento.');
+    btn.disabled = false;
+    btn.innerHTML = oldHtml;
+  }
+});
+
+document.getElementById('btnElConfOk')?.addEventListener('click', () => {
+  bootstrap.Modal.getInstance(document.getElementById('modalEleicaoConfirmacao'))?.hide();
+  window.location.href = window.location.pathname + window.location.search;
+});
 </script>
 {% endif %}
 

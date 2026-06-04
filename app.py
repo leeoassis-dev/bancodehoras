@@ -812,6 +812,16 @@ def _usuario_tem_servidor_ativo(db, usuario):
         LIMIT 1
     """, (cpf, cpf, matricula, matricula)).fetchone())
 
+def servidor_arquivado(db, matricula):
+    row = db.execute("SELECT arquivado FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    return bool(row and row["arquivado"])
+
+def bloquear_se_arquivado(db, matricula, destino="servidores"):
+    if not servidor_arquivado(db, matricula):
+        return None
+    flash("Servidor arquivado: edições e baixas ficam bloqueadas até a restauração do cadastro.", "warning")
+    return redirect(url_for(destino))
+
 def _inativar_vinculos_servidor(db, servidor):
     """Inativa contas e liberações administrativas associadas a um servidor arquivado/excluído."""
     if not servidor:
@@ -1356,12 +1366,62 @@ def arquivados():
 
 # â”€â”€â”€ Lançamentos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+@app.route("/arquivados/<matricula>/historico")
+@master_required
+def arquivado_historico(matricula):
+    db = get_db()
+    srv = db.execute("SELECT * FROM servidores WHERE matricula=? AND arquivado=1", (matricula,)).fetchone()
+    if not srv:
+        flash("Servidor arquivado não encontrado.", "danger")
+        return redirect(url_for("arquivados"))
+    lancs = db.execute("""
+        SELECT l.*, COALESCE((SELECT SUM(c.minutos) FROM consumos c WHERE c.lancamento_id=l.id),0) AS consumido
+        FROM lancamentos l
+        WHERE l.matricula=?
+        ORDER BY l.data DESC, l.id DESC
+    """, (matricula,)).fetchall()
+    comps = db.execute("""
+        SELECT * FROM compensacoes
+        WHERE matricula=?
+        ORDER BY data DESC, id DESC
+    """, (matricula,)).fetchall()
+    pags = db.execute("""
+        SELECT p.*,
+               COALESCE(SUM(ROUND(c.minutos*l.minutos_base*1.0/l.minutos_creditados)),0) AS base_paga,
+               COALESCE(SUM(c.minutos),0) AS minutos_pagos
+        FROM pagamentos p
+        LEFT JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
+        LEFT JOIN lancamentos l ON l.id=c.lancamento_id
+        WHERE p.matricula=?
+        GROUP BY p.id,p.matricula,p.data_pagamento,p.descricao,p.criado_em
+        ORDER BY p.data_pagamento DESC, p.id DESC
+    """, (matricula,)).fetchall()
+    eleicao_creditos = db.execute("""
+        SELECT * FROM eleicao_creditos
+        WHERE matricula=?
+        ORDER BY criado_em DESC, id DESC
+    """, (matricula,)).fetchall()
+    eleicao_baixas = db.execute("""
+        SELECT * FROM eleicao_baixas
+        WHERE matricula=?
+        ORDER BY data DESC, id DESC
+    """, (matricula,)).fetchall()
+    return render_template(
+        "arquivado_historico.html",
+        servidor=srv, lancamentos=lancs, compensacoes=comps, pagamentos=pags,
+        eleicao_creditos=eleicao_creditos, eleicao_baixas=eleicao_baixas,
+        saldo=calcular_saldo(db, matricula), saldo_eleicao=calcular_saldo_eleicao(db, matricula),
+        fmt=minutos_para_horas
+    )
+
 @app.route("/lancamentos/<matricula>", methods=["GET","POST"])
 @master_required
 def lancamentos(matricula):
     db  = get_db()
     srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
     if not srv: flash("Não encontrado.","danger"); return redirect(url_for("servidores"))
+    if srv["arquivado"]:
+        return redirect(url_for("arquivado_historico", matricula=matricula))
     if request.method == "POST":
         data = request.form["data"]; hrs = request.form["horas"].strip()
         pct  = int(request.form["percentual"]); desc = request.form["descricao"].strip()
@@ -1395,6 +1455,9 @@ def excluir_lancamento(id):
         LEFT JOIN servidores s ON s.matricula=l.matricula WHERE l.id=?
     """, (id,)).fetchone()
     if r:
+        if servidor_arquivado(db, r["matricula"]):
+            flash("Servidor arquivado: exclusão de lançamento bloqueada até a restauração.", "warning")
+            return redirect(url_for("arquivado_historico", matricula=r["matricula"]))
         registrar_auditoria(
             db, "Excluiu lançamento", "lancamento", id, r["matricula"], r["servidor_nome"],
             f"Data {r['data']}; horas base {r['horas_base']}; adicional {r['percentual']}%; crédito {minutos_para_horas(r['minutos_creditados'])}; descrição: {r['descricao'] or '-'}"
@@ -1413,6 +1476,8 @@ def compensacoes(matricula):
     db  = get_db()
     srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
     if not srv: flash("Não encontrado.","danger"); return redirect(url_for("servidores"))
+    if srv["arquivado"]:
+        return redirect(url_for("arquivado_historico", matricula=matricula))
     saldo = calcular_saldo(db, matricula)
     if request.method == "POST":
         data = request.form["data"]; tipo = "parcial"; desc = request.form["descricao"].strip()
@@ -1448,6 +1513,9 @@ def excluir_compensacao(id):
         LEFT JOIN servidores s ON s.matricula=c.matricula WHERE c.id=?
     """, (id,)).fetchone()
     if r:
+        if servidor_arquivado(db, r["matricula"]):
+            flash("Servidor arquivado: exclusão de compensação bloqueada até a restauração.", "warning")
+            return redirect(url_for("arquivado_historico", matricula=r["matricula"]))
         registrar_auditoria(
             db, "Excluiu compensação", "compensacao", id, r["matricula"], r["servidor_nome"],
             f"Data {r['data']}; tipo {r['tipo']}; compensado {minutos_para_horas(r['minutos_compensados'])}; descrição: {r['descricao'] or '-'}"
@@ -1589,6 +1657,8 @@ def api_saldo_eleicao(matricula):
 @master_required
 def api_pagamentos_itens(matricula):
     db = get_db()
+    if servidor_arquivado(db, matricula):
+        return jsonify({"erro": "Servidor arquivado.", "vencidos": [], "todos": [], "limite": LIMITE_PAGAMENTO_MINUTOS}), 403
     itens_v = lancamentos_com_saldo(db, matricula, apenas_vencidos=True)
     itens_t = lancamentos_com_saldo(db, matricula, apenas_vencidos=False)
     return jsonify({
@@ -1604,6 +1674,8 @@ def pagamentos_servidor(matricula):
     db  = get_db()
     srv = db.execute("SELECT * FROM servidores WHERE matricula=?", (matricula,)).fetchone()
     if not srv: flash("Não encontrado.","danger"); return redirect(url_for("pagamentos_index"))
+    if srv["arquivado"]:
+        return redirect(url_for("arquivado_historico", matricula=matricula))
     itens = lancamentos_com_saldo(db, matricula, apenas_vencidos=False)
     hist  = db.execute("SELECT * FROM pagamentos WHERE matricula=? ORDER BY data_pagamento DESC", (matricula,)).fetchall()
     return render_template("pagamentos_servidor.html", servidor=srv, itens=itens, historico=hist,
@@ -1614,7 +1686,10 @@ def pagamentos_servidor(matricula):
 @master_required
 def registrar_pagamento(matricula):
     db = get_db()
-    srv = db.execute("SELECT nome FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    srv = db.execute("SELECT nome, arquivado FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    if srv and srv["arquivado"]:
+        flash("Servidor arquivado: pagamento bloqueado até a restauração.", "warning")
+        return redirect(url_for("arquivado_historico", matricula=matricula))
     data_pag = request.form["data_pagamento"]
     descricao = request.form.get("descricao","").strip()
     just      = request.form.get("justificativa","").strip()
@@ -1661,16 +1736,19 @@ def registrar_pagamento(matricula):
 def estornar_pagamento(id):
     db = get_db()
     r  = db.execute("""
-        SELECT p.*, s.nome AS servidor_nome,
+        SELECT p.*, s.nome AS servidor_nome, s.arquivado AS servidor_arquivado,
                COALESCE(SUM(ROUND(c.minutos*l.minutos_base*1.0/l.minutos_creditados)),0) AS base_paga
         FROM pagamentos p
         LEFT JOIN servidores s ON s.matricula=p.matricula
         LEFT JOIN consumos c ON c.referencia_id=p.id AND c.tipo='pagamento'
         LEFT JOIN lancamentos l ON l.id=c.lancamento_id
         WHERE p.id=?
-        GROUP BY p.id,p.matricula,p.data_pagamento,p.descricao,p.criado_em,s.nome
+        GROUP BY p.id,p.matricula,p.data_pagamento,p.descricao,p.criado_em,s.nome,s.arquivado
     """, (id,)).fetchone()
     if r:
+        if r["servidor_arquivado"]:
+            flash("Servidor arquivado: estorno de pagamento bloqueado até a restauração.", "warning")
+            return redirect(url_for("arquivado_historico", matricula=r["matricula"]))
         registrar_auditoria(
             db, "Estornou pagamento", "pagamento", id, r["matricula"], r["servidor_nome"],
             f"Data {r['data_pagamento']}; horas base {minutos_para_horas(r['base_paga'])}; descrição: {r['descricao'] or '-'}"
@@ -4094,14 +4172,14 @@ def admin_acessos():
     # Carrega usuários ativos com vínculos. Master preserva o nível, mas pode
     # constar como responsável operacional no painel quando possuir vínculo.
     usuarios_vinc = db.execute(
-        "SELECT id, nome, nivel, secretaria, setor, vinculos FROM usuarios WHERE ativo=1 AND (nivel IN ('chefia','secretario') OR vinculos IS NOT NULL)"
+        "SELECT id, nome, nivel, matricula, secretaria, setor, vinculos FROM usuarios WHERE ativo=1 AND (nivel IN ('chefia','secretario') OR vinculos IS NOT NULL)"
     ).fetchall()
     # mapa: setor → lista de chefias; secretaria → lista de secretarios
     _mapa_chefia = {}
     _mapa_secretario = {}
     for u in usuarios_vinc:
         vs = get_vinculos(u)
-        entry = {'id': u['id'], 'nome': u['nome']}
+        entry = {'id': u['id'], 'nome': u['nome'], 'nivel': u['nivel'], 'matricula': u['matricula'] or '', 'vinculos': vs}
         if u['nivel'] == 'chefia':
             for v in vs:
                 _mapa_chefia.setdefault(v, []).append(entry)
@@ -4470,21 +4548,30 @@ def eleicao_index():
 def eleicao_servidor(matricula):
     db    = get_db()
     nivel = session.get('nivel')
+    ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
     # Servidor só pode ver seus próprios dados
     if nivel == 'servidor' and session.get('matricula') != matricula:
+        if ajax:
+            return jsonify({"ok": False, "erro": "Acesso não autorizado."}), 403
         return redirect(url_for('meu_banco'))
 
     if not usuario_pode_ver_matricula(db, matricula):
+        if ajax:
+            return jsonify({"ok": False, "erro": "Acesso não autorizado."}), 403
         flash("Acesso não autorizado.", "danger")
         return redirect(url_for('portal'))
 
     srv = db.execute("SELECT * FROM servidores WHERE matricula=? AND arquivado=0", (matricula,)).fetchone()
     if not srv:
+        if ajax:
+            return jsonify({"ok": False, "erro": "Servidor não encontrado ou arquivado."}), 404
         flash("Servidor não encontrado.", "danger")
         return redirect(url_for('eleicao_index'))
 
     if request.method == 'POST' and nivel not in ('master',):
+        if ajax:
+            return jsonify({"ok": False, "erro": "Apenas o RH pode realizar lançamentos."}), 403
         flash("Apenas o RH pode realizar lançamentos.", "danger")
         return redirect(url_for('eleicao_servidor', matricula=matricula))
 
@@ -4499,8 +4586,12 @@ def eleicao_servidor(matricula):
             except (ValueError, TypeError):
                 qtd = 0
             if not ref:
+                if ajax:
+                    return jsonify({"ok": False, "erro": "Informe a referência da eleição."}), 400
                 flash("Informe a referência da eleição.", "danger")
             elif qtd <= 0:
+                if ajax:
+                    return jsonify({"ok": False, "erro": "A quantidade de dias deve ser maior que zero."}), 400
                 flash("A quantidade de dias deve ser maior que zero.", "danger")
             else:
                 db.insert("""
@@ -4512,14 +4603,21 @@ def eleicao_servidor(matricula):
                                     matricula=matricula, servidor_nome=srv['nome'],
                                     detalhe=f"{qtd} dia(s) – {ref}")
                 db.commit()
+                msg = f"{qtd} dia(s) de eleição creditado(s) para {srv['nome']} ({matricula}) — {ref}"
+                if ajax:
+                    return jsonify({"ok": True, "tipo": "credito", "mensagem": msg, "nome": srv["nome"], "matricula": matricula, "dias": qtd, "referencia": ref})
                 flash(f"{srv['nome']} ({matricula})\n{qtd} dia(s) de eleição creditado(s) — {ref}", "success")
 
         elif acao == 'add_baixa':
             data_baixa = request.form.get('data', '').strip()
             obs = request.form.get('observacao', '').strip()
             if not data_baixa:
+                if ajax:
+                    return jsonify({"ok": False, "erro": "Informe a data da folga."}), 400
                 flash("Informe a data da folga.", "danger")
             elif calcular_saldo_eleicao(db, matricula) <= 0:
+                if ajax:
+                    return jsonify({"ok": False, "erro": "Saldo insuficiente de dias de eleição."}), 400
                 flash("Saldo insuficiente de dias de eleição.", "danger")
             else:
                 db.insert("""
@@ -4531,6 +4629,9 @@ def eleicao_servidor(matricula):
                                     matricula=matricula, servidor_nome=srv['nome'],
                                     detalhe=f"Folga em {data_baixa}")
                 db.commit()
+                msg = f"Dia de folga eleitoral registrado para {srv['nome']} ({matricula}) em {data_baixa}."
+                if ajax:
+                    return jsonify({"ok": True, "tipo": "baixa", "mensagem": msg, "nome": srv["nome"], "matricula": matricula, "data": data_baixa})
                 flash(f"{srv['nome']} ({matricula})\nDia de folga eleitoral registrado em {data_baixa}.", "success")
 
         if request.form.get('_source') == 'dashboard':
@@ -4554,7 +4655,10 @@ def eleicao_servidor(matricula):
 @master_required
 def eleicao_excluir_credito(matricula, cid):
     db = get_db()
-    srv = db.execute("SELECT nome FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    srv = db.execute("SELECT nome, arquivado FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    if srv and srv["arquivado"]:
+        flash("Servidor arquivado: exclusão de crédito eleitoral bloqueada até a restauração.", "warning")
+        return redirect(url_for("arquivado_historico", matricula=matricula))
     credito = db.execute("SELECT * FROM eleicao_creditos WHERE id=? AND matricula=?", (cid, matricula)).fetchone()
     if not credito:
         flash("Crédito não encontrado.", "danger")
@@ -4583,7 +4687,10 @@ def eleicao_excluir_credito(matricula, cid):
 @master_required
 def eleicao_editar_credito(matricula, cid):
     db     = get_db()
-    srv    = db.execute("SELECT nome FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    srv    = db.execute("SELECT nome, arquivado FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    if srv and srv["arquivado"]:
+        flash("Servidor arquivado: edição de crédito eleitoral bloqueada até a restauração.", "warning")
+        return redirect(url_for("arquivado_historico", matricula=matricula))
     credito= db.execute("SELECT * FROM eleicao_creditos WHERE id=? AND matricula=?", (cid, matricula)).fetchone()
     if not credito:
         flash("Crédito não encontrado.", "danger")
@@ -4798,7 +4905,10 @@ def eleicao_exportar(matricula, fmt):
 @master_required
 def eleicao_excluir_baixa(matricula, bid):
     db = get_db()
-    srv = db.execute("SELECT nome FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    srv = db.execute("SELECT nome, arquivado FROM servidores WHERE matricula=?", (matricula,)).fetchone()
+    if srv and srv["arquivado"]:
+        flash("Servidor arquivado: estorno de folga eleitoral bloqueado até a restauração.", "warning")
+        return redirect(url_for("arquivado_historico", matricula=matricula))
     baixa = db.execute("SELECT * FROM eleicao_baixas WHERE id=? AND matricula=?", (bid, matricula)).fetchone()
     if not baixa:
         flash("Folga não encontrada.", "danger")
